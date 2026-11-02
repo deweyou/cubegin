@@ -42,3 +42,16 @@ local candidates; no tag or registry publication is performed by these scripts. 
 statistical randomness audits, performance budgets, transitive distribution-license
 inventory and registry publication remain separate release work. See testing.md,
 releasing.md and sdk.md for reproducible commands and contracts.
+
+## Local artifact metadata follow-up (2026-11-03)
+
+Shared metadata now covers Web/npm, native, iOS, Android, Rust archives and CLI
+packaging. SHA-256/path validation tests, xtask formatting/Clippy, native bundle and
+CLI builds/smoke check passed. The copied iOS package passed its 2 SwiftPM consumer
+tests and was reinstalled in the Swift product. Workflow YAML parsed locally;
+actionlint and hosted runs were not rerun. No claim of a new combined CI pass.
+Web and Android full builds were not repeated in this follow-up. Rust archive
+verification was attempted but failed under the local crates.io source replacement:
+Cargo could not resolve the unpublished cubegin-tnoodle through its temporary
+registry. No new seven-crate consumer pass or metadata output is claimed. Existing
+historical evidence above is separate from this follow-up.

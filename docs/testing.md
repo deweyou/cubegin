@@ -39,3 +39,9 @@ These checks validate sampled behavior and regression contracts. They do not pro
 all training states, randomness distribution or WCA conformance. Physical-device
 runtime/native GPU rendering acceptance, performance budgets, fuzzing and remote CI
 remain separate from local host/package tests. No native UI widget is included.
+
+Artifact inventory tests run with `node --test scripts/artifact-metadata.test.mjs`
+and as part of `cargo xtask check`. They verify independent SHA-256 vectors,
+content changes and rejection of missing/outside/symlink inputs. Rebuild the
+applicable packages and exercise their isolated consumers after packaging changes;
+a shared-helper test alone does not establish platform build acceptance.

@@ -1,3 +1,4 @@
+import {writeArtifactManifest, writeArchiveChecksum} from './artifact-metadata.mjs';
 import {mkdtempSync,mkdirSync,copyFileSync,rmSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -14,3 +15,6 @@ try {
  mkdirSync('dist/rust',{recursive:true});
  for(const name of names)copyFileSync(join(temporary,'package',`${name}-${versions[name]}.crate`),`dist/rust/${name}-${versions[name]}.crate`);
 }finally{rmSync(temporary,{recursive:true,force:true});}
+
+writeArtifactManifest({root:'dist/rust',artifact:'rust',paths:names.map(name=>`${name}-${versions[name]}.crate`)});
+for(const name of names)writeArchiveChecksum(`dist/rust/${name}-${versions[name]}.crate`);

@@ -38,7 +38,7 @@ jobs:
       - name: Full 4x4 and FTO solver replay
         run: cargo test --release -p cubegin-solver --locked -- --ignored
       - name: CLI release build
-        run: cargo build --release -p cubegin-cli --locked
+        run: cargo xtask build-sdk cli
       - name: Build and verify all Rust crate archives
         run: cargo xtask verify-rust-packages
       - name: Verify package versions without publishing
@@ -51,6 +51,7 @@ jobs:
           path: |
             dist/rust/
             dist/release-plan.json
+            dist/cli/
           if-no-files-found: error
           retention-days: 14
 
@@ -88,6 +89,8 @@ jobs:
           path: |
             dist/*.tgz
             dist/npm-verification.json
+            dist/npm-SDK.json
+            dist/*.tgz.sha256
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
@@ -133,6 +136,10 @@ jobs:
             dist/CubeginFFI.xcframework.zip
             dist/CubeginFFI.xcframework.zip.sha256
             dist/swift-verification.json
+            dist/xcframework-SDK.json
+            dist/CubeginSDK-*.zip
+            dist/CubeginSDK-*.zip.sha256
+            dist/native/
             Package.swift
             sdk/swift/Generated/
             sdk/swift/PackageTests/
@@ -175,6 +182,7 @@ jobs:
             dist/android/
             dist/maven/
             dist/android-verification.json
+            dist/android-SDK.json
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4

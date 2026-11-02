@@ -1,3 +1,4 @@
+import {writeArtifactManifest} from './artifact-metadata.mjs';
 import {run} from './process.mjs';
 import {mkdirSync,copyFileSync} from 'node:fs';
 run('node',['scripts/build-native.mjs']);
@@ -9,3 +10,5 @@ mkdirSync('dist/android',{recursive:true});
 copyFileSync('sdk/android/library/build/outputs/aar/library-release.aar','dist/android/cubegin.aar');
 
 run('node',['scripts/verify-android-package.mjs']);
+
+writeArtifactManifest({root:'dist',artifact:'android',output:'android-SDK.json',paths:['android/cubegin.aar','maven']});

@@ -9,7 +9,7 @@ run, avoiding duplicate full platform builds. There are no path-based skips or
 
 | Job | Required tests | Required builds and consumers |
 | --- | --- | --- |
-| Rust tests and builds | `cargo xtask check`: fixture/license consistency, formatting, Clippy and workspace unit tests; release 4x4/FTO replay | Release CLI; seven crate archives unpacked and compiled through a fresh temporary registry; package version consistency dry run |
+| Rust tests and builds | `cargo xtask check`: fixture/license consistency, formatting, Clippy and workspace unit tests; release 4x4/FTO replay | Release CLI with metadata; seven crate archives unpacked and compiled through a fresh temporary registry; package version consistency dry run |
 | Web unit tests, E2E and build | SDK/workbench type checks; actual WASM unit tests; all browser E2E and screenshot comparisons | WASM + JS/types bundled into npm tarball and installed in an isolated consumer |
 | Swift tests and iOS build | Generated Swift host tests with shared puzzle fixtures and expanded capabilities; SwiftPM tests; committed binding drift check | iOS/simulator/macOS XCFramework; ZIP extracted and consumed by an isolated SwiftPM project |
 | Kotlin tests and Android build | Gradle host unit tests: shared 3x3/event fixtures, errors/replay, training, auxiliary, FMC and player calls | Three-ABI AAR, POM and sources; ELF architecture checks; isolated local-Maven consumer |
@@ -64,3 +64,10 @@ have each completed successfully during that PR's iterations. Consult the latest
 PR commit's **CI passed** result for the combined acceptance status; individual
 successes from different commits are not a substitute. Repository branch protection
 is not configured by these files.
+
+## Artifact metadata
+
+Candidate uploads retain common manifests/checksums described in [artifacts.md](artifacts.md),
+including the complete versioned Apple SDK ZIP. The Rust check also runs metadata
+integrity/path tests. CLI uses the packaging entry point, not a bare cargo build.
+These changes do not relax any job or the four-success aggregate requirement.
