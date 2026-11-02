@@ -51,8 +51,16 @@ and [releasing](releasing.md).
 
 ## Validation status
 
-The workflow has been checked locally with actionlint 1.7.7. Its underlying unit,
-E2E and package-build/consumer commands have local evidence in [status.md](status.md).
-`CI=true` browser tests were also exercised on a separate local port. The exact
-GitHub Ubuntu/macOS images and selected Xcode version have not yet run remotely;
-repository branch protection is not configured by this change.
+The workflow was checked locally with actionlint 1.7.7, and the aggregate gate
+was exercised against success/failure/cancelled/skipped results. Underlying unit,
+E2E and package-consumer commands have local evidence in [status.md](status.md).
+`CI=true` browser tests were also exercised on a separate local port.
+
+Hosted runners were first exercised in [PR #46](https://github.com/deweyou/cubegin/pull/46).
+The first run exposed setup-android's default request for the retired SDK `tools`
+package; the workflow now requests `platform-tools` explicitly and installs the
+pinned platform/build-tools/NDK separately. Hosted Rust, Web, Swift and Android jobs
+have each completed successfully during that PR's iterations. Consult the latest
+PR commit's **CI passed** result for the combined acceptance status; individual
+successes from different commits are not a substitute. Repository branch protection
+is not configured by these files.
