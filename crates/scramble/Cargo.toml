@@ -1,0 +1,18 @@
+[package]
+name = "cubegin-scramble"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cubegin scramble capability"
+
+[dependencies]
+cubegin-puzzle.workspace = true
+cubegin-solver.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+
+tnoodle-backend.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true

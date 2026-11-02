@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# UniFFI templates contain intentional whitespace; regenerate rather than edit.
+sdk/swift/Generated/* -whitespace

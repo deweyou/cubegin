@@ -1,0 +1,24 @@
+[package]
+name = "cubegin-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+cli = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin.rs"
+required-features = ["cli"]
+
+[dependencies]
+cubegin.workspace = true
+uniffi.workspace = true
+thiserror.workspace = true
+
+serde_json.workspace = true

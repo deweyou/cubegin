@@ -1,0 +1,971 @@
+{
+  "222": {
+    "id": "222",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "333": {
+    "id": "333",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "444": {
+    "id": "444",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "555": {
+    "id": "555",
+    "baseEventId": "555",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-turn"
+  },
+  "666": {
+    "id": "666",
+    "baseEventId": "666",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-turn"
+  },
+  "777": {
+    "id": "777",
+    "baseEventId": "777",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-turn"
+  },
+  "333bld": {
+    "id": "333bld",
+    "baseEventId": "333bld",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "template"
+  },
+  "333fm": {
+    "id": "333fm",
+    "baseEventId": "333fm",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "template"
+  },
+  "333oh": {
+    "id": "333oh",
+    "baseEventId": "333oh",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "clock": {
+    "id": "clock",
+    "baseEventId": "clock",
+    "puzzleId": "clock",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "minx": {
+    "id": "minx",
+    "baseEventId": "minx",
+    "puzzleId": "megaminx",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-turn"
+  },
+  "pyram": {
+    "id": "pyram",
+    "baseEventId": "pyram",
+    "puzzleId": "pyraminx",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "skewb": {
+    "id": "skewb",
+    "baseEventId": "skewb",
+    "puzzleId": "skewb",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "sq1": {
+    "id": "sq1",
+    "baseEventId": "sq1",
+    "puzzleId": "square1",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "444bld": {
+    "id": "444bld",
+    "baseEventId": "444bld",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "template"
+  },
+  "555bld": {
+    "id": "555bld",
+    "baseEventId": "555bld",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "template"
+  },
+  "333mbld": {
+    "id": "333mbld",
+    "baseEventId": "333mbld",
+    "puzzleId": "cube",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-state"
+  },
+  "fto": {
+    "id": "fto",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "official",
+    "kind": "official",
+    "generatorKind": "random-turn"
+  },
+  "222.cll": {
+    "id": "222.cll",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.cll",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.eg1": {
+    "id": "222.eg1",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.eg1",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.eg2": {
+    "id": "222.eg2",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.eg2",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.pbl": {
+    "id": "222.pbl",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.pbl",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.tcll_plus": {
+    "id": "222.tcll_plus",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.tcll_plus",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.tcll_minus": {
+    "id": "222.tcll_minus",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.tcll_minus",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.ls": {
+    "id": "222.ls",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.ls",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.no_bar": {
+    "id": "222.no_bar",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "222.teg1": {
+    "id": "222.teg1",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.teg1",
+    "orientationTarget": "bottom-layer"
+  },
+  "222.teg2": {
+    "id": "222.teg2",
+    "baseEventId": "222",
+    "puzzleId": "cube",
+    "categoryId": "222",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "222.teg2",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.edges_only": {
+    "id": "333.edges_only",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.corners_only": {
+    "id": "333.corners_only",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.ll": {
+    "id": "333.ll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.pll": {
+    "id": "333.pll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.pll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.oll": {
+    "id": "333.oll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.oll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.lsll": {
+    "id": "333.lsll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.zbll": {
+    "id": "333.zbll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.zbll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.coll": {
+    "id": "333.coll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.coll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.cll": {
+    "id": "333.cll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.cll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.ell": {
+    "id": "333.ell",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.ell",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.2gll": {
+    "id": "333.2gll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.2gll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.zzll": {
+    "id": "333.zzll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.zzll",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.zbls": {
+    "id": "333.zbls",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.zbls",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.eols": {
+    "id": "333.eols",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.eols",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.wvls": {
+    "id": "333.wvls",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.wvls",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.vls": {
+    "id": "333.vls",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.vls",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.f2l": {
+    "id": "333.f2l",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.easy_cross": {
+    "id": "333.easy_cross",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.easy_xcross": {
+    "id": "333.easy_xcross",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.eoline": {
+    "id": "333.eoline",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.eo_cross": {
+    "id": "333.eo_cross",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.cfop",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "333.edge_permutation": {
+    "id": "333.edge_permutation",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.edge_orientation": {
+    "id": "333.edge_orientation",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.corner_permutation": {
+    "id": "333.corner_permutation",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.corner_orientation": {
+    "id": "333.corner_orientation",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.permutation_only": {
+    "id": "333.permutation_only",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.orientation_only": {
+    "id": "333.orientation_only",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.three_edge_cycle": {
+    "id": "333.three_edge_cycle",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.three_edge_cycle"
+  },
+  "333.three_corner_cycle": {
+    "id": "333.three_corner_cycle",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.state",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.three_corner_cycle"
+  },
+  "333.roux.second_block": {
+    "id": "333.roux.second_block",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.roux",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.roux.cmll": {
+    "id": "333.roux.cmll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.roux",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.roux.cmll"
+  },
+  "333.roux.lse": {
+    "id": "333.roux.lse",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.roux",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.roux.lse_mu": {
+    "id": "333.roux.lse_mu",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.roux",
+    "kind": "training",
+    "generatorKind": "subgroup"
+  },
+  "333.mehta.3qb": {
+    "id": "333.mehta.3qb",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.mehta.eole": {
+    "id": "333.mehta.eole",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.mehta.tdr": {
+    "id": "333.mehta.tdr",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "333.mehta.6cp": {
+    "id": "333.mehta.6cp",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.mehta.6cp"
+  },
+  "333.mehta.cdrll": {
+    "id": "333.mehta.cdrll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.mehta.cdrll"
+  },
+  "333.mehta.l5ep": {
+    "id": "333.mehta.l5ep",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.mehta.l5ep"
+  },
+  "333.mehta.ttll": {
+    "id": "333.mehta.ttll",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.mehta",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "333.mehta.ttll"
+  },
+  "333.subset.ru": {
+    "id": "333.subset.ru",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.lu": {
+    "id": "333.subset.lu",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.fru": {
+    "id": "333.subset.fru",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.rul": {
+    "id": "333.subset.rul",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.rrwu": {
+    "id": "333.subset.rrwu",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.mu": {
+    "id": "333.subset.mu",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.half_turn": {
+    "id": "333.subset.half_turn",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "333.subset.domino": {
+    "id": "333.subset.domino",
+    "baseEventId": "333",
+    "puzzleId": "cube",
+    "categoryId": "333.subset",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "444.edge_pairing": {
+    "id": "444.edge_pairing",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "template"
+  },
+  "444.subset.rruu": {
+    "id": "444.subset.rruu",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "subset",
+    "generatorKind": "subgroup"
+  },
+  "444.ll": {
+    "id": "444.ll",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "444.ell": {
+    "id": "444.ell",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state",
+    "orientationTarget": "bottom-layer"
+  },
+  "444.edges_only": {
+    "id": "444.edges_only",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.centers_only": {
+    "id": "444.centers_only",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.yau.ud_centers": {
+    "id": "444.yau.ud_centers",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.yau.ud_3_edges": {
+    "id": "444.yau.ud_3_edges",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.yau.last_8_dedges": {
+    "id": "444.yau.last_8_dedges",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.hoya.rl_centers": {
+    "id": "444.hoya.rl_centers",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.hoya.rldx_centers": {
+    "id": "444.hoya.rldx_centers",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.hoya.rldx_cross": {
+    "id": "444.hoya.rldx_cross",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "444.poll": {
+    "id": "444.poll",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "444.poll",
+    "orientationTarget": "bottom-layer"
+  },
+  "444.ppll": {
+    "id": "444.ppll",
+    "baseEventId": "444",
+    "puzzleId": "cube",
+    "categoryId": "444",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "444.ppll",
+    "orientationTarget": "bottom-layer"
+  },
+  "555.edge_pairing": {
+    "id": "555.edge_pairing",
+    "baseEventId": "555",
+    "puzzleId": "cube",
+    "categoryId": "big-cube",
+    "kind": "training",
+    "generatorKind": "template"
+  },
+  "666.edge_pairing": {
+    "id": "666.edge_pairing",
+    "baseEventId": "666",
+    "puzzleId": "cube",
+    "categoryId": "big-cube",
+    "kind": "training",
+    "generatorKind": "template"
+  },
+  "777.edge_pairing": {
+    "id": "777.edge_pairing",
+    "baseEventId": "777",
+    "puzzleId": "cube",
+    "categoryId": "big-cube",
+    "kind": "training",
+    "generatorKind": "template"
+  },
+  "minx.subset.ru": {
+    "id": "minx.subset.ru",
+    "baseEventId": "minx",
+    "puzzleId": "megaminx",
+    "categoryId": "minx",
+    "kind": "training",
+    "generatorKind": "subgroup"
+  },
+  "minx.s2l": {
+    "id": "minx.s2l",
+    "baseEventId": "minx",
+    "puzzleId": "megaminx",
+    "categoryId": "minx",
+    "kind": "training",
+    "generatorKind": "subgroup"
+  },
+  "minx.lsll": {
+    "id": "minx.lsll",
+    "baseEventId": "minx",
+    "puzzleId": "megaminx",
+    "categoryId": "minx",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "minx.lsll"
+  },
+  "minx.pll": {
+    "id": "minx.pll",
+    "baseEventId": "minx",
+    "puzzleId": "megaminx",
+    "categoryId": "minx",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "minx.pll"
+  },
+  "minx.ll": {
+    "id": "minx.ll",
+    "baseEventId": "minx",
+    "puzzleId": "megaminx",
+    "categoryId": "minx",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "minx.ll"
+  },
+  "pyram.l4e": {
+    "id": "pyram.l4e",
+    "baseEventId": "pyram",
+    "puzzleId": "pyraminx",
+    "categoryId": "pyram",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "pyram.l4e"
+  },
+  "pyram.four_tips": {
+    "id": "pyram.four_tips",
+    "baseEventId": "pyram",
+    "puzzleId": "pyraminx",
+    "categoryId": "pyram",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "pyram.no_bar": {
+    "id": "pyram.no_bar",
+    "baseEventId": "pyram",
+    "puzzleId": "pyraminx",
+    "categoryId": "pyram",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "skewb.l2l": {
+    "id": "skewb.l2l",
+    "baseEventId": "skewb",
+    "puzzleId": "skewb",
+    "categoryId": "skewb",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "skewb.l2l",
+    "orientationTarget": "complete-face"
+  },
+  "skewb.no_bar": {
+    "id": "skewb.no_bar",
+    "baseEventId": "skewb",
+    "puzzleId": "skewb",
+    "categoryId": "skewb",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "sq1.cube_shape": {
+    "id": "sq1.cube_shape",
+    "baseEventId": "sq1",
+    "puzzleId": "square1",
+    "categoryId": "sq1",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "sq1.csp": {
+    "id": "sq1.csp",
+    "baseEventId": "sq1",
+    "puzzleId": "square1",
+    "categoryId": "sq1",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "sq1.csp"
+  },
+  "sq1.pbl": {
+    "id": "sq1.pbl",
+    "baseEventId": "sq1",
+    "puzzleId": "square1",
+    "categoryId": "sq1",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "sq1.pbl"
+  },
+  "fto.l3t": {
+    "id": "fto.l3t",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "fto",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "fto.l3t"
+  },
+  "fto.l3t_lbt": {
+    "id": "fto.l3t_lbt",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "fto",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "fto.l3t_lbt"
+  },
+  "fto.tcp": {
+    "id": "fto.tcp",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "fto",
+    "kind": "training",
+    "generatorKind": "case-state",
+    "caseSetId": "fto.tcp"
+  },
+  "fto.edges_only": {
+    "id": "fto.edges_only",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "fto",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "fto.centers_only": {
+    "id": "fto.centers_only",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "fto",
+    "kind": "training",
+    "generatorKind": "random-state"
+  },
+  "fto.corners_only": {
+    "id": "fto.corners_only",
+    "baseEventId": "fto",
+    "puzzleId": "face-turning-octahedron",
+    "categoryId": "fto",
+    "kind": "training",
+    "generatorKind": "random-state"
+  }
+}

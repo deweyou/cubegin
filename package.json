@@ -1,29 +1,21 @@
 {
   "name": "cubegin-workspace",
-  "version": "0.0.0",
   "private": true,
-  "license": "GPL-3.0-only",
   "type": "module",
-  "scripts": {
-    "dev:web": "vp run web#dev",
-    "dev:playground": "vp run playground#dev",
-    "dev:scramble-docs": "vp run scramble-docs#dev",
-    "dev:wx": "vp run wx-app#dev",
-    "build:web": "vp run web#build",
-    "build:playground": "vp run playground#build",
-    "build:scramble-docs": "vp run scramble-docs#build",
-    "build:wx": "vp run wx-app#build",
-    "build": "vp run build -r",
-    "test": "pnpm test:docs && vp run test -r",
-    "test:docs": "node --test scripts/docs-home.test.mjs",
-    "sync:readmes": "node scripts/sync-package-readmes.mjs --write",
-    "check": "vp check"
-  },
-  "devDependencies": {
-    "vite-plus": "catalog:"
-  },
+  "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22.12.0"
   },
-  "packageManager": "pnpm@10.33.0"
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "check": "tsc -p sdk/web/tsconfig.json --noEmit && tsc -p examples/web/tsconfig.json",
+    "test": "node --test sdk/web/test/*.test.mjs",
+    "test:e2e": "playwright test",
+    "dev": "vite examples/web --host 127.0.0.1 --port 4488 --strictPort"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1"
+  }
 }

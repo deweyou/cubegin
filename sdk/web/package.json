@@ -1,0 +1,8 @@
+{
+  "name": "cubegin", "version": "0.1.0", "type": "module",
+  "description": "Rust-powered multi-puzzle scramble, solver, training and animation SDK",
+  "license": "GPL-3.0-only",
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}, "./worker": {"types": "./dist/worker-client.d.ts", "import": "./dist/worker-client.js"}},
+  "files": ["dist", "wasm", "LICENSE", "NOTICE", "README.md"],
+  "sideEffects": false
+}

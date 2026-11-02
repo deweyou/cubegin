@@ -1,0 +1,12 @@
+import {run} from './process.mjs';
+import {mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+mkdirSync('target/kotlin-test',{recursive:true});
+const jna='target/kotlin-test/jna.jar';
+if(!existsSync(jna)) throw new Error('Supply JNA 5.17.0 JVM jar at target/kotlin-test/jna.jar (Maven net.java.dev.jna:jna:5.17.0)');
+const fixtures=JSON.parse(readFileSync('fixtures/states.json','utf8'));
+writeFileSync('target/kotlin-test/fixtures.tsv',fixtures.map(f=>`${f.algorithm}\t${f.facelets}`).join('\n'));
+run(process.env.KOTLINC || 'kotlinc',['-cp',jna,'sdk/android/library/src/main/java/io/github/deweyou/cubegin/cubegin_native.kt','sdk/android/smoke/Smoke.kt','-include-runtime','-d','target/kotlin-test/smoke.jar']);
+writeFileSync('target/kotlin-test/events.tsv',JSON.parse(readFileSync('fixtures/events.json','utf8')).map(f=>`${f.eventId}\t${f.algorithm}\t${JSON.stringify(f.state,(_key,value)=>value && !Array.isArray(value) && typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value)}`).join('\n'));
+const java=process.env.JAVA_HOME?join(process.env.JAVA_HOME,'bin/java'):'java';
+run(java,['-Djna.library.path=target/release','-cp',`target/kotlin-test/smoke.jar${process.platform==='win32'?';':':'}${jna}`,'SmokeKt','target/kotlin-test/fixtures.tsv']);

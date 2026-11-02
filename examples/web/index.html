@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cubegin 能力工作台</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#172026;background:#f4f6f7}body{max-width:880px;margin:32px auto;padding:0 16px}h1{font-size:26px}h2{font-size:20px;margin:0 0 16px}p{line-height:1.5}nav{display:flex;gap:18px;flex-wrap:wrap;margin:20px 0}a{color:#196b5f}section,.legacy{background:white;border:1px solid #d5dde0;border-radius:8px;padding:20px;margin:20px 0;scroll-margin-top:16px}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.65}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px;min-width:0}.full{grid-column:1/-1}label{font-weight:600}input,select,textarea,button{box-sizing:border-box;font:inherit;padding:9px;border:1px solid #9ca9ae;border-radius:6px;max-width:100%}input,select,textarea{width:100%;min-width:0;background:white;color:inherit}textarea{resize:vertical}input[type=checkbox]{width:auto}input[type=range]{padding:0}button{background:#257b6e;color:white;cursor:pointer}button.secondary{background:white;color:#196b5f}button:disabled{opacity:.5;cursor:not-allowed}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.hint,footer{font-size:14px;color:#53656c}.notice{padding:12px;background:#e6f1ee;border-radius:6px}#workbench-error,#error{color:#a61c1c;overflow-wrap:anywhere}#workbench-error:empty{display:none}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f7;padding:12px;border-radius:6px;font-size:14px;max-height:240px;overflow:auto}svg{display:block;width:100%;max-height:400px}.views{display:grid;grid-template-columns:1fr 1fr;gap:16px}.views svg{height:auto}.views figure{margin:0;min-width:0}.views figcaption{font-size:14px;color:#53656c;margin-bottom:8px}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:10px 8px;text-align:left;border-bottom:1px solid #d5dde0;vertical-align:top}td code{white-space:pre-wrap;overflow-wrap:anywhere}.output:empty{display:none}.legacy{padding:0;border:0;background:transparent}summary{cursor:pointer;font-weight:600}.legacy form{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.legacy form label{width:100%}.legacy form input{flex:1;min-width:120px}#diagram{background:white;border:1px solid #d5dde0;border-radius:8px;padding:16px;margin-top:24px}#state{overflow-wrap:anywhere;font-family:monospace}[hidden]{display:none!important}
+@media(max-width:600px){body{margin:20px auto}section,.legacy{padding:16px}.fields,.views{grid-template-columns:1fr}.full{grid-column:auto}table{min-width:540px}}
+</style>
+</head>
+<body>
+<header><h1>Cubegin 能力工作台</h1><p>选择项目、生成训练打乱、检查辅助求解，并查看展开图与动画。</p><p id="catalog-status" class="notice" role="status">正在加载能力目录…</p></header>
+<nav aria-label="工作台导航"><a href="#standard">标准项目</a><a href="#training">训练打乱</a><a href="#assist">辅助求解</a><a href="#preview">图与动画</a></nav>
+<p id="workbench-status" role="status"></p><p id="workbench-error" role="alert"></p>
+<section id="standard"><h2>标准项目</h2><fieldset disabled>
+<div class="fields"><div class="field"><label for="event">标准项目</label><select id="event"></select></div><div class="field"><label for="event-seed">随机种子</label><input id="event-seed" type="number" min="0" max="4294967295" step="1" value="42"></div>
+<div class="field" id="blind-count-field" hidden><label for="blind-count">多盲魔方数量</label><input id="blind-count" type="number" min="2" max="100" value="3"></div>
+<div class="field full"><label for="event-algorithm">项目公式</label><textarea id="event-algorithm" rows="3" spellcheck="false">R U R' U'</textarea></div></div>
+<div class="actions"><button id="event-generate">生成项目打乱</button><button id="event-apply" class="secondary">查看图与动画</button><button id="event-solve" class="secondary">求解并回放</button><button id="event-inverse" class="secondary">逆公式</button></div>
+<p id="solver-support" class="hint"></p><div id="event-output" class="output" aria-live="polite"></div>
+</fieldset></section>
+<section id="training"><h2>训练打乱</h2><fieldset disabled>
+<div class="fields"><div class="field"><label for="training-event">训练项目筛选</label><select id="training-event"><option value="">全部项目</option></select></div><div class="field"><label for="training-type">训练类型</label><select id="training-type"></select></div>
+<div class="field"><label for="training-seed">训练随机种子</label><input id="training-seed" type="number" min="0" max="4294967295" step="1" value="42"></div><div class="field"><label for="training-cases">限定案例（可多选）</label><select id="training-cases" multiple size="5"></select><span id="case-status" class="hint"></span></div>
+<div class="field full"><label><input id="natural" type="checkbox"> 按自然权重选择案例</label></div>
+<div class="field" id="bottom-field"><label for="bottom-color">底面颜色</label><select id="bottom-color"><option value="">默认朝向</option><option value="white">白</option><option value="yellow">黄</option><option value="red">红</option><option value="orange">橙</option><option value="green">绿</option><option value="blue">蓝</option></select></div>
+<div class="field" id="front-field"><label for="front-color">正面颜色</label><select id="front-color"><option value="">自动选择相邻颜色</option><option value="white">白</option><option value="yellow">黄</option><option value="red">红</option><option value="orange">橙</option><option value="green">绿</option><option value="blue">蓝</option></select></div></div>
+<div class="actions"><button id="training-generate">生成训练打乱</button><button id="training-clear-cases" class="secondary">取消案例限定</button><a href="#preview">查看图与动画 ↓</a></div>
+<div id="training-output" class="output" aria-live="polite"></div>
+</fieldset></section>
+<section id="assist"><h2>辅助求解</h2><fieldset disabled>
+<div class="fields"><div class="field full"><label for="assist-method">求解方法</label><select id="assist-method"></select></div><div class="field full"><label for="assist-algorithm">待求解打乱</label><textarea id="assist-algorithm" rows="3" spellcheck="false">R U F</textarea></div>
+<div class="field"><label for="assist-targets">限定目标（可选）</label><input id="assist-targets" placeholder="留空使用默认目标；多个目标用逗号分隔"><span class="hint">目标名称因方法而异，例如 Cross 可填写 D、U。</span></div><div class="field"><label for="assist-depth">最大深度（可选）</label><input id="assist-depth" type="number" min="0" max="30" step="1" placeholder="使用方法默认值"></div>
+<div class="field" id="solutions-field" hidden><label for="assist-count">每个目标最多解数</label><input id="assist-count" type="number" min="1" max="64" step="1" value="1"></div></div>
+<p id="assist-hint" class="hint"></p><div class="actions"><button id="assist-run">运行辅助求解</button></div><div id="assist-output" class="output" aria-live="polite"></div>
+</fieldset></section>
+<section id="preview"><h2>图与动画</h2><p id="preview-source" class="hint">选择任一项目或生成训练打乱后，这里会显示对应结果。</p><div class="views"><figure><figcaption>最终状态展开图</figcaption><div id="event-net"></div></figure><figure><figcaption>动画帧</figcaption><div id="player-frame"></div></figure></div>
+<fieldset disabled><label for="seek">动画进度</label><input type="range" id="seek" min="0" max="1000" value="0"><div class="actions"><button id="play" class="secondary">播放</button><button id="restart" class="secondary">回到起点</button><label for="speed">速度</label><select id="speed" style="width:auto"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></div></fieldset><p><span id="event-status"></span> <span id="move-label" class="hint"></span></p><details><summary>查看状态数据</summary><pre id="event-state"></pre></details></section>
+<details class="legacy" id="legacy"><summary>三阶基础 API 回归示例</summary><form><label for="algorithm">Algorithm</label><input id="algorithm" value="R U R' U'" spellcheck="false"><button id="apply">Apply</button><button id="scramble" type="button">Scramble · seed 42</button><button id="solve" type="button">Solve</button></form><p id="status" role="status">Loading SDK…</p><p id="error" role="alert"></p><div id="diagram"></div><p id="state"></p></details>
+<footer>本地 SDK 能力验证页 · 求解在 Worker 中执行 · 打乱未作 WCA 比赛用途认证。</footer>
+<script type="module" src="/main.ts"></script>
+</body></html>

@@ -1,0 +1,7 @@
+[bindings.swift]
+module_name = "Cubegin"
+ffi_module_name = "CubeginFFI"
+
+[bindings.kotlin]
+package_name = "io.github.deweyou.cubegin"
+cdylib_name = "cubegin_native"
