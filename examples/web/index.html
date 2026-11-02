@@ -2,14 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cubegin 能力工作台</title>
+<title>Cubegin Core 能力工作台</title>
 <style>
 :root{font-family:system-ui,sans-serif;color:#172026;background:#f4f6f7}body{max-width:880px;margin:32px auto;padding:0 16px}h1{font-size:26px}h2{font-size:20px;margin:0 0 16px}p{line-height:1.5}nav{display:flex;gap:18px;flex-wrap:wrap;margin:20px 0}a{color:#196b5f}section,.legacy{background:white;border:1px solid #d5dde0;border-radius:8px;padding:20px;margin:20px 0;scroll-margin-top:16px}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.65}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px;min-width:0}.full{grid-column:1/-1}label{font-weight:600}input,select,textarea,button{box-sizing:border-box;font:inherit;padding:9px;border:1px solid #9ca9ae;border-radius:6px;max-width:100%}input,select,textarea{width:100%;min-width:0;background:white;color:inherit}textarea{resize:vertical}input[type=checkbox]{width:auto}input[type=range]{padding:0}button{background:#257b6e;color:white;cursor:pointer}button.secondary{background:white;color:#196b5f}button:disabled{opacity:.5;cursor:not-allowed}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.hint,footer{font-size:14px;color:#53656c}.notice{padding:12px;background:#e6f1ee;border-radius:6px}#workbench-error,#error{color:#a61c1c;overflow-wrap:anywhere}#workbench-error:empty{display:none}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f7;padding:12px;border-radius:6px;font-size:14px;max-height:240px;overflow:auto}svg{display:block;width:100%;max-height:400px}.views{display:grid;grid-template-columns:1fr 1fr;gap:16px}.views svg{height:auto}.views figure{margin:0;min-width:0}.views figcaption{font-size:14px;color:#53656c;margin-bottom:8px}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:10px 8px;text-align:left;border-bottom:1px solid #d5dde0;vertical-align:top}td code{white-space:pre-wrap;overflow-wrap:anywhere}.output:empty{display:none}.legacy{padding:0;border:0;background:transparent}summary{cursor:pointer;font-weight:600}.legacy form{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.legacy form label{width:100%}.legacy form input{flex:1;min-width:120px}#diagram{background:white;border:1px solid #d5dde0;border-radius:8px;padding:16px;margin-top:24px}#state{overflow-wrap:anywhere;font-family:monospace}[hidden]{display:none!important}
 @media(max-width:600px){body{margin:20px auto}section,.legacy{padding:16px}.fields,.views{grid-template-columns:1fr}.full{grid-column:auto}table{min-width:540px}}
 </style>
 </head>
 <body>
-<header><h1>Cubegin 能力工作台</h1><p>选择项目、生成训练打乱、检查辅助求解，并查看展开图与动画。</p><p id="catalog-status" class="notice" role="status">正在加载能力目录…</p></header>
+<header><h1>Cubegin Core 能力工作台</h1><p>选择项目、生成训练打乱、检查辅助求解，并查看展开图与动画。</p><p id="catalog-status" class="notice" role="status">正在加载能力目录…</p></header>
 <nav aria-label="工作台导航"><a href="#standard">标准项目</a><a href="#training">训练打乱</a><a href="#assist">辅助求解</a><a href="#preview">图与动画</a></nav>
 <p id="workbench-status" role="status"></p><p id="workbench-error" role="alert"></p>
 <section id="standard"><h2>标准项目</h2><fieldset disabled>

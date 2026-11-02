@@ -33,7 +33,7 @@ NDK 28.2.13676358.
 | Android package | Pass: arm64-v8a/armeabi-v7a/x86_64 ELF architectures, AAR/POM/sources staging, Gradle tests and isolated Maven consumer |
 | npm package | Pass: tarball installed outside workspace; fixtures and expanded capability calls |
 | Rust archives | Pass: 7 crate archives compiled through a fresh temporary registry; verified archives in dist/rust |
-| CI configuration | actionlint and aggregate-gate failure cases passed locally; first hosted validation is tracked in [PR #46](https://github.com/deweyou/cubegin/pull/46); required branch rules remain unconfigured |
+| CI configuration | actionlint and aggregate-gate failure cases passed locally; first hosted validation is tracked in [PR #46](https://github.com/deweyou/cubegin-core/pull/46); required branch rules remain unconfigured |
 | CLI | Pass: build and FMC adjudication smoke check; --help documents expanded commands |
 
 The evidence above was captured locally before the first remote CI run. Branch

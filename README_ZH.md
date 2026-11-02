@@ -1,7 +1,10 @@
-# Cubegin
+# Cubegin Core
 
-以 Rust 实现的魔方通用能力仓库，提供 Web/WASM、Swift 和 Kotlin SDK。
+Cubegin 的核心能力 SDK 仓库，以 Rust 实现，提供 Web/WASM、Swift 和 Kotlin 绑定。
 产品应用在独立仓库开发。许可证：GPL-3.0-only。
+
+仓库名为 `cubegin-core`；SDK 包名及导入名继续使用 `cubegin`（Rust/Web）、
+`Cubegin`（Swift）和 `io.github.deweyou.cubegin`（Kotlin）。
 
 Rust 引擎现已覆盖原仓库的能力目录：
 
@@ -117,14 +120,14 @@ cargo xtask build-sdk android
 AAR 包含 Kotlin 绑定及 `arm64-v8a`、`armeabi-v7a`、`x86_64` 原生库。
 最低支持 Android API 23。构建脚本还会验证独立 Maven 消费工程。
 
-假设产品仓库与 `cubekit` 为同级目录，在产品现有 `settings.gradle.kts` 的仓库配置中添加：
+假设产品仓库与 `cubegin-core` 为同级目录，在产品现有 `settings.gradle.kts` 的仓库配置中添加：
 
 ```kotlin
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("../cubekit/dist/maven") }
+        maven { url = uri("../cubegin-core/dist/maven") }
     }
 }
 ```

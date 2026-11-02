@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Cubegin cubegin capability"
+description = "Cubegin Core public capability SDK facade"
 
 [dependencies]
 cubegin-puzzle.workspace = true
