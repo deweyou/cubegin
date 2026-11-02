@@ -6,7 +6,7 @@ members = ["crates/*", "bindings/*", "tools/cli", "xtask"]
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
-repository = "https://github.com/deweyou/cubekit"
+repository = "https://github.com/deweyou/cubegin-core"
 
 [workspace.dependencies]
 cubegin-puzzle = { path = "crates/puzzle", version = "0.1.0" }

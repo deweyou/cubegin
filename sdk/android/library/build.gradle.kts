@@ -36,11 +36,11 @@ afterEvaluate {
   from(components["release"])
   artifactId = "cubegin"
   pom {
-   name.set("Cubegin"); description.set("Rust-powered 3x3 cube SDK")
-   url.set("https://github.com/deweyou/cubekit")
+   name.set("Cubegin Core"); description.set("Cubegin core multi-puzzle SDK powered by Rust")
+   url.set("https://github.com/deweyou/cubegin-core")
    licenses { license { name.set("GPL-3.0-only"); url.set("https://www.gnu.org/licenses/gpl-3.0.html") } }
    developers { developer { id.set("deweyou"); name.set("Dewey") } }
-   scm { url.set("https://github.com/deweyou/cubekit") }
+   scm { url.set("https://github.com/deweyou/cubegin-core") }
   }
  }
  publishing.repositories { maven { name="localStaging"; url=uri(rootProject.projectDir.resolve("../../dist/maven")) } }

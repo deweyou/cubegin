@@ -1,6 +1,6 @@
 Cubegin — GPL-3.0-only
 
-Legacy reference: deweyou/cubekit commit 79a1e4c4c5239fbcda8cccf313a81b8d7d430a97.
+Legacy reference: deweyou/cubegin-core (formerly cubekit) commit 79a1e4c4c5239fbcda8cccf313a81b8d7d430a97.
 The previous implementation referenced GPL-3.0 TNoodle-lib v0.19.2 and cstimer;
 this rebuild retains the repository license and records legacy state fixtures.
 No TNoodle server/UI code is included.

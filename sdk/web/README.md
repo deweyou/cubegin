@@ -1,6 +1,6 @@
-# cubegin
+# Cubegin Core — Web SDK
 
-Rust-powered puzzle SDK: 18 standard event IDs, 94 training types, applicable full
+Web/WASM SDK from [cubegin-core](https://github.com/deweyou/cubegin-core), published as `cubegin`: 18 standard event IDs, 94 training types, applicable full
 solvers, 20 auxiliary methods, FMC validation, SVG nets and 3D geometry/SVG frames.
 GPL-3.0-only. This is a new API, not a drop-in replacement for the old TS packages.
 

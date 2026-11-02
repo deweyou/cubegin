@@ -1,7 +1,10 @@
-# Cubegin
+# Cubegin Core
 
-Reusable cube capabilities written in Rust, with Web/WASM, Swift and Kotlin SDKs.
+Core capability SDKs for Cubegin, written in Rust with Web/WASM, Swift and Kotlin bindings.
 Product applications live in separate repositories. License: GPL-3.0-only.
+
+The repository is `cubegin-core`; SDK package and import names remain `cubegin`
+(Rust/Web), `Cubegin` (Swift), and `io.github.deweyou.cubegin` (Kotlin).
 
 The Rust engine now covers the legacy capability catalog:
 
@@ -122,7 +125,7 @@ cargo xtask build-sdk android
 The AAR includes Kotlin bindings and `arm64-v8a`, `armeabi-v7a`, `x86_64` native
 libraries. Minimum Android API: 23. The build also verifies a separate Maven consumer.
 
-Assuming the product repository and `cubekit` are sibling directories, add the
+Assuming the product repository and `cubegin-core` are sibling directories, add the
 repository to the product's existing `settings.gradle.kts` repositories:
 
 ```kotlin
@@ -130,7 +133,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("../cubekit/dist/maven") }
+        maven { url = uri("../cubegin-core/dist/maven") }
     }
 }
 ```

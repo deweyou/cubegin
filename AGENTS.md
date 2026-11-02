@@ -1,9 +1,10 @@
-# Cubegin capability workspace
+# Cubegin Core SDK workspace
 
 This repository owns reusable cube capabilities and platform SDKs. Products live
 in separate repositories. The legacy TypeScript implementation is available at
 `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`.
 
+- Work directly with repository tools; DDev is not required.
 - Use Cargo for Rust; pnpm 10 / Node >=22.12 for Web; SwiftPM and Gradle for native SDKs.
 - Keep domain crates independent of platform globals, UI, bindings, and products.
 - Keep foreign-language adapters thin; implement cube semantics once in Rust.

@@ -1,5 +1,5 @@
 {
-  "name": "cubegin-workspace",
+  "name": "cubegin-core-workspace",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.0",
