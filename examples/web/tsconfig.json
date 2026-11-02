@@ -1,0 +1,5 @@
+{
+  "extends":"../../sdk/web/tsconfig.json",
+  "compilerOptions":{"module":"ESNext","moduleResolution":"Bundler","rootDir":".","noEmit":true,"lib":["ES2022","DOM","DOM.Iterable"]},
+  "include":["*.ts"]
+}

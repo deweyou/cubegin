@@ -1,0 +1,8 @@
+Cubegin maintained port of tnoodle-rs 0.1.1, GPL-3.0-or-later.
+Source: https://github.com/enekocm7/cube-tui/tree/373e868f802e0f095bea9353282d9fdca5d1883d/crates/tnoodle-rs
+The upstream published archive declares GPL-3.0-or-later but omits a LICENSE file.
+The full GPLv3 text here was retrieved from the upstream repository at that commit.
+Original algorithms: thewca/tnoodle-lib, cs0x7f/min2phase, Levi Gibson FTO solver;
+retain source comments and attribution. See UPSTREAM.md.
+Local changes: project-owned crate identity, WebAssembly-safe clock, state accessors,
+serial default builds. No upstream fixture-based tests are claimed by this snapshot.

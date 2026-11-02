@@ -1,0 +1,140 @@
+{
+  "cross.epm": {
+    "offset": 0,
+    "shape": [
+      11880,
+      6
+    ]
+  },
+  "cross.eom": {
+    "offset": 71280,
+    "shape": [
+      7920,
+      6
+    ]
+  },
+  "cross.epd": {
+    "offset": 118800,
+    "shape": [
+      11880
+    ]
+  },
+  "cross.eod": {
+    "offset": 130680,
+    "shape": [
+      7920
+    ]
+  },
+  "cross.eofd": {
+    "offset": 138600,
+    "shape": [
+      7920
+    ]
+  },
+  "cross.fcm": {
+    "offset": 146520,
+    "shape": [
+      24,
+      6
+    ]
+  },
+  "cross.fem": {
+    "offset": 146664,
+    "shape": [
+      24,
+      6
+    ]
+  },
+  "cross.fecd": {
+    "offset": 146808,
+    "shape": [
+      4,
+      576
+    ]
+  },
+  "eoline.eom": {
+    "offset": 149112,
+    "shape": [
+      2048,
+      6
+    ]
+  },
+  "eoline.epm": {
+    "offset": 161400,
+    "shape": [
+      132,
+      6
+    ]
+  },
+  "eoline.eod": {
+    "offset": 162192,
+    "shape": [
+      2048
+    ]
+  },
+  "eoline.epd": {
+    "offset": 164240,
+    "shape": [
+      132
+    ]
+  },
+  "petrus.epm": {
+    "offset": 164372,
+    "shape": [
+      1320,
+      6
+    ]
+  },
+  "petrus.eom": {
+    "offset": 172292,
+    "shape": [
+      1760,
+      6
+    ]
+  },
+  "petrus.com": {
+    "offset": 182852,
+    "shape": [
+      24,
+      6
+    ]
+  },
+  "petrus.epd": {
+    "offset": 182996,
+    "shape": [
+      1320
+    ]
+  },
+  "petrus.eod": {
+    "offset": 184316,
+    "shape": [
+      1760
+    ]
+  },
+  "roux.cpm": {
+    "offset": 186076,
+    "shape": [
+      56,
+      6
+    ]
+  },
+  "roux.com": {
+    "offset": 186412,
+    "shape": [
+      252,
+      6
+    ]
+  },
+  "roux.ed": {
+    "offset": 187924,
+    "shape": [
+      10560
+    ]
+  },
+  "roux.cd": {
+    "offset": 198484,
+    "shape": [
+      504
+    ]
+  }
+}

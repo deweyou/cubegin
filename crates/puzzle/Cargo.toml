@@ -1,0 +1,17 @@
+[package]
+name = "cubegin-puzzle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cubegin puzzle capability"
+[dev-dependencies]
+serde_json.workspace = true
+proptest = "1.6"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+tnoodle-backend.workspace = true
+serde_json.workspace = true

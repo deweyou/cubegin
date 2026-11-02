@@ -1,210 +1,178 @@
 # Cubegin
 
-[![npm version](https://img.shields.io/npm/v/cubegin.svg)](https://www.npmjs.com/package/cubegin)
+Reusable cube capabilities written in Rust, with Web/WASM, Swift and Kotlin SDKs.
+Product applications live in separate repositories. License: GPL-3.0-only.
 
-[English](./README.md) | [简体中文](./README_ZH.md)
+The Rust engine now covers the legacy capability catalog:
 
-Cubegin is a Rubik's cube toolkit for speedcubing apps, developer workflows,
-and AI agents. It provides scramble generation, scramble SVG rendering,
-puzzle notation/state helpers, Cubegin icon assets, auxiliary solver helpers,
-and an agent-friendly CLI.
+- 18 standard event IDs: 2x2–7x7, blind/FMC/OH variants, Clock, Megaminx,
+  Pyraminx, Skewb, Square-1 and FTO.
+- 94 training types, case selection, natural weights, color orientation and unique batches.
+- Full solvers for 2x2/3x3/4x4/Pyraminx/Skewb/Square-1/FTO; Clock inverse,
+  20 auxiliary methods (Cross, XCross, EOline, Roux, Petrus, staged methods and
+  small-puzzle goals), plus FMC validation. No full 5x5–7x7/Megaminx solver.
+- SVG nets, platform-neutral 3D piece geometry, rigid transforms, arbitrary seek
+  and SVG animation frames, including Clock hands/pins and Square-1 shape changes.
+- Web/WASM + Worker and generated Swift/Kotlin bindings using the same Rust logic.
 
-The public npm package is `cubegin`. The repository also contains the Web/H5
-timer app, scramble playground, scramble learning site, and WeChat miniprogram
-shell that compose those shared packages.
+This is a new API rather than a drop-in TypeScript package replacement. Native view
+widgets belong in product repositories; consume SVG frames or render the provided
+piece geometry. Scrambles are not certified for WCA competition use.
 
-## Use Cubegin
+## Development
 
-### CLI Install And Usage
+Rust 1.96.0, Node >=22.12 and pnpm 10 are required. Cargo orchestrates Rust builds;
+Vite serves the diagnostic Web workbench.
 
-Use the CLI directly with `npx`, or install it globally when you want repeated
-local use:
-
-```bash
-npx cubegin@latest scramble events --json
-npx cubegin@latest scramble generate 333 --count 5 --json
-npx cubegin@latest scramble render 333 "R U R' U'" --json
-npx cubegin@latest solver methods 333 --json
+```sh
+cargo xtask check
+pnpm install --frozen-lockfile
+cargo install wasm-bindgen-cli --version 0.2.126 --locked
+cargo xtask build-sdk web
+pnpm check
+pnpm test
+pnpm exec playwright install chromium
+pnpm test:e2e
+pnpm dev
 ```
 
-```bash
-npm install -g cubegin
+The Web workbench runs on http://127.0.0.1:4488. Its main page exposes all standard
+events, training types/case selection, auxiliary solver methods, and shared SVG/animation
+previews with playback and seeking.
 
-cubegin scramble events --json
-cubegin scramble generate 333 --count 5 --json
+```sh
+cargo run -p cubegin-cli -- evaluate "R U R' U'"
+cargo run -p cubegin-cli -- event-scramble fto 42
+cargo run -p cubegin-cli -- training 333.pll 42
+cargo run -p cubegin-cli -- assist 333 cross "R U F"
+node scripts/verify-legacy.mjs # optional: independent old-implementation oracle
+cargo xtask build-sdk native
+node scripts/test-swift.mjs   # macOS: actual generated Swift + native library
+cargo xtask verify-packages  # installs the npm tarball in an isolated consumer
+cargo xtask release --version 0.1.0 --dry-run
 ```
 
-`npx cubegin@latest install` runs the installer flow. It can install the
-bundled `cubegin` agent skill globally by delegating to `npx skills add`, so
-compatible agents can discover the CLI workflow from the installed skill.
+## CI checks
 
-### Package Install And Usage
+Every PR and main-branch push runs Rust, Web, Swift and Android jobs. Unit tests, browser E2E and
+artifact builds with isolated consumer tests must all pass for **CI passed**.
+Candidates and failure reports are retained in Actions; public publishing is disabled.
+See [CI acceptance](docs/ci.md) for the matrix, artifacts and branch-rule setup.
 
-Install `cubegin` when you want to call the scramble, renderer, puzzle, icon, or
-solver APIs from JavaScript/TypeScript:
+## Build artifacts and consume them in products
 
-```bash
-pnpm add cubegin
+Run build commands from this repository's root. Rust is required on the SDK build
+machine; product applications consume the resulting binaries and language bindings.
+`build-sdk native` generates host bindings/libraries for smoke tests; use the iOS or
+Android commands below for distributable mobile artifacts.
+
+| Platform | Build and package | Outputs |
+| --- | --- | --- |
+| iOS | `cargo xtask build-sdk ios` | `dist/CubeginFFI.xcframework`, its `.zip`, and `sdk/swift/Generated/Cubegin.swift` |
+| Android | `cargo xtask build-sdk android` | `dist/android/cubegin.aar` and the Maven repository at `dist/maven/` (AAR, POM, sources) |
+| Web | `cargo xtask verify-packages` | `dist/cubegin-0.1.0.tgz`, containing JS, types and WASM |
+| Rust | `cargo xtask verify-rust-packages` | Seven verified crate archives in `dist/rust/` |
+
+### iOS: local Swift Package
+
+Requires an Apple Silicon Mac, Xcode, Node and the pinned Rust toolchain:
+
+```sh
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+cargo xtask build-sdk ios
 ```
 
-The package intentionally has no root API. Import one of the public subpaths:
+The build includes iOS arm64, simulator arm64/x86_64 and macOS arm64 slices, then
+runs SwiftPM consumer tests. Intel macOS is not included. Minimum iOS version: 15.
 
-```ts
-import { createDefaultScrambleGenerator, createMathRandomSource } from 'cubegin/scramble-core';
-import { renderScrambleImage } from 'cubegin/scramble-image';
-import { EVENT_IDS } from 'cubegin/scramble-puzzle';
-import { EVENT_ICON_333_SVG } from 'cubegin/icons/events';
-import { solvePuzzleAssist } from 'cubegin/solver';
+In the separate product's Xcode project:
 
-const generator = createDefaultScrambleGenerator({
-  random: createMathRandomSource(),
-});
-const scramble = await generator.generate('333');
-const svg = renderScrambleImage('333', scramble.scramble);
-const [cross] = solvePuzzleAssist('333', ['cross'], scramble.scramble);
+1. Choose **Add Package Dependencies → Add Local** and select this repository root.
+2. Add the **Cubegin** product to the App target. The root [Package.swift](Package.swift)
+   includes both the generated Swift wrapper and the local XCFramework.
+3. Import the SDK and call it from an application-owned background task:
 
-console.log(EVENT_IDS);
-console.log(EVENT_ICON_333_SVG);
-console.log(scramble.scramble);
-console.log(svg);
-console.log(cross.solutions[0]?.solution);
+```swift
+import Cubegin
+
+let scramble = try generateEvent(event: "333", seed: 42)
+let snapshot = try evaluateEvent(event: "333", algorithm: scramble.algorithm)
+print(scramble.algorithm)
 ```
 
-## License - GPL-3.0-only
+After changing Rust, rebuild the SDK before rebuilding the App. Keep generated
+bindings and their binary from the same build. SVG results are strings; native view
+widgets/renderers remain the product's responsibility.
 
-This repository is licensed under **GPL-3.0-only**. See [`LICENSE`](./LICENSE)
-for the full text.
+### Android: local Maven repository
 
-**Why GPL-3.0-only**: the TNoodle-compatible scramble packages port behavior
-from `thewca/tnoodle-lib` / `lib-scrambles` v0.19.2, which is GPL-v3.0. We
-align the repo and published packages with that boundary.
+Set `JAVA_HOME` to JDK 17 or 21 and `ANDROID_HOME` to the Android SDK directory.
+Install SDK Platform 35, Build Tools 35.0.0 and NDK 28.2.13676358 with the SDK Manager.
+The following environment paths are a macOS / Android Studio example:
 
-Full reasoning and alternatives: [`docs/dependency-licensing.md`](./docs/dependency-licensing.md).
-
-## Workspace layout
-
-```
-cubegin/
-├── apps/
-│   ├── playground/       # scramble package testing workbench
-│   ├── scramble-docs/    # bilingual VitePress learning site
-│   ├── web/              # React 18 web + H5 app
-│   └── wx-app/           # Taro WeChat miniprogram
-├── packages/
-│   ├── core/             # public cubegin npm package and bundled entrypoints
-│   ├── cli/              # cubegin CLI source
-│   ├── icons/            # Cubegin brand and event icon assets
-│   ├── scramble-puzzle/  # shared notation, parser, and state contracts
-│   ├── scramble-core/    # TNoodle-compatible scramble generation
-│   ├── scramble-image/   # DOM-free SVG rendering for scramble states
-│   └── solver/           # auxiliary and full solver helpers
-└── docs/                 # repository memory and Superpowers specs/plans
+```sh
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cargo install cargo-ndk --version 4.1.2 --locked
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+cargo xtask build-sdk android
 ```
 
-- `apps/*` — entry-point applications only. No shared logic lives here.
-- `packages/*` — reusable, platform-agnostic libraries. `src/` must not touch DOM / Taro / platform globals.
-- `packages/core` — public npm distribution boundary. Its README is the npm
-  package landing page and should stay aligned with the CLI/package usage above.
-- `docs/` — repository memory: [project structure](./docs/project-structure.md), [timer workflow](./docs/timer-workflow.md), [scramble runtime](./docs/scramble-runtime.md), and [dependency licensing](./docs/dependency-licensing.md).
+The AAR includes Kotlin bindings and `arm64-v8a`, `armeabi-v7a`, `x86_64` native
+libraries. Minimum Android API: 23. The build also verifies a separate Maven consumer.
 
-## Repository Development
+Assuming the product repository and `cubekit` are sibling directories, add the
+repository to the product's existing `settings.gradle.kts` repositories:
 
-Requires **Node ≥ 22.12** and **pnpm 10**.
-
-```bash
-pnpm install
-
-# Dev servers
-pnpm dev:playground       # scramble-core/image testing workbench
-pnpm dev:scramble-docs    # bilingual scramble learning site
-pnpm dev:web              # React 18 web dev server
-pnpm dev:wx               # WeChat miniprogram (Taro) dev server
-
-# Workspace-wide
-pnpm build                # vp run build -r
-pnpm test                 # docs guard + vp run test -r
-pnpm test:docs            # verify docs/ is the harness knowledge base
-pnpm check                # vp check (lint + format)
-
-# New TNoodle-compatible packages
-pnpm --filter @cubegin/scramble-puzzle test:coverage
-pnpm --filter @cubegin/scramble-core test:coverage
-pnpm --filter @cubegin/scramble-image test:coverage
-pnpm --filter playground test
-pnpm build:scramble-docs
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("../cubekit/dist/maven") }
+    }
+}
 ```
 
-All build / test / lint commands go through [vite-plus](https://github.com/voidzero-dev/vite-plus) (`vp`) — do not invoke `vite` / `vitest` / `tsc` directly unless a package-local script does so explicitly.
+In the App module's `build.gradle.kts`:
 
-## Packages
+```kotlin
+dependencies {
+    implementation("io.github.deweyou:cubegin:0.1.0")
+}
+```
 
-### [`@cubegin/scramble-puzzle`](./packages/scramble-puzzle) - Puzzle contracts
+Then call the SDK from an application-owned background task:
 
-Shared event metadata, parsers, state transitions, and puzzle definitions for
-cube, Clock, Megaminx, Pyraminx, Skewb, Square-1, and FTO.
+```kotlin
+import io.github.deweyou.cubegin.*
 
-### [`@cubegin/scramble-core`](./packages/scramble-core) - Scramble generation
+val scramble = generateEvent("333", 42u)
+val snapshot = evaluateEvent("333", scramble.algorithm)
+println(scramble.algorithm)
+```
 
-TNoodle-compatible scramble generation across the 18 supported event ids,
-including minimum-distance filters, BLD no-inspection orientation moves,
-Fewest Moves padding, multiline `333mbld` output, and FTO notation.
+Maven metadata brings in JNA 5.17.0 automatically. If distributing only the AAR,
+the consumer must also declare `net.java.dev.jna:jna:5.17.0@aar` explicitly.
+Rebuild/restage the SDK after Rust changes. See the [Android consumer example](examples/android/build.gradle.kts).
 
-### [`@cubegin/scramble-image`](./packages/scramble-image) - SVG previews
+### Local artifacts versus public releases
 
-DOM-free SVG rendering for scramble states. It uses `scramble-puzzle` parsers,
-applies the scramble to a solved state, and returns standalone SVG strings.
+`dist/` is ignored by Git. Current integration uses a local Swift Package and local
+Maven repository; no registry package or remote Swift binary has been published.
+A Git URL dependency alone does not supply the local XCFramework. For remote SwiftPM,
+upload the XCFramework ZIP and configure `sdk/swift/Artifact.json` with an immutable
+URL/checksum, then version the package and matching bindings. Android needs the
+versioned AAR/POM/sources published to a Maven repository. The product can then pin
+those release versions. See [release instructions](docs/releasing.md) for the remaining steps.
 
-### [`cubegin`](./packages/core) - Public npm package
+CPU-bound SDK operations are synchronous. Native products own background scheduling;
+Web apps can use `createWorkerClient` from `cubegin/worker`. Animation computation is
+available on all SDKs through `playerTimeline`, `playerFrame` and `playerSvg`; the Web
+workbench has a player, while native UI components and device rendering acceptance
+remain separate work.
 
-Bundled distribution package that exposes selected `cubegin/*` subpaths and the
-`cubegin` CLI bin. It is the package published to npm.
-
-### [`@cubegin/cli`](./packages/cli) - CLI source
-
-Agent-friendly command tree for scramble generation, scramble rendering, solver
-helpers, and bundled skill installation. It is emitted through the public
-`cubegin` package.
-
-### [`@cubegin/solver`](./packages/solver) - Solver helpers
-
-Auxiliary and full solve helpers used by scramble generation, diagnostics, and
-the CLI solver commands.
-
-### [`apps/web`](./apps/web) - Timer app
-
-React web/H5 timer UI. It consumes `@cubegin/timer`, `@cubegin/scramble-core`,
-`@cubegin/scramble-puzzle`, and `@cubegin/scramble-image` directly.
-
-### [`apps/playground`](./apps/playground) - Testing workbench
-
-React playground for exercising `scramble-core` and `scramble-image` before they
-are wired into production apps. It includes seeded runs, batch generation,
-manual render, SVG download, and lightweight diagnostics.
-
-### [`apps/scramble-docs`](./apps/scramble-docs) - Learning site
-
-VitePress site for studying scramble generation and scramble image rendering
-principles in English and Chinese. It is content-only and focuses on rules,
-event-specific generation strategies, state transition, and SVG rendering.
-
-## Agent memory
-
-Repository instructions start at [`AGENTS.md`](./AGENTS.md). Durable knowledge
-lives under `docs/`, while Superpowers specs and plans live under
-[`docs/superpowers/`](./docs/superpowers/).
-
-Start with [docs/project-structure.md](./docs/project-structure.md), then read
-the focused topic doc for the area you are changing.
-
-## Contributing
-
-Before opening a PR:
-
-1. `pnpm test` — all workspace tests must pass
-2. `pnpm --filter <pkg> typecheck` — the touched package must typecheck clean
-3. `pnpm build` — the touched package must build cleanly (including `.d.mts` for published packages)
-4. `pnpm check` — lint and format must be clean for your changes (pre-existing failures in other packages are not your problem)
-5. For the new scramble packages, run `test:coverage` on the touched package
-   and keep the package-level thresholds locked in `vite.config.ts`
-
-Any dependency added via `deps.alwaysBundle` or `noExternal` must be license-audited before merging — see [`docs/dependency-licensing.md`](./docs/dependency-licensing.md) for the decision process.
+See [API examples](docs/sdk.md), [architecture](docs/architecture.md), [verification](docs/testing.md),
+[provenance](docs/provenance.md) and [delivery status](docs/status.md).
+The old implementation remains at Git commit `79a1e4c`.

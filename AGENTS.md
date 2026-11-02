@@ -1,106 +1,86 @@
-# Cubegin
+# Cubegin capability workspace
 
-Cubegin is a Rubik's cube tooling monorepo for a web/H5 timer, scramble
-generation, scramble visualization, and a WeChat miniprogram shell.
+This repository owns reusable cube capabilities and platform SDKs. Products live
+in separate repositories. The legacy TypeScript implementation is available at
+`79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`.
 
-## Development Workflow
+- Use Cargo for Rust; pnpm 10 / Node >=22.12 for Web; SwiftPM and Gradle for native SDKs.
+- Keep domain crates independent of platform globals, UI, bindings, and products.
+- Keep foreign-language adapters thin; implement cube semantics once in Rust.
+- Test correctness using independent fixtures, invariants, and solution replay.
+- Verify packaged SDKs as consumers, not only workspace source imports.
+- Read docs/architecture.md and docs/provenance.md before changing boundaries or dependencies.
+- Preserve GPL-3.0-only licensing and third-party attribution. Translation does not remove provenance.
+- Update both README.md and README_ZH.md when changing public setup or capabilities.
+- Do not publish, push, or commit without explicit delivery intent.
 
-- Route every development task in this repository through the globally
-  installed `ddev` skill. Follow DDev from orientation and requirement alignment
-  through implementation, evidence, and handoff; keep mechanical edits light.
-- Do not install or copy `ddev` or its module skills into this repository.
-  DDev loads its modules from the global Dewey asset cache.
-- Install DDev globally once, then verify the runtime:
+## Knowledge base
 
-  ```bash
-  npm install -g deweyou-cli
-  deweyou-cli agent update
-  deweyou-cli agent init --skills ddev --mode link --global --yes
-  deweyou-cli dev install
-  deweyou-cli dev doctor
-  ```
+This knowledge base describes the current Rust capability workspace. Keep documents
+for its crates, bindings, SDKs, diagnostic examples and active data provenance.
+Legacy timer/H5/WeChat product documentation, old TypeScript package ownership,
+superseded workflow instructions and historical implementation plans belong in Git
+history. Do not restore them as current guidance. When extracting legacy source for
+an oracle or port, use it as reference material, not as development instructions.
+Preserve upstream attribution, license notices and migration evidence used by the
+current implementation. Product-specific knowledge belongs in the product repository.
 
-## Knowledge Base
+| Document | Ownership and when to read |
+| --- | --- |
+| [README.md](README.md) / [README_ZH.md](README_ZH.md) | Public capabilities, build prerequisites, artifact paths, local iOS/Android product integration |
+| [Architecture](docs/architecture.md) | Rust crate boundaries, platform adapters, state and animation contracts |
+| [SDK examples](docs/sdk.md) | Web/Swift/Kotlin calls, JSON options, playback positions and solver coverage |
+| [CI acceptance](docs/ci.md) | Unit/E2E/build gates, required summary check, candidate artifacts and failure evidence |
+| [Verification](docs/testing.md) | Independent fixtures, legacy oracle, SDK/package consumers and browser E2E |
+| [Releasing](docs/releasing.md) | Build/verify sequence, local staging, future registry and remote SwiftPM release steps |
+| [Provenance](docs/provenance.md) | Upstream sources, licenses and distribution attribution |
+| [Delivery status](docs/status.md) | Observed local evidence, unfinished acceptance and publication status |
 
-| Document                                                                         | What it covers                                            |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| [DESIGN.md](DESIGN.md)                                                           | Shared interface principles and responsive UI rules       |
-| [docs/project-structure.md](docs/project-structure.md)                           | Workspace layout, startup paths, and package roles        |
-| [docs/timer-workflow.md](docs/timer-workflow.md)                                 | Web timer state flow, gestures, and timer ownership       |
-| [docs/scramble-runtime.md](docs/scramble-runtime.md)                             | WCA generation packages, SVG flow, and app runtime        |
-| [docs/training-scramble-system.md](docs/training-scramble-system.md)             | Training catalog, cases, state solvers, and provenance    |
-| [docs/tnoodle-baseline.md](docs/tnoodle-baseline.md)                             | TNoodle official baseline, tags, and upgrade diff flow    |
-| [docs/tnoodle-implementation-notes.md](docs/tnoodle-implementation-notes.md)     | TNoodle package split, verification, and runtime boundary |
-| [docs/packages/scramble-puzzle/index.md](docs/packages/scramble-puzzle/index.md) | Puzzle notation, state, and parser package boundary       |
-| [docs/packages/scramble-core/index.md](docs/packages/scramble-core/index.md)     | WCA generation rules and solver package boundary          |
-| [docs/packages/scramble-image/index.md](docs/packages/scramble-image/index.md)   | SVG renderer contracts and package boundary               |
-| [docs/packages/icons/index.md](docs/packages/icons/index.md)                     | Cubegin icon asset and React animation boundary           |
-| [docs/packages/solver/index.md](docs/packages/solver/index.md)                   | Auxiliary/full solver API and package boundary            |
-| [docs/packages/player/index.md](docs/packages/player/index.md)                   | Three.js formula player package boundary                  |
-| [docs/packages/cli/index.md](docs/packages/cli/index.md)                         | Public CLI, JSON contract, and bundled agent skill        |
-| [docs/apps/playground/index.md](docs/apps/playground/index.md)                   | Scramble playground diagnostics and E2E role              |
-| [docs/apps/scramble-docs/index.md](docs/apps/scramble-docs/index.md)             | VitePress scramble learning site ownership                |
-| [docs/dependency-licensing.md](docs/dependency-licensing.md)                     | GPL boundaries for TNoodle-compatible packages            |
-| [docs/.state.md](docs/.state.md)                                                 | Last memory pass and covered areas                        |
-| [docs/.todo.md](docs/.todo.md)                                                   | Follow-up memory and repo hygiene tasks                   |
+## SDK build and integration contract
 
-## Hard Constraints
+- Read the README mobile integration sections, SDK examples and release instructions
+  before changing packaging or consumer setup. Verify current values against
+  [Package.swift](Package.swift), [Android library configuration](sdk/android/library/build.gradle.kts)
+  and `scripts/build-{ios,android,native}.mjs`; these are the executable configuration.
+- Run builds from the repository root. `cargo xtask build-sdk native` builds host
+  libraries and generates bindings for smoke tests. Mobile artifacts require
+  `cargo xtask build-sdk ios` or `cargo xtask build-sdk android`.
+- iOS consumers use the **Cubegin** Swift Package product: generated Swift sources
+  plus `dist/CubeginFFI.xcframework`. The local Xcode package points at this repository
+  root. Current minimum is iOS 15; slices cover iOS arm64, simulator arm64/x86_64,
+  and macOS arm64. The build also writes `dist/CubeginFFI.xcframework.zip`.
+- Android consumers use `io.github.deweyou:cubegin:0.1.0` from `dist/maven/`.
+  `dist/android/cubegin.aar` contains Kotlin bindings and arm64-v8a/armeabi-v7a/x86_64
+  libraries; current minimum is API 23. Maven metadata supplies JNA 5.17.0. A consumer
+  copying only the AAR must explicitly add `net.java.dev.jna:jna:5.17.0@aar`.
+- Rebuild/restage SDKs after Rust changes. Generate bindings through the build
+  scripts, and keep bindings and binaries from the same build. Product repositories
+  consume packaged SDKs and own background scheduling; they do not duplicate Rust
+  semantics. CPU-bound SDK calls are synchronous.
+- `playerTimeline`, `playerFrame` and `playerSvg` are available through all bindings.
+  Web has a diagnostic player; native products own SVG/GPU rendering, views and
+  controls. Binding tests and cross-compilation do not establish device rendering
+  acceptance.
+- `dist/` is ignored by Git. Local builds are not public releases. Remote SwiftPM
+  requires an uploaded immutable XCFramework ZIP plus URL/checksum metadata in
+  `sdk/swift/Artifact.json`, matching generated Swift sources and a versioned package.
+  Remote Android consumption requires published AAR/POM/sources. Do not describe
+  Git URL or registry integration as available until publication and consumer
+  readback are verified.
+- Changes to versions, supported targets, artifact locations or dependency metadata
+  must update both READMEs and the affected knowledge documents. Validate packaged
+  consumers with `scripts/verify-swift-package.mjs` and
+  `scripts/verify-android-package.mjs` after rebuilding mobile artifacts; record
+  host tests, binary architecture checks, device acceptance and remote publication
+  as separate outcomes.
 
-- Use pnpm 10 and Node >= 22.12. Root build, test, and lint commands go through
-  vite-plus (`vp`) via `pnpm build`, `pnpm test`, and `pnpm check`.
-- Keep `apps/*` as entry-point applications. Shared logic belongs in
-  `packages/*`.
-- Keep package `src/` directories platform-agnostic: no direct DOM, Taro, or
-  platform globals in reusable package code.
-- The TNoodle-compatible packages port GPL `tnoodle-lib` behavior. Distribution
-  licensing and any new bundled dependency must be reviewed before merging.
-- Do not restore the removed `packages/scramble` cstimer wrapper or the old
-  generic text-scramble API.
+## CI acceptance
 
-## Task Routing
-
-- If you change UI, UX, responsive layout, or visual styling, read
-  [DESIGN.md](DESIGN.md) first.
-- If you change app startup, workspace layout, or package ownership, read
-  [docs/project-structure.md](docs/project-structure.md) first.
-- If you change timer states, gestures, or solve-result flow, read
-  [docs/timer-workflow.md](docs/timer-workflow.md) first.
-- If you change WCA events, scramble generation, SVG output, or browser runtime
-  behavior, read [docs/scramble-runtime.md](docs/scramble-runtime.md) first.
-- If you change training scramble ids, case selection, constrained state
-  generation, or training solvers, read
-  [docs/training-scramble-system.md](docs/training-scramble-system.md) first.
-- If you change TNoodle-compatible scramble logic or upgrade the upstream
-  compatibility target, read [docs/tnoodle-baseline.md](docs/tnoodle-baseline.md)
-  and [docs/tnoodle-implementation-notes.md](docs/tnoodle-implementation-notes.md)
-  first.
-- If you change a specific new scramble package, read its local `AGENTS.md` and
-  owner-scoped docs under `docs/packages/`.
-- If you change `packages/icons`, read
-  [docs/packages/icons/index.md](docs/packages/icons/index.md),
-  [docs/packages/icons/DESIGN.md](docs/packages/icons/DESIGN.md), and the local
-  [packages/icons/AGENTS.md](packages/icons/AGENTS.md).
-- If you change `packages/solver`, read
-  [docs/packages/solver/index.md](docs/packages/solver/index.md) and the local
-  [packages/solver/AGENTS.md](packages/solver/AGENTS.md).
-- If you change `packages/player`, read
-  [docs/packages/player/index.md](docs/packages/player/index.md), the local
-  [packages/player/AGENTS.md](packages/player/AGENTS.md), and
-  [docs/dependency-licensing.md](docs/dependency-licensing.md).
-- If you change `packages/cli`, the public `cubegin` bin, or bundled agent skill
-  assets, read [docs/packages/cli/index.md](docs/packages/cli/index.md), local
-  [packages/cli/AGENTS.md](packages/cli/AGENTS.md), and
-  [docs/packages/core/index.md](docs/packages/core/index.md).
-- If you change `apps/playground`, read
-  [docs/apps/playground/index.md](docs/apps/playground/index.md) and the local
-  [apps/playground/AGENTS.md](apps/playground/AGENTS.md).
-- If you change `apps/scramble-docs`, read
-  [docs/apps/scramble-docs/index.md](docs/apps/scramble-docs/index.md) and the
-  local [apps/scramble-docs/AGENTS.md](apps/scramble-docs/AGENTS.md).
-- If you add bundled dependencies, change package licenses, or alter published
-  files, read [docs/dependency-licensing.md](docs/dependency-licensing.md) first.
-- If you update `README.md`, update `README_ZH.md` in the same change, then run
-  `pnpm sync:readmes` so `packages/core` receives the generated npm package
-  copies. `pnpm test:docs` verifies this stays in sync.
-- If you update repository memory, keep docs Mermaid-first, concise, and linked
-  with relative paths plus `#L` anchors where useful.
+- Keep unit tests, browser E2E, and artifact builds/isolated consumers as mandatory
+  checks. All Rust/Web/Swift/Android jobs must succeed for `CI passed`; never make a
+  skipped, cancelled or failed job satisfy this gate.
+- Read [CI acceptance](docs/ci.md) before changing workflows. Keep it and the public
+  READMEs aligned with the executable `.github/workflows/check.yml`.
+- Retain failure evidence and matching candidate binaries/bindings. CI builds local
+  candidates only; it does not publish packages. Workflow validation, local command
+  results, actual GitHub runs and required branch rules are separate evidence.
