@@ -169,3 +169,16 @@ SDK 中的生成、求解等计算是同步接口，原生产品负责移出 UI 
 详见[SDK 示例](docs/sdk.md)、[架构](docs/architecture.md)、[验证](docs/testing.md)、
 [来源](docs/provenance.md)和[交付状态](docs/status.md)。
 旧实现保留在 Git 提交 `79a1e4c`。
+
+### 统一产物版本与来源信息
+
+所有 SDK/包构建流程共用版本、来源、打包时间和 SHA-256 清单。Web/npm、宿主原生、
+iOS、Android、Rust crate 与 CLI 的清单位置见[产物说明](docs/artifacts.md)。
+核心版本由 Cargo.toml 管理，App 版本独立。CLI 可通过
+`cargo xtask build-sdk cli` 安装到 `dist/cli/`。
+
+iOS 构建还生成 `dist/CubeginSDK-0.1.0/`、对应 `.zip` 和 `.sha256`。将完整包复制到
+产品的 `Vendor/CubeginSDK`，添加该目录为本地 Swift Package，链接 **Cubegin**。
+包内包含配套绑定、二进制、测试和归属文件，产品构建不再依赖 core 仓库。
+安装前验证校验值，升级时整体替换。清单记录的是打包时观察到的源码状态，
+本地候选产物不代表公开发布。

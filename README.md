@@ -179,3 +179,18 @@ remain separate work.
 See [API examples](docs/sdk.md), [architecture](docs/architecture.md), [verification](docs/testing.md),
 [provenance](docs/provenance.md) and [delivery status](docs/status.md).
 The old implementation remains at Git commit `79a1e4c`.
+
+### Versioned artifact metadata
+
+All SDK/package build pipelines share version, source, packaging-time and SHA-256
+metadata. See [artifact identity and installation](docs/artifacts.md) for manifest
+locations for Web/npm, host-native, iOS, Android, Rust crates and CLI. The workspace
+version is defined in Cargo.toml; app versions are independent. CLI candidates can
+be staged with `cargo xtask build-sdk cli` in `dist/cli/`.
+
+The iOS build also produces `dist/CubeginSDK-0.1.0/`, its `.zip` and `.sha256`.
+Copy the complete package into a product's `Vendor/CubeginSDK` and add that directory
+as a local Swift Package (**Cubegin** product). It includes matching bindings,
+binaries, tests and notices, and no longer requires the core checkout to build.
+Verify checksums and replace the whole package on upgrades. Local candidates are
+not published releases; manifests explicitly record packaging-time source state.

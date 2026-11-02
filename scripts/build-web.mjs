@@ -1,3 +1,4 @@
+import {writeArtifactManifest} from './artifact-metadata.mjs';
 import {run} from './process.mjs';
 import {readFileSync,copyFileSync,rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -13,3 +14,5 @@ run('wasm-bindgen',['target/wasm32-unknown-unknown/release/cubegin_wasm.wasm','-
 rmSync('sdk/web/dist',{recursive:true,force:true});
 run('pnpm',['exec','tsc','-p','sdk/web/tsconfig.json']);
 for(const file of ['LICENSE','NOTICE']) copyFileSync(file,`sdk/web/${file}`);
+
+writeArtifactManifest({root:'sdk/web',artifact:'web',paths:['dist','wasm','package.json','README.md','LICENSE','NOTICE']});

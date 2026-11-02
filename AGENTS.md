@@ -29,6 +29,7 @@ current implementation. Product-specific knowledge belongs in the product reposi
 | Document | Ownership and when to read |
 | --- | --- |
 | [README.md](README.md) / [README_ZH.md](README_ZH.md) | Public capabilities, build prerequisites, artifact paths, local iOS/Android product integration |
+| [Artifact identity](docs/artifacts.md) | Common version/source/checksum manifests and copied SDK installation |
 | [Architecture](docs/architecture.md) | Rust crate boundaries, platform adapters, state and animation contracts |
 | [SDK examples](docs/sdk.md) | Web/Swift/Kotlin calls, JSON options, playback positions and solver coverage |
 | [CI acceptance](docs/ci.md) | Unit/E2E/build gates, required summary check, candidate artifacts and failure evidence |

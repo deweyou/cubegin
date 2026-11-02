@@ -51,3 +51,13 @@ platform builds. Bindings and their binary must come from the same build.
 The initial CI uploads candidate artifacts only. Signing, credentials, registry
 publication, remote SPM metadata generation and complete transitive notices are
 explicitly unfinished. No `git tag`, push or registry upload is performed by xtask.
+
+## Candidate metadata
+
+All artifact pipelines use the shared schema and inventory rules in
+[artifacts.md](artifacts.md). Build-time platform/package outputs and archive
+sidecars retain version, packaging-time source observation and file checksums.
+The iOS build also stages a self-contained Swift package for copying into product
+repositories. These files do not replace clean approved sources, consumer checks,
+license review or immutable publication. Version alone never identifies a dirty
+candidate. CLI packaging uses `cargo xtask build-sdk cli`.

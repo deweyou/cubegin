@@ -1,3 +1,4 @@
+import {writeArtifactManifest, writeArchiveChecksum} from './artifact-metadata.mjs';
 import {run} from './process.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -33,3 +34,6 @@ console.log('Isolated npm consumer passed '+fixtures.length+' 3x3 and '+events.l
 `);
 run(process.execPath,['verify.mjs'],{cwd:consumer});
 writeFileSync('dist/npm-verification.json',JSON.stringify({version:metadata.version,shasum:metadata.shasum,integrity:metadata.integrity,package:metadata.filename,consumer,verified:true},null,2));
+
+writeArtifactManifest({root:'dist',artifact:'npm',output:'npm-SDK.json',paths:[metadata.filename]});
+writeArchiveChecksum(resolve('dist',metadata.filename));

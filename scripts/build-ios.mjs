@@ -1,3 +1,4 @@
+import {writeArtifactManifest} from './artifact-metadata.mjs';
 import {execFileSync} from 'node:child_process';
 import {run} from './process.mjs';
 import {mkdirSync,copyFileSync,writeFileSync,rmSync} from 'node:fs';
@@ -22,5 +23,8 @@ const checksum=execFileSync('swift',['package','compute-checksum','dist/CubeginF
 if(!/^[a-f0-9]{64}$/.test(checksum)) throw new Error('Invalid Swift package checksum');
 writeFileSync('dist/CubeginFFI.xcframework.zip.sha256',`${checksum}  CubeginFFI.xcframework.zip\n`);
 console.log(checksum);
+writeArtifactManifest({root:'dist',artifact:'ios-xcframework',output:'xcframework-SDK.json',paths:['CubeginFFI.xcframework.zip']});
 
 run('node',['scripts/verify-swift-package.mjs']);
+
+run('node',['scripts/package-ios.mjs']);
