@@ -52,7 +52,7 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI 检查
 
-每次 push／PR 都会执行 Rust、Web、Swift、Android 检查。单测、浏览器 E2E、
+每次 PR 和主分支 push 都会执行 Rust、Web、Swift、Android 检查。单测、浏览器 E2E、
 产物构建与独立消费验证全部通过后，**CI passed** 才通过。Actions 保留候选产物和
 失败报告，不执行公开发布。矩阵、产物和分支保护设置见 [CI 验收约定](docs/ci.md)。
 

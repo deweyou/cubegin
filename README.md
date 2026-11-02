@@ -54,7 +54,7 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI checks
 
-Every push/PR runs Rust, Web, Swift and Android jobs. Unit tests, browser E2E and
+Every PR and main-branch push runs Rust, Web, Swift and Android jobs. Unit tests, browser E2E and
 artifact builds with isolated consumer tests must all pass for **CI passed**.
 Candidates and failure reports are retained in Actions; public publishing is disabled.
 See [CI acceptance](docs/ci.md) for the matrix, artifacts and branch-rule setup.

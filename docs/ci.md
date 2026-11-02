@@ -2,8 +2,9 @@
 
 The contract is: unit tests pass, browser E2E passes, and distributable artifacts
 build and work in isolated consumers. The executable workflow is
-[check.yml](../.github/workflows/check.yml). Every push, pull request, merge-group
-check and manual run executes all four jobs. There are no path-based skips or
+[check.yml](../.github/workflows/check.yml). Every main-branch push, pull request, merge-group
+check and manual run executes all four jobs. Feature-branch pushes rely on the PR
+run, avoiding duplicate full platform builds. There are no path-based skips or
 `continue-on-error` exceptions for these gates.
 
 | Job | Required tests | Required builds and consumers |
