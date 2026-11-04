@@ -53,3 +53,9 @@ move mappings, https://github.com/cubing/cubing.js, MPL-2.0 OR GPL-3.0-or-later
 Auxiliary solver transition/pruning tables and training case coordinates are
 derived from the legacy GPL Cubegin/cstimer implementation; see crate data READMEs.
 Cubegin is not an official WCA scramble program.
+
+Scramble display names and category names reference csTimer contributors'
+GPL-3.0 language tables, src/lang/zh-cn.js and src/lang/en-us.js:
+https://github.com/cs0x7f/cstimer
+The selected SDK-to-csTimer name mappings, retrieval date and source-file hashes
+are recorded in docs/scramble-names.md. Generation remains in the installed SDK.

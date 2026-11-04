@@ -7,42 +7,288 @@ struct Solve: Codable, Identifiable {
     let scramble: String
     var date = Date()
 }
+enum TimerInput { case touch, keyboard }
+
 @MainActor @Observable final class TimerModel {
-    var event = "333"
+    static let startDelayKey = "timer.startDelayTenths"
+    static let defaultStartDelayTenths = 2
+    var mode = ScrambleMode.standard
+    var standardEvent = ScrambleCatalog.restored("scramble.standard", training: false) {
+        didSet { UserDefaults.standard.set(standardEvent, forKey: "scramble.standard") }
+    }
+    var trainingEvent = ScrambleCatalog.restored("scramble.training", training: true) {
+        didSet { UserDefaults.standard.set(trainingEvent, forKey: "scramble.training") }
+    }
+    var event: String { mode == .standard ? standardEvent : trainingEvent }
+    var eventSelection: String {
+        get { event }
+        set { if mode == .standard { standardEvent = newValue } else { trainingEvent = newValue } }
+    }
     var scramble: Scramble?
     var busy = false
     var error: String?
-    var assistance: String?
-    var started: ContinuousClock.Instant?
+    private(set) var started: ContinuousClock.Instant?
+    private(set) var isReady = false
+    @ObservationIgnored private var heldInput: TimerInput?
+    @ObservationIgnored private var readyAt: ContinuousClock.Instant?
+    @ObservationIgnored private var readinessTask: Task<Void, Never>?
     var elapsed = 0.0
     var solves: [Solve] = []
     private let storage = URL.documentsDirectory.appending(path: "solves.json")
     init() {
         do { solves = try JSONDecoder().decode([Solve].self, from: Data(contentsOf: storage)) }
-        catch { if FileManager.default.fileExists(atPath: storage.path) { self.error = "成绩读取失败：\(error.localizedDescription)" } }
+        catch { if FileManager.default.fileExists(atPath: storage.path) { self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription } }
     }
-    var session: [Solve] { solves.filter { $0.event == event } }
     func refresh() async {
         guard !busy, started == nil else { return }
-        busy = true; scramble = nil; assistance = nil
+        cancelPress()
+        busy = true; scramble = nil
         defer { busy = false }
         do { scramble = try await Engine.scramble(event: event) } catch { self.error = error.localizedDescription }
     }
-    func toggle() {
-        if let start = started {
-            let duration = start.duration(to: .now)
-            elapsed = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
-            started = nil
-            solves.insert(Solve(seconds: elapsed, event: event, scramble: scramble?.algorithm ?? ""), at: 0)
-            do { try JSONEncoder().encode(solves).write(to: storage, options: .atomic) } catch { self.error = "成绩保存失败：\(error.localizedDescription)" }
-            Task { await refresh() }
-        } else if scramble != nil, !busy { started = .now }
+    func press(_ input: TimerInput, delayTenths: Int) {
+        if started != nil {
+            stop()
+            return
+        }
+        guard heldInput == nil, scramble != nil, !busy else { return }
+        heldInput = input
+        let delay = Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let deadline = ContinuousClock.now.advanced(by: delay)
+        readyAt = deadline
+        if delay == .zero {
+            isReady = true
+        } else {
+            readinessTask = Task { [weak self] in
+                do { try await ContinuousClock().sleep(until: deadline) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                self?.isReady = true
+            }
+        }
     }
-    func assist() async {
-        guard let scramble, !busy, started == nil else { return }
-        busy = true
-        defer { busy = false }
-        do { assistance = try await Engine.cross(algorithm: scramble.algorithm) } catch { self.error = error.localizedDescription }
+
+    func release(_ input: TimerInput) {
+        guard heldInput == input, let readyAt else { return }
+        let now = ContinuousClock.now
+        cancelPress()
+        if now >= readyAt, scramble != nil, !busy {
+            started = now
+        }
     }
-    static func format(_ time: Double) -> String { String(format: "%.2f", time) }
+
+    func cancelPress(_ input: TimerInput? = nil) {
+        guard input == nil || heldInput == input else { return }
+        readinessTask?.cancel()
+        readinessTask = nil
+        heldInput = nil
+        readyAt = nil
+        isReady = false
+    }
+
+    func interrupt() {
+        cancelPress()
+        guard started != nil else { return }
+        started = nil
+        error = AppLanguage.saved.text("计时因 App 进入后台或中断而取消，未保存成绩。", "Timing was interrupted. The solve was not saved.")
+    }
+
+    func activateAccessibleTimer() {
+        if started != nil {
+            stop()
+        } else if scramble != nil, !busy {
+            cancelPress()
+            started = .now
+        }
+    }
+
+    private func stop() {
+        guard let start = started else { return }
+        let duration = start.duration(to: .now)
+        elapsed = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        started = nil
+        solves.insert(Solve(seconds: elapsed, event: event, scramble: scramble?.algorithm ?? ""), at: 0)
+        do { try JSONEncoder().encode(solves).write(to: storage, options: .atomic) }
+        catch { self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription }
+        Task { await refresh() }
+    }
+    static func format(_ time: Double) -> String {
+        displayParts(time).joined()
+    }
+
+    static func displayParts(_ time: Double) -> [String] {
+        let maximumMilliseconds = 35_999_999
+        let milliseconds = Int(min(Double(maximumMilliseconds), (max(0, time) * 1_000).nextUp))
+        let wholeSeconds = milliseconds / 1_000
+        let hours = wholeSeconds / 3_600
+        let minutes = wholeSeconds / 60 % 60
+        var parts: [String] = []
+        if hours > 0 {
+            parts.append("\(hours):")
+            parts.append(String(format: "%02d:", minutes))
+        } else if minutes > 0 {
+            parts.append("\(minutes):")
+        }
+        let seconds = wholeSeconds % 60
+        parts.append(wholeSeconds < 60 ? "\(seconds)." : String(format: "%02d.", seconds))
+        parts.append(String(format: "%03d", milliseconds % 1_000))
+        return parts
+    }
+}
+
+// Display labels reference csTimer zh-cn/en-us scrdata (GPL-3.0); see docs/scramble-names.md.
+// Generation rules and stable IDs remain in the installed SDK.
+enum ScrambleMode: String, CaseIterable, Identifiable {
+    case standard, training
+    var id: Self { self }
+    var title: String { self == .standard ? "标准" : "训练" }
+}
+struct ScrambleChoice: Identifiable {
+    let id: String
+    let title: String
+    let group: String
+    let englishTitle: String
+    let englishGroup: String
+
+    func title(in language: AppLanguage) -> String { language.text(title, englishTitle) }
+    func group(in language: AppLanguage) -> String { language.text(group, englishGroup) }
+}
+enum ScrambleCatalog {
+    static let standard: [ScrambleChoice] = [
+        .init(id: "222", title: "二阶速拧", group: "", englishTitle: "2x2x2", englishGroup: ""),
+        .init(id: "333", title: "三阶速拧", group: "", englishTitle: "3x3x3", englishGroup: ""),
+        .init(id: "333oh", title: "三阶单手", group: "", englishTitle: "3x3 oh", englishGroup: ""),
+        .init(id: "333bld", title: "三阶盲拧", group: "", englishTitle: "3x3 bld", englishGroup: ""),
+        .init(id: "444", title: "四阶速拧", group: "", englishTitle: "4x4x4", englishGroup: ""),
+        .init(id: "444bld", title: "四阶盲拧", group: "", englishTitle: "4x4 bld", englishGroup: ""),
+        .init(id: "555", title: "五阶速拧", group: "", englishTitle: "5x5x5", englishGroup: ""),
+        .init(id: "555bld", title: "五阶盲拧", group: "", englishTitle: "5x5 bld", englishGroup: ""),
+        .init(id: "666", title: "六阶速拧", group: "", englishTitle: "6x6x6", englishGroup: ""),
+        .init(id: "777", title: "七阶速拧", group: "", englishTitle: "7x7x7", englishGroup: ""),
+        .init(id: "clock", title: "魔表", group: "", englishTitle: "clock", englishGroup: ""),
+        .init(id: "minx", title: "五魔方", group: "", englishTitle: "megaminx", englishGroup: ""),
+        .init(id: "pyram", title: "金字塔", group: "", englishTitle: "pyraminx", englishGroup: ""),
+        .init(id: "skewb", title: "斜转魔方", group: "", englishTitle: "skewb", englishGroup: ""),
+        .init(id: "sq1", title: "Square-1", group: "", englishTitle: "sq1", englishGroup: ""),
+        .init(id: "fto", title: "FTO", group: "", englishTitle: "FTO", englishGroup: ""),
+    ]
+    static let training: [ScrambleChoice] = [
+        .init(id: "222.cll", title: "CLL", group: "2x2x2", englishTitle: "CLL", englishGroup: "2x2x2"),
+        .init(id: "222.eg1", title: "EG1", group: "2x2x2", englishTitle: "EG1", englishGroup: "2x2x2"),
+        .init(id: "222.eg2", title: "EG2", group: "2x2x2", englishTitle: "EG2", englishGroup: "2x2x2"),
+        .init(id: "222.pbl", title: "PBL", group: "2x2x2", englishTitle: "PBL", englishGroup: "2x2x2"),
+        .init(id: "222.tcll_plus", title: "TCLL+", group: "2x2x2", englishTitle: "TCLL+", englishGroup: "2x2x2"),
+        .init(id: "222.tcll_minus", title: "TCLL-", group: "2x2x2", englishTitle: "TCLL-", englishGroup: "2x2x2"),
+        .init(id: "222.ls", title: "LS", group: "2x2x2", englishTitle: "LS", englishGroup: "2x2x2"),
+        .init(id: "222.no_bar", title: "无连色", group: "2x2x2", englishTitle: "No Bar", englishGroup: "2x2x2"),
+        .init(id: "222.teg1", title: "TEG-1", group: "2x2x2", englishTitle: "TEG-1", englishGroup: "2x2x2"),
+        .init(id: "222.teg2", title: "TEG-2", group: "2x2x2", englishTitle: "TEG-2", englishGroup: "2x2x2"),
+        .init(id: "333.edges_only", title: "棱块训练", group: "3x3x3", englishTitle: "edges only", englishGroup: "3x3x3"),
+        .init(id: "333.corners_only", title: "角块训练", group: "3x3x3", englishTitle: "corners only", englishGroup: "3x3x3"),
+        .init(id: "333.ll", title: "顶层训练", group: "3x3x3 CFOP", englishTitle: "last layer", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.pll", title: "PLL", group: "3x3x3 CFOP", englishTitle: "PLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.oll", title: "OLL", group: "3x3x3 CFOP", englishTitle: "OLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.lsll", title: "F2L单组", group: "3x3x3 CFOP", englishTitle: "last slot + last layer", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.zbll", title: "ZBLL", group: "3x3x3 CFOP", englishTitle: "ZBLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.coll", title: "COLL", group: "3x3x3 CFOP", englishTitle: "COLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.cll", title: "CLL", group: "3x3x3 CFOP", englishTitle: "CLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.ell", title: "ELL", group: "3x3x3 CFOP", englishTitle: "ELL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.2gll", title: "2GLL", group: "3x3x3 CFOP", englishTitle: "2GLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.zzll", title: "ZZLL", group: "3x3x3 CFOP", englishTitle: "ZZLL", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.zbls", title: "ZBLS", group: "3x3x3 CFOP", englishTitle: "ZBLS", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.eols", title: "EOLS", group: "3x3x3 CFOP", englishTitle: "EOLS", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.wvls", title: "WVLS", group: "3x3x3 CFOP", englishTitle: "WVLS", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.vls", title: "VLS", group: "3x3x3 CFOP", englishTitle: "VLS", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.f2l", title: "F2L训练", group: "3x3x3 CFOP", englishTitle: "cross solved", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.easy_cross", title: "简单十字", group: "3x3x3 CFOP", englishTitle: "easy cross", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.easy_xcross", title: "简单XCross", group: "3x3x3 CFOP", englishTitle: "easy xcross", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.eoline", title: "EOLine", group: "3x3x3 CFOP", englishTitle: "EOLine", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.eo_cross", title: "EO Cross", group: "3x3x3 CFOP", englishTitle: "EO Cross", englishGroup: "3x3x3 CFOP"),
+        .init(id: "333.edge_permutation", title: "棱块排列", group: "3x3x3 状态训练", englishTitle: "edge permutation", englishGroup: "3x3x3 state training"),
+        .init(id: "333.edge_orientation", title: "棱块朝向", group: "3x3x3 状态训练", englishTitle: "edge orientation", englishGroup: "3x3x3 state training"),
+        .init(id: "333.corner_permutation", title: "角块排列", group: "3x3x3 状态训练", englishTitle: "corner permutation", englishGroup: "3x3x3 state training"),
+        .init(id: "333.corner_orientation", title: "角块朝向", group: "3x3x3 状态训练", englishTitle: "corner orientation", englishGroup: "3x3x3 state training"),
+        .init(id: "333.permutation_only", title: "仅排列", group: "3x3x3 状态训练", englishTitle: "permutation only", englishGroup: "3x3x3 state training"),
+        .init(id: "333.orientation_only", title: "仅朝向", group: "3x3x3 状态训练", englishTitle: "orientation only", englishGroup: "3x3x3 state training"),
+        .init(id: "333.three_edge_cycle", title: "三棱循环", group: "3x3x3 状态训练", englishTitle: "three edge cycle", englishGroup: "3x3x3 state training"),
+        .init(id: "333.three_corner_cycle", title: "三角循环", group: "3x3x3 状态训练", englishTitle: "three corner cycle", englishGroup: "3x3x3 state training"),
+        .init(id: "333.roux.second_block", title: "2nd Block", group: "3x3x3 Roux", englishTitle: "2nd Block", englishGroup: "3x3x3 Roux"),
+        .init(id: "333.roux.cmll", title: "CMLL", group: "3x3x3 Roux", englishTitle: "CMLL", englishGroup: "3x3x3 Roux"),
+        .init(id: "333.roux.lse", title: "LSE", group: "3x3x3 Roux", englishTitle: "LSE", englishGroup: "3x3x3 Roux"),
+        .init(id: "333.roux.lse_mu", title: "LSE <M, U>", group: "3x3x3 Roux", englishTitle: "LSE <M, U>", englishGroup: "3x3x3 Roux"),
+        .init(id: "333.mehta.3qb", title: "3QB", group: "3x3x3 Mehta", englishTitle: "3QB", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.mehta.eole", title: "EOLE", group: "3x3x3 Mehta", englishTitle: "EOLE", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.mehta.tdr", title: "TDR", group: "3x3x3 Mehta", englishTitle: "TDR", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.mehta.6cp", title: "6CP", group: "3x3x3 Mehta", englishTitle: "6CP", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.mehta.cdrll", title: "CDRLL", group: "3x3x3 Mehta", englishTitle: "CDRLL", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.mehta.l5ep", title: "L5EP", group: "3x3x3 Mehta", englishTitle: "L5EP", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.mehta.ttll", title: "TTLL", group: "3x3x3 Mehta", englishTitle: "TTLL", englishGroup: "3x3x3 Mehta"),
+        .init(id: "333.subset.ru", title: "2-generator R,U", group: "3x3x3子集", englishTitle: "2-generator R,U", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.lu", title: "2-generator L,U", group: "3x3x3子集", englishTitle: "2-generator L,U", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.fru", title: "3-generator F,R,U", group: "3x3x3子集", englishTitle: "3-generator F,R,U", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.rul", title: "3-generator R,U,L", group: "3x3x3子集", englishTitle: "3-generator R,U,L", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.rrwu", title: "3-generator R,r,U", group: "3x3x3子集", englishTitle: "3-generator R,r,U", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.mu", title: "Roux-generator M,U", group: "3x3x3子集", englishTitle: "Roux-generator M,U", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.half_turn", title: "half turns only", group: "3x3x3子集", englishTitle: "half turns only", englishGroup: "3x3x3 subsets"),
+        .init(id: "333.subset.domino", title: "Domino Subgroup", group: "3x3x3子集", englishTitle: "Domino Subgroup", englishGroup: "3x3x3 subsets"),
+        .init(id: "444.edge_pairing", title: "对棱训练", group: "4x4x4", englishTitle: "4x4x4 edges", englishGroup: "4x4x4"),
+        .init(id: "444.subset.rruu", title: "R,r,U,u", group: "4x4x4", englishTitle: "R,r,U,u", englishGroup: "4x4x4"),
+        .init(id: "444.ll", title: "Last layer", group: "4x4x4", englishTitle: "Last layer", englishGroup: "4x4x4"),
+        .init(id: "444.ell", title: "ELL", group: "4x4x4", englishTitle: "ELL", englishGroup: "4x4x4"),
+        .init(id: "444.edges_only", title: "Edge only", group: "4x4x4", englishTitle: "Edge only", englishGroup: "4x4x4"),
+        .init(id: "444.centers_only", title: "Center only", group: "4x4x4", englishTitle: "Center only", englishGroup: "4x4x4"),
+        .init(id: "444.yau.ud_centers", title: "UD center solved", group: "4x4x4 Yau/Hoya", englishTitle: "UD center solved", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.yau.ud_3_edges", title: "UD+3E solved", group: "4x4x4 Yau/Hoya", englishTitle: "UD+3E solved", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.yau.last_8_dedges", title: "Last 8 dedges", group: "4x4x4 Yau/Hoya", englishTitle: "Last 8 dedges", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.hoya.rl_centers", title: "RL center solved", group: "4x4x4 Yau/Hoya", englishTitle: "RL center solved", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.hoya.rldx_centers", title: "RLDX center solved", group: "4x4x4 Yau/Hoya", englishTitle: "RLDX center solved", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.hoya.rldx_cross", title: "RLDX cross solved", group: "4x4x4 Yau/Hoya", englishTitle: "RLDX cross solved", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.poll", title: "POLL", group: "4x4x4 Yau/Hoya", englishTitle: "POLL", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "444.ppll", title: "PPLL", group: "4x4x4 Yau/Hoya", englishTitle: "PPLL", englishGroup: "4x4x4 Yau/Hoya"),
+        .init(id: "555.edge_pairing", title: "对棱训练", group: "5x5x5", englishTitle: "5x5x5 edges", englishGroup: "5x5x5"),
+        .init(id: "666.edge_pairing", title: "对棱训练", group: "6x6x6", englishTitle: "6x6x6 edges", englishGroup: "6x6x6"),
+        .init(id: "777.edge_pairing", title: "对棱训练", group: "7x7x7", englishTitle: "7x7x7 edges", englishGroup: "7x7x7"),
+        .init(id: "minx.subset.ru", title: "2-generator R,U", group: "五魔方", englishTitle: "2-generator R,U", englishGroup: "Megaminx"),
+        .init(id: "minx.s2l", title: "S2L", group: "五魔方", englishTitle: "S2L", englishGroup: "Megaminx"),
+        .init(id: "minx.lsll", title: "last slot + last layer", group: "五魔方", englishTitle: "last slot + last layer", englishGroup: "Megaminx"),
+        .init(id: "minx.pll", title: "PLL", group: "五魔方", englishTitle: "PLL", englishGroup: "Megaminx"),
+        .init(id: "minx.ll", title: "Last Layer", group: "五魔方", englishTitle: "Last Layer", englishGroup: "Megaminx"),
+        .init(id: "pyram.l4e", title: "L4E", group: "金字塔", englishTitle: "L4E", englishGroup: "Pyraminx"),
+        .init(id: "pyram.four_tips", title: "4 tips", group: "金字塔", englishTitle: "4 tips", englishGroup: "Pyraminx"),
+        .init(id: "pyram.no_bar", title: "No bar", group: "金字塔", englishTitle: "No bar", englishGroup: "Pyraminx"),
+        .init(id: "skewb.l2l", title: "顶层训练", group: "Skewb", englishTitle: "last layer", englishGroup: "Skewb"),
+        .init(id: "skewb.no_bar", title: "No bar", group: "Skewb", englishTitle: "No bar", englishGroup: "Skewb"),
+        .init(id: "sq1.cube_shape", title: "方形状态", group: "Square-1", englishTitle: "Cube shape", englishGroup: "Square-1"),
+        .init(id: "sq1.csp", title: "CSP", group: "Square-1", englishTitle: "CSP", englishGroup: "Square-1"),
+        .init(id: "sq1.pbl", title: "PBL", group: "Square-1", englishTitle: "PBL", englishGroup: "Square-1"),
+        .init(id: "fto.l3t", title: "L3T", group: "FTO", englishTitle: "L3T", englishGroup: "FTO (Face-Turning Octahedron)"),
+        .init(id: "fto.l3t_lbt", title: "L3T+LBT", group: "FTO", englishTitle: "L3T+LBT", englishGroup: "FTO (Face-Turning Octahedron)"),
+        .init(id: "fto.tcp", title: "TCP", group: "FTO", englishTitle: "TCP", englishGroup: "FTO (Face-Turning Octahedron)"),
+        .init(id: "fto.edges_only", title: "edges only", group: "FTO", englishTitle: "edges only", englishGroup: "FTO (Face-Turning Octahedron)"),
+        .init(id: "fto.centers_only", title: "centers only", group: "FTO", englishTitle: "centers only", englishGroup: "FTO (Face-Turning Octahedron)"),
+        .init(id: "fto.corners_only", title: "corners only", group: "FTO", englishTitle: "corners only", englishGroup: "FTO (Face-Turning Octahedron)"),
+    ]
+    static func trainingGroups(in language: AppLanguage) -> [String] {
+        training.reduce(into: []) { groups, choice in
+            let group = choice.group(in: language)
+            if !groups.contains(group) { groups.append(group) }
+        }
+    }
+    static func title(_ id: String, in language: AppLanguage) -> String {
+        guard let choice = (standard + training).first(where: { $0.id == id }) else { return id }
+        let group = choice.group(in: language)
+        let title = choice.title(in: language)
+        return group.isEmpty ? title : "\(group) · \(title)"
+    }
+    static func trainingSelectionTitle(_ id: String, in language: AppLanguage) -> String? {
+        training.first(where: { $0.id == id })?.title(in: language)
+            .replacingOccurrences(of: "2-generator ", with: "")
+            .replacingOccurrences(of: "3-generator ", with: "")
+            .replacingOccurrences(of: "Roux-generator ", with: "")
+    }
+    static func restored(_ key: String, training isTraining: Bool) -> String {
+        let choices = isTraining ? training : standard
+        let saved = UserDefaults.standard.string(forKey: key) ?? ""
+        return choices.contains(where: { $0.id == saved }) ? saved : (isTraining ? "333.pll" : "333")
+    }
 }

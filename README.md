@@ -23,17 +23,19 @@ The installer verifies every file against `SDK.json` before replacing
 binaries, generated bindings, manifest and notices. Treat it as an installed
 artifact; make engine changes in core and reinstall a newly built package.
 `SDK.json` records version, packaging-time source commit/dirty status and file
-hashes. This installation is a local dirty candidate, not a published release.
+hashes. This installation is a locally built candidate.
 SDK versions come from core's Cargo workspace version and are independent of the
 app version. Current SDK: 0.1.0. Do not mix bindings and binaries between builds.
 
-Without the SDK, open `CubeginPreview.xcodeproj` to inspect the interface. It shows an explicit integration error; generation, timing and assistance require the real SDK. No mock cube algorithms are used.
+Without the SDK, open `CubeginPreview.xcodeproj` to inspect the interface. It shows an explicit integration error; generation and timing require the real SDK. No mock cube algorithms are used.
 
 ## Ownership and behavior
 
-`Engine.swift` is a thin background adapter for `generateEvent`, `evaluateEvent` (SVG net) and `solveAssist` (Cross JSON). Cube semantics stay in Rust. Swift owns timing, gestures, local JSON persistence, native layout and SVG display in a JavaScript-disabled WKWebView. Assistance currently displays the SDK JSON response.
+`Engine.swift` is a thin background adapter for `generateEvent` and `evaluateEvent` (SVG net). Cube semantics stay in Rust. Swift owns timing, gestures, local JSON persistence, native layout and SVG display in a JavaScript-disabled WKWebView.
 
-Tap to start/stop. Time uses ContinuousClock; interruption cancels an active attempt without saving. Results retain date, event and scramble in Documents/solves.json. Statistics are per-event lifetime count/best/mean. This scaffold does not yet implement inspection, hold-to-ready, penalties, sessions, rolling averages, editing, sync or competition workflows. iPad layout supports resizable windows through a centered adaptive width.
+Select an event from the compact native menu; the dumbbell icon on the right toggles Training. A new app process starts in Standard. Standard includes 16 events (FMC and multi-blind excluded); Training includes 94 types grouped in two menu levels. Each mode remembers its last event selection across launches. Training uses the installed SDK's generateTraining API with default options; case filtering is not yet exposed.
+
+Hold the screen or spacebar until the timer turns green, then release to start. Press again to stop. The start delay defaults to 0.2 seconds and can be adjusted in Settings. Time uses ContinuousClock; interruption cancels an active attempt without saving. Results retain date, event and scramble in Documents/solves.json, including the complete training type ID. This scaffold does not yet implement inspection, penalties, sessions, rolling averages, editing, sync or competition workflows. iPad layout supports resizable windows through a centered adaptive width.
 
 GPL-3.0-only; see LICENSE and NOTICE. Core provenance and bundled dependency notices must accompany distribution. Device rendering acceptance and distribution/signing remain separate verification steps.
 
@@ -52,3 +54,4 @@ The installed SDK package passed its SwiftPM consumer tests, and the app was reb
 - [SDK 安装、版本和调用](docs/sdk.md)
 - [构建与验证](docs/testing.md)
 - [当前状态与待办](docs/status.md)
+- [打乱项目中英文名称对照](docs/scramble-names.md)

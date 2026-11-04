@@ -1,11 +1,16 @@
 # 验证
 
+Debug 构建传入 `--measure-picker` 可按默认动态字体逐项测量中英文项目按钮。
+结果写入模拟器 App 容器的 `Documents/picker-widths.json`，包含 220 条记录。
+`compactPicker` 和 `regularPicker` 包含选中态图标、训练文案、箭头及最小点击宽度。
+窗口控制区、工具栏系统留白和训练图标占位需另计。
+
 所有命令在本仓库根目录执行。正式运行 scheme 是 CubeginApp。
 
 ```sh
 xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
   -destination 'generic/platform=iOS Simulator' \
-  -configuration Debug CODE_SIGNING_ALLOWED=NO build
+  -configuration Debug CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 swift test --package-path Vendor/CubeginSDK
 ```
 
@@ -22,3 +27,52 @@ VoiceOver 和降低透明度。计时器核心状态改变时应补充独立时�
 
 host SwiftPM 测试验证 SDK 调用与消费；模拟器截图验证特定运行画面；签名真机运行、
 设备渲染、完整交互验收和发布均为独立结果，不可相互替代。
+
+## 开屏视觉调试
+
+Debug 安装后，先终止 App，再用以下命令启动即可持续停留在开屏：
+
+```sh
+xcrun simctl terminate booted io.github.deweyou.cubegin
+xcrun simctl launch booted io.github.deweyou.cubegin --hold-launch-screen
+```
+
+通过 `xcrun simctl ui booted appearance light` / `dark` 比较两种外观。
+移除参数并重新启动即恢复一次性动画和自动进入计时页；Release 不启用停留模式。
+
+## 系统启动画面
+
+本地模拟器也需要临时签名：未签名包会被 SplashBoard 以资源安全校验错误 -67056
+拒绝生成启动快照，出现黑屏。这与 SwiftUI 动画首帧是不同阶段。上面的构建命令使用
+本地 ad-hoc 签名，不需要开发者账号或真机签名配置。
+
+可用 `xcrun simctl launch --wait-for-debugger booted io.github.deweyou.cubegin`
+暂停 App 代码，单独检查系统静态启动画面；检查后 terminate，再正常 launch。
+启动页 PNG 可用 `xcrun swift scripts/generate-launch-images.swift "$PWD"` 从原 SVG
+重新生成，保持布局与 LaunchView 一致。
+
+## 多尺寸开屏检查
+
+检查 iPad 横竖屏（含倒置）以及 Duo 合拢、半展开、展开状态；每种状态分别检查系统
+静态页、`--hold-launch-screen` 和正常冷启动，并切换深浅色。系统页与动画页都应按
+完整窗口居中，不能只检查动画最终截图。系统页可用暂停调试器的方法单独观察。
+Duo 多显示器截图要明确选择当前屏幕，不能默认读取外屏：先用
+`xcrun simctl io <UUID> enumerate` 确认 Screen ID。验证范围和未完成项见 docs/status.md。
+
+## 本地真机安装
+
+Xcode 需登录开发者账号并完成 Apple 要求的协议更新，手机需配对并启用开发者模式。
+`xcrun devicectl list devices` 获取物理设备 UDID。可用命令行覆盖签名团队和版本，
+避免将个人签名配置写进工程：
+
+```sh
+xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
+  -destination 'platform=iOS,id=<UDID>' -configuration Debug \
+  -derivedDataPath /tmp/cubegin-ios-device -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM=<TEAM_ID> CURRENT_PROJECT_VERSION=1 MARKETING_VERSION=0.1.0 build
+xcrun devicectl device install app --device <UDID> \
+  /tmp/cubegin-ios-device/Build/Products/Debug-iphoneos/cubegin.app
+xcrun devicectl device process launch --device <UDID> io.github.deweyou.cubegin
+```
+
+签名构建、安装返回成功、启动返回成功与真机画面/交互验收应分开记录。
