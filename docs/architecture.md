@@ -4,18 +4,18 @@ CubeginApp 是 SwiftUI 入口；LaunchRootView 叠加一次性冷启动动画；
 首页、成绩和设置导航，ContentView 负责首页响应式布局、系统玻璃控件和计时交互。
 TimerModel 是 MainActor 上的 Observable 产品状态，Engine 是后台 SDK 适配层。
 
-Engine 仅封装生成打乱、获取 SVG、Cross 辅助求解。Rust 拥有魔方语义，App 不复制
+Engine 封装生成打乱和获取 SVG。Rust 拥有魔方语义，App 不复制
 移动规则、打乱算法或求解器。安装的 Vendor/CubeginSDK 是唯一引擎依赖。
 
 计时以 ContinuousClock 计算时长，TimelineView 刷新显示；进入非 active 状态会取消
-当前计时且不保存。当前交互是轻触开始/停止，不是按住准备或比赛观察流程。
+当前计时且不保存。按住屏幕或空格达到设置中的延迟后，数字变绿，松开开始计时。
+再次按下即停止。
 
 Solve 保存 UUID、秒数、项目、打乱、日期。成绩以 JSON 原子写入 App Documents 的
-solves.json，读取与写入失败通过界面提示。统计为当前项目的历史次数、最佳和算术平均，
-不是 ao5/ao12。当前没有数据库迁移或云同步。
+solves.json，读取与写入失败通过界面提示。当前没有数据库迁移或云同步。
 
 SVG 由 Rust 生成，App 使用禁止 JavaScript 的 WKWebView 显示。原生渲染和控件归
-产品负责；SDK 不提供视图。Cross 当前显示 SDK JSON，尚未产品化为解法列表。
+产品负责；SDK 不提供视图。首页计时页固定在一屏内，打乱图位于底部。
 
 iPhone/iPad 使用同一布局，内容宽度上限 880；支持窗口宽度变化。当前尚无专门的
 横屏双栏设计。维护时需检查字体放大、VoiceOver、系统深浅色及降低透明度效果。
@@ -80,5 +80,5 @@ iPad 常规宽度（原生 TabView 顶部导航布局）项目菜单单独一行
 
 UserDefaults 分别保存标准项目和训练项目；恢复时校验 ID，默认三阶和三阶 PLL。
 计时或 SDK 忙碌期间禁用选择。项目 ID 驱动根视图后台刷新；训练调用 generateTraining，
-返回公式后按基础项目调用 evaluateEvent 获取 SVG。成绩保留完整训练 ID，统计分别计算，
+返回公式后按基础项目调用 evaluateEvent 获取 SVG。成绩保留完整训练 ID，
 列表和详情显示可读名称。Case 筛选尚未实现，当前使用 SDK 默认选项。

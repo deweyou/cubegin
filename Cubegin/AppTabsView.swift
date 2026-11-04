@@ -15,8 +15,9 @@ struct AppTabsView: View {
     var body: some View {
         TabView(selection: $selection) {
             Tab(value: Destination.home) {
-                ContentView(model: model)
+                ContentView(model: model, isTimerActive: isActive && selection == .home && scenePhase == .active)
                     .labelStyle(.titleAndIcon)
+                    .toolbar(model.started == nil ? .automatic : .hidden, for: .tabBar)
             } label: {
                 Label(language.text("首页", "Home"), image: "NavigationHome")
             }
@@ -47,10 +48,7 @@ struct AppTabsView: View {
             await model.refresh()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active, model.started != nil {
-                model.started = nil
-                model.error = language.text("计时因 App 进入后台或中断而取消，未保存成绩。", "Timing was interrupted. The solve was not saved.")
-            }
+            if phase != .active { model.interrupt() }
         }
         .alert(language.text("提示", "Notice"), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button(language.text("好", "OK")) { model.error = nil }
@@ -133,6 +131,7 @@ private struct ResultsView: View {
 
 private struct SettingsView: View {
     @AppStorage(AppLanguage.preferenceKey) private var selectedLanguage = AppLanguage.chinese
+    @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
 
@@ -142,6 +141,12 @@ private struct SettingsView: View {
                 Picker(language.text("语言", "Language"), selection: $selectedLanguage) {
                     ForEach(AppLanguage.allCases) { option in
                         Text(option.name).tag(option)
+                    }
+                }
+                Section(language.text("计时", "Timer")) {
+                    Stepper(value: $startDelayTenths, in: 0...20) {
+                        LabeledContent(language.text("启动延迟", "Start delay"),
+                                       value: (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s")
                     }
                 }
                 Section(language.text("外观", "Appearance")) {

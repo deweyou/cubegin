@@ -23,6 +23,8 @@ not erase source provenance. Preserve LICENSE and NOTICE in distributed artifact
 - UniFFI 0.32.2: MPL-2.0. Runtime is bundled into native artifacts; preserve its
   notices and source availability requirements in a public release.
 - JNA 5.17.0: LGPL-2.1-or-later OR Apache-2.0. Select Apache-2.0 for Android distribution.
+- usvg 0.48.1: MIT OR Apache-2.0. Used to measure the bounds of generated event
+  SVGs, including strokes.
 - wasm-bindgen: MIT OR Apache-2.0; rand and rand_chacha: MIT OR Apache-2.0;
   serde/serde_json: MIT OR Apache-2.0; thiserror: MIT OR Apache-2.0.
 - Gradle wrapper 8.11.1: Apache-2.0; fetched from Gradle's official tagged source.

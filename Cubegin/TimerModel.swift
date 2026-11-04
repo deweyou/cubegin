@@ -7,7 +7,11 @@ struct Solve: Codable, Identifiable {
     let scramble: String
     var date = Date()
 }
+enum TimerInput { case touch, keyboard }
+
 @MainActor @Observable final class TimerModel {
+    static let startDelayKey = "timer.startDelayTenths"
+    static let defaultStartDelayTenths = 2
     var mode = ScrambleMode.standard
     var standardEvent = ScrambleCatalog.restored("scramble.standard", training: false) {
         didSet { UserDefaults.standard.set(standardEvent, forKey: "scramble.standard") }
@@ -23,8 +27,11 @@ struct Solve: Codable, Identifiable {
     var scramble: Scramble?
     var busy = false
     var error: String?
-    var assistance: String?
-    var started: ContinuousClock.Instant?
+    private(set) var started: ContinuousClock.Instant?
+    private(set) var isReady = false
+    @ObservationIgnored private var heldInput: TimerInput?
+    @ObservationIgnored private var readyAt: ContinuousClock.Instant?
+    @ObservationIgnored private var readinessTask: Task<Void, Never>?
     var elapsed = 0.0
     var solves: [Solve] = []
     private let storage = URL.documentsDirectory.appending(path: "solves.json")
@@ -32,30 +39,101 @@ struct Solve: Codable, Identifiable {
         do { solves = try JSONDecoder().decode([Solve].self, from: Data(contentsOf: storage)) }
         catch { if FileManager.default.fileExists(atPath: storage.path) { self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription } }
     }
-    var session: [Solve] { solves.filter { $0.event == event } }
     func refresh() async {
         guard !busy, started == nil else { return }
-        busy = true; scramble = nil; assistance = nil
+        cancelPress()
+        busy = true; scramble = nil
         defer { busy = false }
         do { scramble = try await Engine.scramble(event: event) } catch { self.error = error.localizedDescription }
     }
-    func toggle() {
-        if let start = started {
-            let duration = start.duration(to: .now)
-            elapsed = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
-            started = nil
-            solves.insert(Solve(seconds: elapsed, event: event, scramble: scramble?.algorithm ?? ""), at: 0)
-            do { try JSONEncoder().encode(solves).write(to: storage, options: .atomic) } catch { self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription }
-            Task { await refresh() }
-        } else if scramble != nil, !busy { started = .now }
+    func press(_ input: TimerInput, delayTenths: Int) {
+        if started != nil {
+            stop()
+            return
+        }
+        guard heldInput == nil, scramble != nil, !busy else { return }
+        heldInput = input
+        let delay = Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let deadline = ContinuousClock.now.advanced(by: delay)
+        readyAt = deadline
+        if delay == .zero {
+            isReady = true
+        } else {
+            readinessTask = Task { [weak self] in
+                do { try await ContinuousClock().sleep(until: deadline) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                self?.isReady = true
+            }
+        }
     }
-    func assist() async {
-        guard let scramble, !busy, started == nil else { return }
-        busy = true
-        defer { busy = false }
-        do { assistance = try await Engine.cross(algorithm: scramble.algorithm) } catch { self.error = error.localizedDescription }
+
+    func release(_ input: TimerInput) {
+        guard heldInput == input, let readyAt else { return }
+        let now = ContinuousClock.now
+        cancelPress()
+        if now >= readyAt, scramble != nil, !busy {
+            started = now
+        }
     }
-    static func format(_ time: Double) -> String { String(format: "%.2f", time) }
+
+    func cancelPress(_ input: TimerInput? = nil) {
+        guard input == nil || heldInput == input else { return }
+        readinessTask?.cancel()
+        readinessTask = nil
+        heldInput = nil
+        readyAt = nil
+        isReady = false
+    }
+
+    func interrupt() {
+        cancelPress()
+        guard started != nil else { return }
+        started = nil
+        error = AppLanguage.saved.text("计时因 App 进入后台或中断而取消，未保存成绩。", "Timing was interrupted. The solve was not saved.")
+    }
+
+    func activateAccessibleTimer() {
+        if started != nil {
+            stop()
+        } else if scramble != nil, !busy {
+            cancelPress()
+            started = .now
+        }
+    }
+
+    private func stop() {
+        guard let start = started else { return }
+        let duration = start.duration(to: .now)
+        elapsed = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        started = nil
+        solves.insert(Solve(seconds: elapsed, event: event, scramble: scramble?.algorithm ?? ""), at: 0)
+        do { try JSONEncoder().encode(solves).write(to: storage, options: .atomic) }
+        catch { self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription }
+        Task { await refresh() }
+    }
+    static func format(_ time: Double) -> String {
+        displayParts(time).joined()
+    }
+
+    static func displayParts(_ time: Double) -> [String] {
+        let maximumMilliseconds = 35_999_999
+        let milliseconds = Int(min(Double(maximumMilliseconds), (max(0, time) * 1_000).nextUp))
+        let wholeSeconds = milliseconds / 1_000
+        let hours = wholeSeconds / 3_600
+        let minutes = wholeSeconds / 60 % 60
+        var parts: [String] = []
+        if hours > 0 {
+            parts.append("\(hours):")
+            parts.append(String(format: "%02d:", minutes))
+        } else if minutes > 0 {
+            parts.append("\(minutes):")
+        }
+        let seconds = wholeSeconds % 60
+        parts.append(wholeSeconds < 60 ? "\(seconds)." : String(format: "%02d.", seconds))
+        parts.append(String(format: "%03d", milliseconds % 1_000))
+        return parts
+    }
 }
 
 // Display labels reference csTimer zh-cn/en-us scrdata (GPL-3.0); see docs/scramble-names.md.
