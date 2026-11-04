@@ -23,12 +23,8 @@ fn radius_multiplier() -> f64 {
     2_f64.sqrt() * java::cos(15_f64.to_radians())
 }
 
-fn width(radius: i32) -> i32 {
-    (2.0 * radius_multiplier() * MULTIPLIER * f64::from(radius)) as i32
-}
-
-fn height(radius: i32) -> i32 {
-    (4.0 * radius_multiplier() * MULTIPLIER * f64::from(radius)) as i32
+fn face_size() -> i32 {
+    (2.0 * radius_multiplier() * MULTIPLIER * f64::from(RADIUS)) as i32
 }
 
 /// The Square-1 puzzle.
@@ -62,7 +58,8 @@ impl Puzzle for SquareOnePuzzle {
     }
 
     fn preferred_size(&self) -> Dimension {
-        Dimension::new(width(RADIUS), height(RADIUS))
+        let side = 2 * face_size();
+        Dimension::new(side, side)
     }
 
     fn solved_state(&self) -> SquareOneState {
@@ -394,54 +391,58 @@ impl PuzzleState for SquareOneState {
         svg.root_mut().set_stroke_style(2, 10, "round");
         let colors = ["L", "B", "R", "F", "U", "D"].map(|f| scheme.get(f).copied());
 
-        let dim = SquareOnePuzzle.preferred_size();
-        let (w, h) = (f64::from(dim.width), f64::from(dim.height));
+        let face_size = f64::from(face_size());
         let r = f64::from(RADIUS);
         let half_square_width = (r * radius_multiplier() * MULTIPLIER) / 2_f64.sqrt();
         let edge_width = 2.0 * r * MULTIPLIER * java::sin(15_f64.to_radians());
         let corner_width = half_square_width - edge_width / 2.0;
-        let mid_y = h / 2.0 - r * (MULTIPLIER - 1.0) / 2.0;
-        let mid_height = r * (MULTIPLIER - 1.0);
-        let mut left_mid =
-            Element::rectangle(w / 2.0 - half_square_width, mid_y, corner_width, mid_height);
-        left_mid.set_fill(colors[3]); // front
-        let right_mid = if self.slice_solved {
-            let mut rect = Element::rectangle(
-                w / 2.0 - half_square_width,
-                mid_y,
-                2.0 * corner_width + edge_width,
-                mid_height,
-            );
-            rect.set_fill(colors[3]); // front
-            rect
+        let slice_height = r * (MULTIPLIER - 1.0);
+        let slice_width = if self.slice_solved {
+            2.0 * corner_width + edge_width
         } else {
-            let mut rect = Element::rectangle(
-                w / 2.0 - half_square_width,
-                mid_y,
-                corner_width + edge_width,
-                mid_height,
-            );
-            rect.set_fill(colors[1]); // back
-            rect
+            corner_width + edge_width
         };
-        let mut right_outline = right_mid.java_copy();
-        svg.append_child(right_mid);
-        let mut left_outline = left_mid.java_copy();
-        svg.append_child(left_mid); // clobbers part of the right one
-        right_outline.set_stroke(Some(Color::BLACK));
-        right_outline.set_fill(None);
-        left_outline.set_stroke(Some(Color::BLACK));
-        left_outline.set_fill(None);
-        svg.append_child(right_outline);
-        svg.append_child(left_outline);
+        let slice_color = if self.slice_solved {
+            colors[3]
+        } else {
+            colors[1]
+        };
 
-        let x = w / 2.0;
-        let mut y = h / 4.0;
-        let mut transform = Transform::rotation_around(f64::from(90 + 15).to_radians(), x, y);
-        Self::draw_face(&mut svg, &mut transform, &self.pieces[..12], x, y, &colors);
-        y *= 3.0;
-        let mut transform = Transform::rotation_around(f64::from(-90 - 15).to_radians(), x, y);
-        Self::draw_face(&mut svg, &mut transform, &self.pieces[12..], x, y, &colors);
+        // Match the legacy split-layer diagram: each face has its own copy of the middle slice.
+        let offset = slice_height / 4.0;
+        let layers = [
+            (
+                &self.pieces[..12],
+                face_size / 2.0,
+                face_size - offset,
+                105.0_f64,
+            ),
+            (
+                &self.pieces[12..],
+                1.5 * face_size,
+                face_size + offset,
+                -105.0_f64,
+            ),
+        ];
+        for (pieces, x, y, angle) in layers {
+            let slice_x = x - half_square_width;
+            let slice_y = y + angle.signum() * face_size / 2.0 - slice_height / 2.0;
+            let mut slice = Element::rectangle(slice_x, slice_y, slice_width, slice_height);
+            slice.set_fill(slice_color);
+            let mut front = Element::rectangle(slice_x, slice_y, corner_width, slice_height);
+            front.set_fill(colors[3]);
+            let mut slice_outline = slice.java_copy();
+            slice_outline.set_stroke(Some(Color::BLACK));
+            slice_outline.set_fill(None);
+            let mut front_outline = front.java_copy();
+            front_outline.set_stroke(Some(Color::BLACK));
+            front_outline.set_fill(None);
+            for element in [slice, front, slice_outline, front_outline] {
+                svg.append_child(element);
+            }
+            let mut transform = Transform::rotation_around(angle.to_radians(), x, y);
+            Self::draw_face(&mut svg, &mut transform, pieces, x, y, &colors);
+        }
         svg
     }
 }
@@ -471,6 +472,14 @@ mod tests {
         assert_eq!(parse_turn("(+1,0)"), None);
         assert_eq!(parse_turn("/"), None);
         assert_eq!(slashability_cost("(-3,2)"), Some(5));
+    }
+
+    #[test]
+    fn draws_side_by_side_layers_with_middle_slices() {
+        let puzzle = SquareOnePuzzle;
+        let svg = puzzle.solved_state().draw(&puzzle.default_color_scheme());
+        assert_eq!((svg.size().width, svg.size().height), (244, 244));
+        assert_eq!(svg.to_string().matches("<rect ").count(), 8);
     }
 
     #[test]

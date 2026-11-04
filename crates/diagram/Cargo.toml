@@ -8,3 +8,4 @@ description = "Cubegin diagram capability"
 
 [dependencies]
 cubegin-puzzle.workspace = true
+usvg = { version = "0.48.1", default-features = false }
