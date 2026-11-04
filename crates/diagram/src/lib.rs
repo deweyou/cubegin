@@ -16,9 +16,74 @@ pub fn render(cube: &Cube) -> String {
     svg.push_str("</g></svg>");
     svg
 }
+/// Fit a generated event SVG to its artwork with one SVG unit of padding.
+pub fn trim_event_svg(mut svg: String) -> String {
+    let Ok(document) = usvg::roxmltree::Document::parse(&svg) else {
+        return svg;
+    };
+    let Ok(tree) = usvg::Tree::from_xmltree(&document, &usvg::Options::default()) else {
+        return svg;
+    };
+    // Event SVGs use a zero-origin viewBox matching their intrinsic dimensions.
+    // Labels in the Megaminx renderer are inside the sticker outlines.
+    let bounds = tree.root().abs_stroke_bounding_box();
+    if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+        return svg;
+    }
+    let x = f64::from(bounds.left()) - 1.0;
+    let y = f64::from(bounds.top()) - 1.0;
+    let width = f64::from(bounds.width()) + 2.0;
+    let height = f64::from(bounds.height()) + 2.0;
+    let root = document.root_element();
+    let mut replacements: Vec<_> = [
+        ("width", width.to_string()),
+        ("height", height.to_string()),
+        ("viewBox", format!("{x} {y} {width} {height}")),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| Some((root.attribute_node(name)?.range_value(), value)))
+    .collect();
+    if replacements.len() == 3 {
+        replacements.sort_unstable_by_key(|(range, _)| std::cmp::Reverse(range.start));
+        for (range, value) in replacements {
+            svg.replace_range(range, &value);
+        }
+    }
+    svg
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn event_diagrams_have_one_unit_of_padding() {
+        use cubegin_puzzle::events::{EventState, catalog};
+
+        for (event, algorithm) in catalog()
+            .iter()
+            .map(|event| (event.id.as_str(), ""))
+            .chain([("sq1", "(3,0) /")])
+        {
+            let svg = EventState::solved(event)
+                .unwrap()
+                .apply(algorithm)
+                .unwrap()
+                .svg(event)
+                .unwrap();
+            let cropped = trim_event_svg(svg);
+            let tree = usvg::Tree::from_str(&cropped, &usvg::Options::default()).unwrap();
+            let bounds = tree.root().abs_stroke_bounding_box();
+            for margin in [
+                bounds.left(),
+                bounds.top(),
+                tree.size().width() - bounds.right(),
+                tree.size().height() - bounds.bottom(),
+            ] {
+                assert!((margin - 1.0).abs() < 0.01, "{event}: {margin}");
+            }
+        }
+    }
+
     #[test]
     fn renders_all_stickers() {
         let svg = render(&Cube::default().apply("R U").unwrap());

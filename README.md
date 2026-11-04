@@ -105,7 +105,8 @@ print(scramble.algorithm)
 
 After changing Rust, rebuild the SDK before rebuilding the App. Keep generated
 bindings and their binary from the same build. SVG results are strings; native view
-widgets/renderers remain the product's responsibility.
+widgets/renderers remain the product's responsibility. Square-1 scramble diagrams
+show the two layers side by side. Event SVGs fit the artwork with one SVG unit of padding on each edge.
 
 ### Android: local Maven repository
 

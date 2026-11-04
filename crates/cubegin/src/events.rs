@@ -17,7 +17,7 @@ pub fn evaluate_event(event: &str, algorithm: &str) -> Result<EventSnapshot, Puz
         event_id: event.into(),
         state: state.data(),
         solved: state.is_solved(),
-        svg: state.svg(event)?,
+        svg: cubegin_diagram::trim_event_svg(state.svg(event)?),
     })
 }
 #[derive(Debug, Serialize)]
