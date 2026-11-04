@@ -25,6 +25,7 @@ builtAt。源信息是打包时观察值，不是干净源码构建证明。当�
 Engine.swift 在 Task.detached 上调用同步 Rust 接口，结果再回到产品状态：
 
 - generateEvent：项目 ID 与随机 UInt32 seed → 打乱公式。
+- generateTraining：训练 ID、seed 与默认 optionsJson `{}` → JSON；App 解码 algorithm。
 - evaluateEvent：项目 ID 与公式 → 状态与 SVG 展开图。
 - solveAssist：333、方法 JSON、公式、深度选项 → 辅助解法 JSON。
 

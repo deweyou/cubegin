@@ -33,7 +33,9 @@ Without the SDK, open `CubeginPreview.xcodeproj` to inspect the interface. It sh
 
 `Engine.swift` is a thin background adapter for `generateEvent`, `evaluateEvent` (SVG net) and `solveAssist` (Cross JSON). Cube semantics stay in Rust. Swift owns timing, gestures, local JSON persistence, native layout and SVG display in a JavaScript-disabled WKWebView. Assistance currently displays the SDK JSON response.
 
-Tap to start/stop. Time uses ContinuousClock; interruption cancels an active attempt without saving. Results retain date, event and scramble in Documents/solves.json. Statistics are per-event lifetime count/best/mean. This scaffold does not yet implement inspection, hold-to-ready, penalties, sessions, rolling averages, editing, sync or competition workflows. iPad layout supports resizable windows through a centered adaptive width.
+Select an event from the compact native menu; the dumbbell icon on the right toggles Training. A new app process starts in Standard. Standard includes 16 events (FMC and multi-blind excluded); Training includes 94 types grouped in two menu levels. Each mode remembers its last event selection across launches. Training uses the installed SDK's generateTraining API with default options; case filtering is not yet exposed.
+
+Tap to start/stop. Time uses ContinuousClock; interruption cancels an active attempt without saving. Results retain date, event and scramble in Documents/solves.json, including the complete training type ID. Statistics are per-event lifetime count/best/mean. This scaffold does not yet implement inspection, hold-to-ready, penalties, sessions, rolling averages, editing, sync or competition workflows. iPad layout supports resizable windows through a centered adaptive width.
 
 GPL-3.0-only; see LICENSE and NOTICE. Core provenance and bundled dependency notices must accompany distribution. Device rendering acceptance and distribution/signing remain separate verification steps.
 
@@ -52,3 +54,4 @@ The installed SDK package passed its SwiftPM consumer tests, and the app was reb
 - [SDK 安装、版本和调用](docs/sdk.md)
 - [构建与验证](docs/testing.md)
 - [当前状态与待办](docs/status.md)
+- [打乱项目中英文名称对照](docs/scramble-names.md)

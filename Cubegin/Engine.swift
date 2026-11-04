@@ -8,9 +8,18 @@ enum Engine {
     static func scramble(event: String) async throws -> Scramble {
         try await Task.detached(priority: .userInitiated) {
 #if canImport(Cubegin)
-            let result = try generateEvent(event: event, seed: UInt32.random(in: .min ... .max))
-            let state = try evaluateEvent(event: event, algorithm: result.algorithm)
-            return Scramble(algorithm: result.algorithm, svg: state.svg)
+            let seed = UInt32.random(in: .min ... .max)
+            let algorithm: String
+            if event.contains(".") {
+                struct TrainingResult: Decodable { let algorithm: String }
+                let json = try generateTraining(id: event, seed: seed, optionsJson: "{}")
+                algorithm = try JSONDecoder().decode(TrainingResult.self, from: Data(json.utf8)).algorithm
+            } else {
+                algorithm = try generateEvent(event: event, seed: seed).algorithm
+            }
+            let baseEvent = String(event.split(separator: ".")[0])
+            let state = try evaluateEvent(event: baseEvent, algorithm: algorithm)
+            return Scramble(algorithm: algorithm, svg: state.svg)
 #else
             throw EngineError.sdkMissing
 #endif
