@@ -9,10 +9,14 @@ struct ContentView: View {
     @State private var idlePageFrame: CGRect?
     private var isTiming: Bool { model.started != nil }
     @State private var showsProjectList = false
+    @State private var timerTouchResumesAt: ContinuousClock.Instant?
+    @State private var solveToDelete: Solve?
+    @State private var showsGenerating = false
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
     private let controlIconSize: CGFloat = 20
     private let controlRowHeight: CGFloat = 44
+    private let compactControlSize: CGFloat = 32
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
@@ -56,7 +60,7 @@ struct ContentView: View {
         .focusEffectDisabled()
         .focused($hasTimerKeyboardFocus)
         .onKeyPress(.space, phases: [.down, .up, .repeat]) { press in
-            guard isTimerActive, !showsProjectList else { return .ignored }
+            guard isTimerActive, !showsProjectList, solveToDelete == nil else { return .ignored }
             switch press.phase {
             case .down: model.press(.keyboard, delayTenths: startDelayTenths)
             case .up: model.release(.keyboard)
@@ -69,8 +73,29 @@ struct ContentView: View {
             if !active { model.cancelPress() }
         }
         .onChange(of: showsProjectList) { _, isShowing in
-            if isShowing { model.cancelPress() }
-            else if isTimerActive { hasTimerKeyboardFocus = true }
+            model.cancelPress()
+            if !isShowing {
+                // The tap dismissing the popover can also reach the page beneath it.
+                timerTouchResumesAt = .now.advanced(by: .milliseconds(250))
+                if isTimerActive { hasTimerKeyboardFocus = true }
+            }
+        }
+        .alert(language.text("确定删除这条成绩吗？", "Delete this solve?"), isPresented: Binding(
+            get: { solveToDelete != nil },
+            set: { if !$0 { solveToDelete = nil } }
+        ), presenting: solveToDelete) { solve in
+            Button(language.text("取消", "Cancel"), role: .cancel) {}
+            Button(language.text("删除", "Delete"), role: .destructive) {
+                guard model.lastSolve?.id == solve.id else { return }
+                model.deleteLastSolve()
+            }
+        }
+        .task(id: model.busy) {
+            showsGenerating = false
+            guard model.busy else { return }
+            do { try await Task.sleep(for: .milliseconds(250)) }
+            catch { return }
+            if model.busy { showsGenerating = true }
         }
         .onChange(of: hasTimerKeyboardFocus) { _, focused in
             if !focused { model.cancelPress(.keyboard) }
@@ -110,22 +135,26 @@ struct ContentView: View {
         let controlsHeight = showsControlsInPage ? controlRowHeight : 0
         let topClearance: CGFloat = 8
         let controlSpacing: CGFloat = showsControlsInPage ? 8 : 0
+        let timerTouchTop = isTiming ? 0 : topClearance + controlsHeight + controlSpacing
         let formulaHeight = max(1, min(height * 0.3,
             height / 2 - timerNumberHeight / 2 - controlsHeight - controlSpacing - topClearance - 8))
         let summaryWidth = max(0, (contentWidth - 12) / 3.2)
-        let diagramHeight = max(0, min(180, height / 2 - timerNumberHeight / 2 - 68))
+        let diagramClearance: CGFloat = model.lastSolve == nil ? 68 : max(68, 14 + compactControlSize + diagramBottomPadding + 8)
+        let diagramHeight = max(0, min(180, height / 2 - timerNumberHeight / 2 - diagramClearance))
 
         return ZStack {
             TimerTouchSurface(
                 onDown: {
-                    guard isTimerActive, !showsProjectList else { return }
+                    guard isTimerActive, !showsProjectList, solveToDelete == nil else { return }
+                    if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
                     model.press(.touch, delayTenths: startDelayTenths)
                 },
                 onUp: { model.release(.touch) },
                 onCancel: { model.cancelPress(.touch) }
             )
-            .frame(width: width, height: height)
-            .frame(width: contentWidth)
+            .frame(width: width, height: max(0, height - timerTouchTop))
+            .frame(width: contentWidth, height: height, alignment: .bottom)
+            .allowsHitTesting(isTimerActive && !showsProjectList && solveToDelete == nil)
             .accessibilityHidden(true)
 
             if !isTiming {
@@ -145,8 +174,11 @@ struct ContentView: View {
                         .disabled(model.busy || model.started != nil)
                     }
                     Group {
-                        if model.busy && model.scramble == nil {
-                            ProgressView(language.text("计算中…", "Generating…"))
+                        if model.busy {
+                            if showsGenerating {
+                                Text(language.text("生成中…", "Generating…"))
+                                    .foregroundStyle(.secondary)
+                            }
                         } else {
                             scrambleFormula(width: contentWidth)
                         }
@@ -159,55 +191,99 @@ struct ContentView: View {
                 .frame(height: height, alignment: .top)
             }
 
-            if !isTiming, let svg = model.scramble?.svg, diagramHeight > 0 {
-                HStack(spacing: 12) {
-                    // Reserve the leading column for the results summary.
-                    Color.clear
-                        .frame(width: summaryWidth, height: diagramHeight)
-                        .accessibilityHidden(true)
-                    SVGView(svg: svg)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: diagramHeight)
-                        .accessibilityLabel(language.text("当前打乱状态图", "Current scramble diagram"))
-                }
-                .padding(.bottom, diagramBottomPadding)
-                .frame(height: height, alignment: .bottom)
+            HStack(spacing: 12) {
+                // Reserve the leading column for the results summary.
+                Color.clear
+                    .frame(width: summaryWidth, height: diagramHeight)
+                    .accessibilityHidden(true)
+                SVGView(svg: model.scramble?.svg, nextSVG: model.nextScramble?.svg)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: diagramHeight)
+                    .accessibilityLabel(language.text("当前打乱状态图", "Current scramble diagram"))
             }
+            .padding(.bottom, diagramBottomPadding)
+            .frame(height: height, alignment: .bottom)
+            .opacity(isTiming || diagramHeight == 0 ? 0 : 1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(isTiming || diagramHeight == 0)
 
             timerDisplay(fontSize: timerFontSize, numberHeight: timerNumberHeight)
                 .frame(width: max(1, min(timerFrame.width, 880) - 48))
                 .offset(x: timerFrame.midX - frame.midX, y: timerFrame.midY - frame.midY)
-                .allowsHitTesting(false)
         }
         .frame(height: height)
         .padding(.horizontal, 24)
         .frame(maxWidth: 880)
         .frame(maxWidth: .infinity)
-        .background {
-            LinearGradient(colors: [Color.cyan.opacity(0.14), Color(.systemBackground), Color.indigo.opacity(0.12)], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
-        }
+        .appBackground()
     }
 
     private func timerDisplay(fontSize: CGFloat, numberHeight: CGFloat) -> some View {
         VStack(spacing: 14) {
             // Mirror the reserved action row so the digits stay centered.
-            Color.clear.frame(height: 44)
+            Color.clear.frame(height: compactControlSize)
             TimelineView(.animation(minimumInterval: 0.03, paused: !isTiming)) { _ in
                 let duration = model.started.map { $0.duration(to: .now) }
-                let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? model.elapsed
-                Text(timerReadout(seconds, fontSize: fontSize))
+                let solve = model.lastSolve
+                let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? solve?.resultSeconds ?? 0
+                let readout = solve?.penalty == .dnf
+                    ? AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
+                    : timerReadout(seconds, fontSize: fontSize)
+                Text(readout)
                     .foregroundStyle(model.isReady ? Color.green : Color.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .padding(.horizontal, 12)
                     .frame(height: numberHeight)
                     .accessibilityLabel(isTiming ? language.text("停止计时", "Stop timer") : language.text("开始计时", "Start timer"))
-                    .accessibilityValue(TimerModel.format(seconds))
+                    .accessibilityValue(solve?.resultText ?? TimerModel.format(seconds))
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { model.activateAccessibleTimer() }
             }
-            Color.clear.frame(height: 44)
+            .allowsHitTesting(false)
+
+            Group {
+                if !isTiming, let solve = model.lastSolve {
+                    HStack(spacing: 10) {
+                        penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, selected: solve.penalty)
+                        penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, selected: solve.penalty)
+                        Button(role: .destructive) {
+                            model.cancelPress()
+                            solveToDelete = solve
+                        } label: {
+                            Image(systemName: "trash")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 16, height: 16)
+                                .foregroundStyle(Color.secondary)
+                                .modifier(CompactControlTarget(size: compactControlSize))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
+                    }
+                } else {
+                    Color.clear
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: compactControlSize)
         }
+    }
+
+    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, selected: SolvePenalty?) -> some View {
+        Button {
+            model.togglePenalty(penalty)
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(selected == penalty ? Color.accentColor : Color.secondary)
+                .modifier(CompactControlTarget(size: compactControlSize))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected == penalty ? .isSelected : [])
     }
 
     private func timerReadout(_ seconds: Double, fontSize: CGFloat) -> AttributedString {
@@ -252,75 +328,7 @@ struct ContentView: View {
     }
 
     private var projectMenu: some View {
-        projectButton(event: model.event, language: language, large: usesTopNavigation) {
-            showsProjectList = true
-        }
-        .popover(isPresented: $showsProjectList, arrowEdge: .top) {
-            List {
-                if model.mode == .standard {
-                    ForEach(ScrambleCatalog.standard, content: projectRow)
-                } else {
-                    ForEach(ScrambleCatalog.trainingGroups(in: language), id: \.self) { group in
-                        DisclosureGroup(group) {
-                            ForEach(ScrambleCatalog.training.filter { $0.group(in: language) == group }, content: projectRow)
-                        }
-                    }
-                }
-            }
-            .listStyle(.plain)
-            .frame(width: 300, height: 400)
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private func projectRow(_ choice: ScrambleChoice) -> some View {
-        Button {
-            showsProjectList = false
-            model.eventSelection = choice.id
-        } label: {
-            HStack {
-                Text(choice.title(in: language))
-                Spacer()
-                if choice.id == model.event {
-                    Image(systemName: "checkmark")
-                        .accessibilityHidden(true)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(choice.id == model.event ? .isSelected : [])
-    }
-
-    private func projectButton(event: String, language: AppLanguage, large: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            projectMenuLabel(event: event, language: language, large: large)
-        }
-        .buttonStyle(.plain)
-        .controlSize(large ? .regular : .small)
-        .accessibilityLabel(language.text("打乱项目", "Event"))
-        .accessibilityValue(ScrambleCatalog.title(event, in: language))
-    }
-
-    private func projectMenuLabel(event: String, language: AppLanguage, large: Bool) -> some View {
-        let iconID = String(event.prefix { $0 != "." })
-        return HStack(spacing: 6) {
-            Image("Event-\(iconID)")
-                .resizable()
-                .scaledToFit()
-                .frame(width: controlIconSize, height: controlIconSize)
-                .accessibilityHidden(true)
-            if let title = ScrambleCatalog.trainingSelectionTitle(event, in: language) {
-                Text(title).lineLimit(1)
-            }
-            Image(systemName: "chevron.down")
-                .font(.caption2.weight(.semibold))
-                .accessibilityHidden(true)
-        }
-        .font(large ? .body.weight(.medium) : .subheadline.weight(.medium))
-        .foregroundStyle(.primary)
-        .frame(minWidth: 44, minHeight: controlRowHeight, alignment: .leading)
-        .contentShape(Rectangle())
+        EventPicker(model: model, isPresented: $showsProjectList, large: usesTopNavigation)
     }
 
 #if DEBUG
@@ -339,8 +347,8 @@ struct ContentView: View {
             choices.map { choice in
                 ["language": language.rawValue, "id": choice.id,
                  "title": ScrambleCatalog.trainingSelectionTitle(choice.id, in: language) ?? choice.title(in: language),
-                 "compactPicker": width(projectButton(event: choice.id, language: language, large: false, action: {}), language: language),
-                 "regularPicker": width(projectButton(event: choice.id, language: language, large: true, action: {}), language: language)] as [String: Any]
+                 "compactPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: false, action: {}), language: language),
+                 "regularPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: true, action: {}), language: language)] as [String: Any]
             }
         }
         do {
@@ -364,24 +372,17 @@ struct ContentView: View {
         }
     }
 
-    private var trainingButton: some View {
-        Button {
-            model.mode = model.mode == .training ? .standard : .training
-        } label: {
-            Image(systemName: "dumbbell")
-                .resizable()
-                .scaledToFit()
-                .frame(width: controlIconSize, height: controlIconSize)
-                .foregroundStyle(model.mode == .training ? Color.accentColor : Color.secondary)
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(language.text("训练模式", "Training"))
-        .accessibilityValue(model.mode == .training ? language.text("已开启", "On") : language.text("已关闭", "Off"))
-        .accessibilityAddTraits(model.mode == .training ? .isSelected : [])
-        .accessibilityHint(language.text("切换标准打乱与训练打乱", "Switch between standard and training scrambles"))
-        .frame(minHeight: controlRowHeight)
+    private var trainingButton: some View { TrainingButton(model: model) }
+
+}
+
+private struct CompactControlTarget: ViewModifier {
+    let size: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: size, height: size)
+            .contentShape(Rectangle())
     }
 }
 
@@ -442,36 +443,231 @@ private struct TimerTouchSurface: UIViewRepresentable {
     }
 }
 
-private struct SVGView: UIViewRepresentable {
-    let svg: String
+struct SVGView: UIViewRepresentable {
+    let svg: String?
+    let nextSVG: String?
+    var centersContent = false
 
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-        configuration.ignoresViewportScaleLimits = false
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.isOpaque = false
-        view.backgroundColor = .clear
-        view.scrollView.isScrollEnabled = false
-        view.scrollView.pinchGestureRecognizer?.isEnabled = false
-        return view
+    func makeUIView(context: Context) -> UIView { UIView() }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.setCentersContent(centersContent)
+        context.coordinator.update(in: view, svg: svg, nextSVG: nextSVG)
     }
-    func updateUIView(_ view: WKWebView, context: Context) {
-        guard context.coordinator.svg != svg else { return }
-        context.coordinator.svg = svg
-        let encodedSVG = Data(svg.utf8).base64EncodedString()
-        view.loadHTMLString("""
-            <!doctype html>
-            <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no">
-            <style>
-              html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-              img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: right bottom; }
-            </style>
-            <img src="data:image/svg+xml;base64,\(encodedSVG)" alt="">
-            """, baseURL: nil)
-    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
-    class Coordinator {
-        var svg = ""
+
+    // Keep the visible diagram intact while the other WebView loads its replacement.
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        private var centersContent = false
+
+        func setCentersContent(_ value: Bool) {
+            guard centersContent != value else { return }
+            centersContent = value
+            slots.forEach { $0.svg = nil }
+        }
+        @MainActor private final class Slot {
+            let view: WKWebView
+            var svg: String?
+            var navigation: WKNavigation?
+            var ready = false
+
+            init() {
+                let configuration = WKWebViewConfiguration()
+                configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+                configuration.ignoresViewportScaleLimits = false
+                view = WKWebView(frame: .zero, configuration: configuration)
+                view.isOpaque = false
+                view.backgroundColor = .clear
+                view.scrollView.isScrollEnabled = false
+                view.scrollView.pinchGestureRecognizer?.isEnabled = false
+                view.isHidden = true
+            }
+        }
+
+        private var slots: [Slot] = []
+        private var visible: Slot?
+        private var desiredSVG: String?
+
+        func update(in container: UIView, svg: String?, nextSVG: String?) {
+            desiredSVG = svg
+            if let svg, visible?.svg != svg {
+                if let loaded = slots.first(where: { $0.svg == svg && $0.ready }) {
+                    show(loaded)
+                } else {
+                    load(svg, in: container)
+                    return
+                }
+            }
+            if let nextSVG, nextSVG != visible?.svg {
+                load(nextSVG, in: container)
+            }
+        }
+
+        private func load(_ svg: String, in container: UIView) {
+            let slot: Slot
+            if let spare = slots.first(where: { $0 !== visible }) {
+                slot = spare
+            } else {
+                slot = Slot()
+                slots.append(slot)
+                slot.view.navigationDelegate = self
+                slot.view.frame = container.bounds
+                slot.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                container.addSubview(slot.view)
+            }
+            guard slot.svg != svg else { return }
+            slot.svg = svg
+            slot.ready = false
+            let encodedSVG = Data(svg.utf8).base64EncodedString()
+            slot.navigation = slot.view.loadHTMLString("""
+                <!doctype html>
+                <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+                <style>
+                  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+                  img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: \(centersContent ? "center" : "right bottom"); }
+                </style>
+                <img src="data:image/svg+xml;base64,\(encodedSVG)" alt="">
+                """, baseURL: nil)
+        }
+
+        private func show(_ slot: Slot) {
+            visible?.view.isHidden = true
+            slot.view.isHidden = false
+            visible = slot
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard let slot = slots.first(where: { $0.view === webView }),
+                  slot.navigation === navigation else { return }
+            slot.ready = true
+            if let desiredSVG, slot.svg == desiredSVG { show(slot) }
+        }
+    }
+}
+
+struct EventPicker: View {
+    @Bindable var model: TimerModel
+    @Binding var isPresented: Bool
+    var large = false
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+    private var showsProjectList: Bool {
+        get { isPresented }
+        nonmutating set { isPresented = newValue }
+    }
+    var body: some View {
+        Self.projectButton(event: model.event, language: language, large: large) {
+            showsProjectList = true
+        }
+        .popover(isPresented: $isPresented, arrowEdge: .top) {
+            List {
+                if model.mode == .standard {
+                    ForEach(ScrambleCatalog.standard, content: projectRow)
+                } else {
+                    ForEach(ScrambleCatalog.trainingGroups(in: language), id: \.self) { group in
+                        DisclosureGroup(group) {
+                            ForEach(ScrambleCatalog.training.filter { $0.group(in: language) == group }, content: projectRow)
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .frame(width: 300, height: 400)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private func projectRow(_ choice: ScrambleChoice) -> some View {
+        Button {
+            showsProjectList = false
+            model.eventSelection = choice.id
+        } label: {
+            HStack {
+                Text(choice.title(in: language))
+                Spacer()
+                if choice.id == model.event {
+                    Image(systemName: "checkmark")
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(choice.id == model.event ? .isSelected : [])
+    }
+
+    static func projectButton(event: String, language: AppLanguage, large: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            projectMenuLabel(event: event, language: language, large: large)
+        }
+        .buttonStyle(.plain)
+        .controlSize(large ? .regular : .small)
+        .accessibilityLabel(language.text("打乱项目", "Event"))
+        .accessibilityValue(ScrambleCatalog.title(event, in: language))
+    }
+
+    static func projectMenuLabel(event: String, language: AppLanguage, large: Bool) -> some View {
+        let iconID = String(event.prefix { $0 != "." })
+        return HStack(spacing: 6) {
+            Image("Event-\(iconID)")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
+            if let title = ScrambleCatalog.trainingSelectionTitle(event, in: language) {
+                Text(title).lineLimit(1)
+            }
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.semibold))
+                .accessibilityHidden(true)
+        }
+        .font(large ? .body.weight(.medium) : .subheadline.weight(.medium))
+        .foregroundStyle(.primary)
+        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+}
+
+struct TrainingButton: View {
+    @Bindable var model: TimerModel
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+    var body: some View {
+        Button {
+            model.mode = model.mode == .training ? .standard : .training
+        } label: {
+            Image(systemName: "dumbbell")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(model.mode == .training ? Color.accentColor : Color.secondary)
+                .modifier(CompactControlTarget(size: 32))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(language.text("训练模式", "Training"))
+        .accessibilityValue(model.mode == .training ? language.text("已开启", "On") : language.text("已关闭", "Off"))
+        .accessibilityAddTraits(model.mode == .training ? .isSelected : [])
+        .accessibilityHint(language.text("切换标准打乱与训练打乱", "Switch between standard and training scrambles"))
+        .frame(minHeight: 44)
+    }
+}
+
+private struct AppBackground: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Color.cyan.opacity(0.14), Color(.systemBackground), Color.indigo.opacity(0.12)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+}
+
+extension View {
+    func appBackground() -> some View {
+        scrollContentBackground(.hidden)
+            .background { AppBackground() }
     }
 }

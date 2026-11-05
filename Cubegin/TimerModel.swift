@@ -1,12 +1,54 @@
 import SwiftUI
 
+enum SolvePenalty: String, Codable { case plusTwo, dnf }
+
 struct Solve: Codable, Identifiable {
     var id = UUID()
     let seconds: Double
     let event: String
     let scramble: String
     var date = Date()
+    var penalty: SolvePenalty?
+    var groupID: String?
+
+    var resultSeconds: Double? {
+        switch penalty {
+        case .plusTwo: seconds + 2
+        case .dnf: nil
+        case nil: seconds
+        }
+    }
+
+    @MainActor var resultText: String {
+        switch penalty {
+        case .plusTwo: TimerModel.format(seconds + 2) + "+"
+        case .dnf: "DNF"
+        case nil: TimerModel.format(seconds)
+        }
+    }
 }
+struct SolveGroup: Codable, Identifiable {
+    static let maximumNameLength = 16
+
+    static func isValidName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed.count <= maximumNameLength && trimmed.rangeOfCharacter(from: .newlines) == nil
+    }
+
+    var id: String
+    let event: String
+    var name: String
+    var isDefault: Bool
+    var displayName: String { name.isEmpty ? "Default" : name }
+
+    static func initialID(for event: String) -> String { "default:" + event }
+}
+
+private struct ResultsStore: Codable {
+    var solves: [Solve]
+    var groups: [SolveGroup]
+}
+
 enum TimerInput { case touch, keyboard }
 
 @MainActor @Observable final class TimerModel {
@@ -24,28 +66,217 @@ enum TimerInput { case touch, keyboard }
         get { event }
         set { if mode == .standard { standardEvent = newValue } else { trainingEvent = newValue } }
     }
-    var scramble: Scramble?
-    var busy = false
+    private(set) var scramble: Scramble?
+    private(set) var nextScramble: Scramble?
+    private(set) var busy = false
+    @ObservationIgnored private var generationTask: Task<Void, Never>?
+    @ObservationIgnored private var prefetchTask: Task<Scramble, Error>?
     var error: String?
     private(set) var started: ContinuousClock.Instant?
     private(set) var isReady = false
     @ObservationIgnored private var heldInput: TimerInput?
     @ObservationIgnored private var readyAt: ContinuousClock.Instant?
     @ObservationIgnored private var readinessTask: Task<Void, Never>?
-    var elapsed = 0.0
-    var solves: [Solve] = []
-    private let storage = URL.documentsDirectory.appending(path: "solves.json")
-    init() {
-        do { solves = try JSONDecoder().decode([Solve].self, from: Data(contentsOf: storage)) }
+    private(set) var solves: [Solve] = []
+    private(set) var groups: [SolveGroup] = []
+    private(set) var selectedGroupID: String?
+    private var selectionEvent: String?
+    var eventGroups: [SolveGroup] { groups.filter { $0.event == event } }
+    var currentGroup: SolveGroup? {
+        eventGroups.first { $0.id == selectedGroupID } ?? eventGroups.first { $0.isDefault }
+    }
+    var groupSolves: [Solve] {
+        guard let currentGroup else { return [] }
+        return solves.filter {
+            $0.event == event && ($0.groupID ?? SolveGroup.initialID(for: $0.event)) == currentGroup.id
+        }
+    }
+    private var lastSolveID: Solve.ID?
+    var lastSolve: Solve? {
+        guard let solve = solves.first, solve.id == lastSolveID else { return nil }
+        return solve
+    }
+    private let storage: URL
+    init(storage: URL = URL.documentsDirectory.appending(path: "solves.json")) {
+        self.storage = storage
+        do {
+            let data = try Data(contentsOf: storage)
+            if let store = try? JSONDecoder().decode(ResultsStore.self, from: data) {
+                solves = store.solves
+                groups = store.groups
+            } else {
+                solves = try JSONDecoder().decode([Solve].self, from: data)
+            }
+        }
         catch { if FileManager.default.fileExists(atPath: storage.path) { self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription } }
+        let events = Set((ScrambleCatalog.standard + ScrambleCatalog.training).map(\.id) + solves.map(\.event))
+        for event in events.sorted() where !groups.contains(where: { $0.event == event }) {
+            groups.append(SolveGroup(id: SolveGroup.initialID(for: event), event: event, name: "", isDefault: true))
+        }
     }
-    func refresh() async {
-        guard !busy, started == nil else { return }
+
+    func selectGroup(_ id: String) {
+        guard started == nil, eventGroups.contains(where: { $0.id == id }) else { return }
         cancelPress()
-        busy = true; scramble = nil
-        defer { busy = false }
-        do { scramble = try await Engine.scramble(event: event) } catch { self.error = error.localizedDescription }
+        selectedGroupID = id
+        lastSolveID = nil
     }
+
+    @discardableResult
+    func saveGroup(id: String? = nil, name: String, isDefault: Bool, selectNewGroup: Bool = true) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard started == nil, SolveGroup.isValidName(name) else { return false }
+        var updated = groups
+        let groupID = id ?? UUID().uuidString
+        if isDefault {
+            for index in updated.indices where updated[index].event == event {
+                updated[index].isDefault = false
+            }
+        }
+        if let index = updated.firstIndex(where: { $0.id == groupID && $0.event == event }) {
+            // An existing default remains the default until another group replaces it.
+            let wasDefault = groups[index].isDefault
+            updated[index].name = name
+            updated[index].isDefault = isDefault || wasDefault
+        } else {
+            updated.append(SolveGroup(id: groupID, event: event, name: name, isDefault: isDefault))
+        }
+        guard save(solves, groups: updated) else { return false }
+        groups = updated
+        if id == nil && selectNewGroup { selectGroup(groupID) }
+        return true
+    }
+
+    @discardableResult
+    func moveSolves(_ ids: Set<Solve.ID>, toGroup targetID: String) -> Bool {
+        guard started == nil, !ids.isEmpty, let source = currentGroup,
+              let target = eventGroups.first(where: { $0.id == targetID }),
+              target.id != source.id,
+              ids.isSubset(of: Set(groupSolves.map(\.id))) else { return false }
+        return moveStoredSolves(ids, toGroup: target.id)
+    }
+
+    @discardableResult
+    func moveSolve(_ id: Solve.ID, toGroup targetID: String) -> Bool {
+        guard started == nil, let solve = solves.first(where: { $0.id == id }),
+              let target = groups.first(where: { $0.id == targetID && $0.event == solve.event }),
+              target.id != (solve.groupID ?? SolveGroup.initialID(for: solve.event)) else { return false }
+        return moveStoredSolves([id], toGroup: target.id)
+    }
+
+    private func moveStoredSolves(_ ids: Set<Solve.ID>, toGroup targetID: String) -> Bool {
+        var updated = solves
+        for index in updated.indices where ids.contains(updated[index].id) {
+            updated[index].groupID = targetID
+        }
+        guard save(updated) else { return false }
+        solves = updated
+        if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
+        return true
+    }
+
+    @discardableResult
+    func moveGroup(_ id: String, to targetID: String) -> Bool {
+        guard started == nil,
+              let source = eventGroups.firstIndex(where: { $0.id == id }),
+              let target = eventGroups.firstIndex(where: { $0.id == targetID }),
+              source != target else { return false }
+        var reordered = eventGroups
+        reordered.move(fromOffsets: IndexSet(integer: source), toOffset: source < target ? target + 1 : target)
+        return reorderGroups(reordered.map(\.id))
+    }
+
+    @discardableResult
+    func reorderGroups(_ ids: [String]) -> Bool {
+        guard started == nil, ids.count == eventGroups.count, Set(ids) == Set(eventGroups.map(\.id)) else { return false }
+        let reordered = ids.compactMap { id in eventGroups.first(where: { $0.id == id }) }
+        var updated = groups
+        let positions = groups.indices.filter { groups[$0].event == event }
+        for (position, group) in zip(positions, reordered) { updated[position] = group }
+        guard save(solves, groups: updated) else { return false }
+        groups = updated
+        return true
+    }
+
+    @discardableResult
+    func deleteGroup(_ id: String) -> Bool {
+        guard started == nil,
+              let group = eventGroups.first(where: { $0.id == id }),
+              !group.isDefault else { return false }
+        let updatedGroups = groups.filter { $0.id != id }
+        let updatedSolves = solves.filter {
+            $0.event != event || ($0.groupID ?? SolveGroup.initialID(for: $0.event)) != id
+        }
+        guard save(updatedSolves, groups: updatedGroups) else { return false }
+        groups = updatedGroups
+        solves = updatedSolves
+        if selectedGroupID == id { selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id }
+        if !solves.contains(where: { $0.id == lastSolveID }) { lastSolveID = nil }
+        return true
+    }
+
+    func refresh(advance: Bool = false) {
+        guard started == nil else { return }
+        if selectionEvent != event {
+            selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id
+            selectionEvent = event
+        }
+        if let lastSolve, lastSolve.event != event {
+            lastSolveID = nil
+        }
+        cancelPress()
+        generationTask?.cancel()
+        let prefetched = advance ? prefetchTask : nil
+        if !advance { prefetchTask?.cancel() }
+        prefetchTask = nil
+
+        if advance, let nextScramble {
+            scramble = nextScramble
+            self.nextScramble = nil
+            busy = false
+            return
+        }
+
+        nextScramble = nil
+        scramble = nil
+        busy = true
+        let event = self.event
+        generationTask = Task { [weak self] in
+            do {
+                let generated: Scramble
+                if let prefetched, let result = try? await prefetched.value {
+                    generated = result
+                } else {
+                    try Task.checkCancellation()
+                    generated = try await Engine.scramble(event: event)
+                }
+                guard !Task.isCancelled, let self, self.event == event else { return }
+                self.scramble = generated
+                self.nextScramble = nil
+                self.busy = false
+            } catch {
+                guard !Task.isCancelled, let self, self.event == event else { return }
+                self.error = error.localizedDescription
+                self.busy = false
+            }
+        }
+    }
+
+    private func start(at instant: ContinuousClock.Instant) {
+        lastSolveID = nil
+        started = instant
+        guard prefetchTask == nil else { return }
+        let event = self.event
+        prefetchTask = Task { [weak self] in
+            let generated = try await Engine.scramble(event: event)
+            try Task.checkCancellation()
+            if let self, self.event == event, self.started != nil {
+                self.nextScramble = generated
+            }
+            return generated
+        }
+    }
+
     func press(_ input: TimerInput, delayTenths: Int) {
         if started != nil {
             stop()
@@ -73,7 +304,7 @@ enum TimerInput { case touch, keyboard }
         let now = ContinuousClock.now
         cancelPress()
         if now >= readyAt, scramble != nil, !busy {
-            started = now
+            start(at: now)
         }
     }
 
@@ -90,6 +321,9 @@ enum TimerInput { case touch, keyboard }
         cancelPress()
         guard started != nil else { return }
         started = nil
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        nextScramble = nil
         error = AppLanguage.saved.text("计时因 App 进入后台或中断而取消，未保存成绩。", "Timing was interrupted. The solve was not saved.")
     }
 
@@ -98,20 +332,75 @@ enum TimerInput { case touch, keyboard }
             stop()
         } else if scramble != nil, !busy {
             cancelPress()
-            started = .now
+            start(at: .now)
         }
     }
 
     private func stop() {
         guard let start = started else { return }
         let duration = start.duration(to: .now)
-        elapsed = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "", groupID: currentGroup?.id)
         started = nil
-        solves.insert(Solve(seconds: elapsed, event: event, scramble: scramble?.algorithm ?? ""), at: 0)
-        do { try JSONEncoder().encode(solves).write(to: storage, options: .atomic) }
-        catch { self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription }
-        Task { await refresh() }
+        lastSolveID = solve.id
+        solves.insert(solve, at: 0)
+        _ = save(solves)
+        refresh(advance: true)
     }
+
+    func togglePenalty(_ penalty: SolvePenalty) {
+        guard let solve = lastSolve else { return }
+        togglePenalty(penalty, for: solve.id)
+    }
+
+    @discardableResult
+    func togglePenalty(_ penalty: SolvePenalty, for id: Solve.ID) -> Bool {
+        guard let solve = solves.first(where: { $0.id == id }) else { return false }
+        return setPenalty(solve.penalty == penalty ? nil : penalty, for: id)
+    }
+
+    @discardableResult
+    func setPenalty(_ penalty: SolvePenalty?, for id: Solve.ID) -> Bool {
+        guard started == nil, let index = solves.firstIndex(where: { $0.id == id }) else { return false }
+        cancelPress()
+        var updated = solves
+        updated[index].penalty = penalty
+        guard save(updated) else { return false }
+        solves = updated
+        return true
+    }
+
+    func deleteLastSolve() {
+        guard let lastSolve else { return }
+        deleteSolve(lastSolve.id)
+    }
+
+    @discardableResult
+    func deleteSolve(_ id: Solve.ID) -> Bool {
+        deleteSolves([id])
+    }
+
+    @discardableResult
+    func deleteSolves(_ ids: Set<Solve.ID>) -> Bool {
+        guard started == nil, !ids.isEmpty, solves.contains(where: { ids.contains($0.id) }) else { return false }
+        cancelPress()
+        let updated = solves.filter { !ids.contains($0.id) }
+        guard save(updated) else { return false }
+        solves = updated
+        if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
+        return true
+    }
+
+    private func save(_ results: [Solve], groups: [SolveGroup]? = nil) -> Bool {
+        do {
+            try JSONEncoder().encode(ResultsStore(solves: results, groups: groups ?? self.groups)).write(to: storage, options: .atomic)
+            return true
+        } catch {
+            self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription
+            return false
+        }
+    }
+
     static func format(_ time: Double) -> String {
         displayParts(time).joined()
     }
@@ -155,22 +444,22 @@ struct ScrambleChoice: Identifiable {
 }
 enum ScrambleCatalog {
     static let standard: [ScrambleChoice] = [
-        .init(id: "222", title: "二阶速拧", group: "", englishTitle: "2x2x2", englishGroup: ""),
         .init(id: "333", title: "三阶速拧", group: "", englishTitle: "3x3x3", englishGroup: ""),
-        .init(id: "333oh", title: "三阶单手", group: "", englishTitle: "3x3 oh", englishGroup: ""),
-        .init(id: "333bld", title: "三阶盲拧", group: "", englishTitle: "3x3 bld", englishGroup: ""),
+        .init(id: "222", title: "二阶速拧", group: "", englishTitle: "2x2x2", englishGroup: ""),
         .init(id: "444", title: "四阶速拧", group: "", englishTitle: "4x4x4", englishGroup: ""),
-        .init(id: "444bld", title: "四阶盲拧", group: "", englishTitle: "4x4 bld", englishGroup: ""),
         .init(id: "555", title: "五阶速拧", group: "", englishTitle: "5x5x5", englishGroup: ""),
-        .init(id: "555bld", title: "五阶盲拧", group: "", englishTitle: "5x5 bld", englishGroup: ""),
         .init(id: "666", title: "六阶速拧", group: "", englishTitle: "6x6x6", englishGroup: ""),
         .init(id: "777", title: "七阶速拧", group: "", englishTitle: "7x7x7", englishGroup: ""),
+        .init(id: "333bld", title: "三阶盲拧", group: "", englishTitle: "3x3 bld", englishGroup: ""),
+        .init(id: "333oh", title: "三阶单手", group: "", englishTitle: "3x3 oh", englishGroup: ""),
         .init(id: "clock", title: "魔表", group: "", englishTitle: "clock", englishGroup: ""),
         .init(id: "minx", title: "五魔方", group: "", englishTitle: "megaminx", englishGroup: ""),
         .init(id: "pyram", title: "金字塔", group: "", englishTitle: "pyraminx", englishGroup: ""),
         .init(id: "skewb", title: "斜转魔方", group: "", englishTitle: "skewb", englishGroup: ""),
         .init(id: "sq1", title: "Square-1", group: "", englishTitle: "sq1", englishGroup: ""),
         .init(id: "fto", title: "FTO", group: "", englishTitle: "FTO", englishGroup: ""),
+        .init(id: "444bld", title: "四阶盲拧", group: "", englishTitle: "4x4 bld", englishGroup: ""),
+        .init(id: "555bld", title: "五阶盲拧", group: "", englishTitle: "5x5 bld", englishGroup: ""),
     ]
     static let training: [ScrambleChoice] = [
         .init(id: "222.cll", title: "CLL", group: "2x2x2", englishTitle: "CLL", englishGroup: "2x2x2"),
@@ -290,5 +579,16 @@ enum ScrambleCatalog {
         let choices = isTraining ? training : standard
         let saved = UserDefaults.standard.string(forKey: key) ?? ""
         return choices.contains(where: { $0.id == saved }) ? saved : (isTraining ? "333.pll" : "333")
+    }
+}
+
+enum SolveAverage {
+    static func value(_ solves: [Solve], count: Int) -> Double? {
+        guard count >= 5, solves.count >= count else { return nil }
+        let sorted = solves.prefix(count).map { $0.resultSeconds ?? .infinity }.sorted()
+        let trim = Int(ceil(Double(count) * 0.05))
+        let kept = sorted.dropFirst(trim).dropLast(trim)
+        guard kept.allSatisfy(\.isFinite) else { return nil }
+        return kept.reduce(0, +) / Double(kept.count)
     }
 }
