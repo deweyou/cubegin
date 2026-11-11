@@ -30,6 +30,7 @@ struct ResultsCharts<ProjectPicker: View, TrainingButton: View, GroupPicker: Vie
 
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var range = AttemptRange.recent100
     @State private var hiddenAverages: Set<SolveAverage> = []
     @State private var plotColumns = 320
@@ -68,8 +69,12 @@ struct ResultsCharts<ProjectPicker: View, TrainingButton: View, GroupPicker: Vie
         averages.filter { !hiddenAverages.contains($0) }
     }
 
+    private var usesWidePadLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+    }
+
     private var fitsTrendToScreen: Bool {
-        usesLandscapeHeader && mode == .trend && !dynamicTypeSize.isAccessibilitySize
+        (usesLandscapeHeader || usesWidePadLayout) && mode == .trend && !dynamicTypeSize.isAccessibilitySize
     }
 
     var body: some View {
@@ -79,12 +84,8 @@ struct ResultsCharts<ProjectPicker: View, TrainingButton: View, GroupPicker: Vie
                               columns: mode == .trend ? plotColumns : 0)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if !usesLandscapeHeader {
-                    HStack(spacing: 12) {
-                        modePicker
-                        Spacer(minLength: 0)
-                        filters(rangeCounts: rangeCounts)
-                    }
+                if !usesLandscapeHeader && !usesWidePadLayout {
+                    chartControls(rangeCounts: rangeCounts)
                 }
                 if fitsTrendToScreen {
                     chartCard(request)
@@ -93,19 +94,32 @@ struct ResultsCharts<ProjectPicker: View, TrainingButton: View, GroupPicker: Vie
                     chartCard(request)
                 }
             }
-            .frame(maxWidth: 832)
-            .padding(.horizontal, usesLandscapeHeader ? LandscapeContentInsets.contentMargin : 16)
-            .padding(.vertical, usesLandscapeHeader ? 8 : 12)
+            .frame(maxWidth: usesWidePadLayout ? .infinity : 832)
+            .padding(.horizontal, usesLandscapeHeader || usesWidePadLayout ? 24 : 16)
+            .padding(.vertical, usesLandscapeHeader || usesWidePadLayout ? 8 : 12)
             .frame(maxWidth: .infinity)
         }
-        .scrollEdgeEffectStyle(usesLandscapeHeader ? .soft : nil, for: .top)
+        .scrollEdgeEffectStyle(usesLandscapeHeader || usesWidePadLayout ? .soft : nil, for: .top)
         .safeAreaBar(edge: .top, spacing: 0) {
             if usesLandscapeHeader {
                 landscapeHeader(rangeCounts: rangeCounts)
+            } else if usesWidePadLayout {
+                chartControls(rangeCounts: rangeCounts)
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
             }
         }
         .task(id: request) {
             await load(request)
+        }
+    }
+
+    private func chartControls(rangeCounts: [AttemptRange: Int]?) -> some View {
+        HStack(spacing: 12) {
+            modePicker
+            Spacer(minLength: 0)
+            filters(rangeCounts: rangeCounts)
         }
     }
 

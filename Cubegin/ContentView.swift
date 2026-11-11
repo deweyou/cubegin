@@ -248,8 +248,17 @@ struct ContentView: View {
     private func page(frame: CGRect, timerFrame: CGRect, diagramBottomPadding: CGFloat) -> some View {
         let width = frame.width
         let height = frame.height
-        let contentWidth = max(1, min(width, 880) - 48)
-        let timerFontSize: CGFloat = timerFrame.width > 600 ? 110 : 76
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let maximumWidth: CGFloat = isPad ? .infinity : 880
+        let horizontalPadding: CGFloat = 24
+        let contentWidth = max(1, min(width, maximumWidth) - 2 * horizontalPadding)
+        let timerFontSize: CGFloat
+        if isPad {
+            let limit: CGFloat = timerFrame.width > timerFrame.height ? 140 : 120
+            timerFontSize = max(1, min(limit, (timerFrame.width - 2 * horizontalPadding) * 0.16, timerFrame.height * 0.18))
+        } else {
+            timerFontSize = timerFrame.width > 600 ? 110 : 76
+        }
         let timerNumberHeight = timerFontSize * 1.2
         let showsControlsInPage = usesTopNavigation || UIDevice.current.userInterfaceIdiom != .pad
         let controlsHeight = showsControlsInPage ? controlRowHeight : 0
@@ -265,8 +274,29 @@ struct ContentView: View {
         let diagramClearance: CGFloat = model.lastSolve == nil ? 68 : max(68, 14 + compactControlSize + diagramBottomPadding + 8)
         let diagramHeight = max(0, min(180, height / 2 - timerNumberHeight / 2 - diagramClearance))
 
-        let diagramAspectRatio = model.scramble?.diagramAspectRatio ?? (4.0 / 3)
-        let summaryHeight = min(diagramHeight, diagramWidth / CGFloat(diagramAspectRatio))
+        let diagramAspectRatio = CGFloat(model.scramble?.diagramAspectRatio ?? (4.0 / 3))
+        let summaryHeight = min(diagramHeight, diagramWidth / diagramAspectRatio)
+        let usesLargeSummary = isPad && width > height
+        let visibleDiagramWidth = summaryHeight * diagramAspectRatio
+        let availableSummaryWidth = max(summaryWidth, footerWidth - visibleDiagramWidth)
+        let summaryTextWidth = usesLargeSummary ? min(220, availableSummaryWidth) : summaryWidth
+        let timerWidth = max(1, min(timerFrame.width, maximumWidth) - 2 * horizontalPadding)
+        let longestTimeParts = TimerModel.displayParts(.infinity)
+        let longestSingle = longestTimeParts.joined() + "+"
+        let recentColumnWidth = ceil((longestSingle as NSString).size(withAttributes: [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize,
+                                                    weight: .regular)
+        ]).width)
+        let recentColumnGap: CGFloat = 24
+        let sideWidth = 2 * (recentColumnWidth + recentColumnGap)
+        let timerHorizontalPadding: CGFloat = 12
+        let recentRowHeight: CGFloat = 26
+        let recentHalfHeight = 3 * recentRowHeight
+        let fitsRecentResults = isPad
+            && timerWidth - sideWidth >= longestTimerWidth(parts: longestTimeParts, fontSize: timerFontSize)
+                + 2 * timerHorizontalPadding
+            && height / 2 - recentHalfHeight >= topClearance + controlsHeight + controlSpacing + formulaHeight
+            && height / 2 - recentHalfHeight >= diagramHeight + diagramBottomPadding
 
         return ZStack {
             timerTouchSurface
@@ -293,8 +323,13 @@ struct ContentView: View {
 
             HStack(alignment: .bottom, spacing: footerSpacing) {
                 if !isTiming && summaryHeight > 0 {
-                    TimerSummary(model: model, height: summaryHeight)
-                        .frame(width: summaryWidth)
+                    Color.clear
+                        .frame(width: summaryWidth, height: summaryHeight)
+                        .overlay(alignment: .bottomLeading) {
+                            TimerSummary(model: model, height: summaryHeight, usesLargeType: usesLargeSummary)
+                                .frame(width: summaryTextWidth)
+                                .opacity(usesLargeSummary ? 0.8 : 1)
+                        }
                 }
                 scrambleDiagram()
                     .frame(width: diagramWidth, height: diagramHeight)
@@ -305,15 +340,67 @@ struct ContentView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(isTiming || diagramHeight == 0)
 
+            if fitsRecentResults && !isTiming {
+                recentResults(columnWidth: recentColumnWidth, rowHeight: recentRowHeight)
+                    .frame(width: contentWidth)
+                    .allowsHitTesting(false)
+            }
+
             timerDisplay(fontSize: timerFontSize, numberHeight: timerNumberHeight)
-                .frame(width: max(1, min(timerFrame.width, 880) - 48))
+                .frame(width: fitsRecentResults && !isTiming ? timerWidth - sideWidth : timerWidth)
                 .offset(x: timerFrame.midX - frame.midX, y: timerFrame.midY - frame.midY)
         }
         .frame(height: height)
-        .padding(.horizontal, 24)
-        .frame(maxWidth: 880)
+        .padding(.horizontal, horizontalPadding)
+        .frame(maxWidth: maximumWidth)
         .frame(maxWidth: .infinity)
         .appBackground()
+    }
+
+    @ViewBuilder
+    private func recentResults(columnWidth: CGFloat, rowHeight: CGFloat) -> some View {
+        let average = SolveAverage.ao5
+        let recent = Array(model.groupSolves.sorted(by: Solve.newestFirst).prefix(5 + average.count - 1))
+        if !recent.isEmpty {
+            let singles = recent.prefix(5).map(\.resultText)
+            let averages = singles.indices.prefix(max(0, recent.count - average.count + 1)).map { index in
+                average.summarize(recent[index..<(index + average.count)]).mean.map(TimerModel.format) ?? "DNF"
+            }
+            HStack(alignment: .top, spacing: 0) {
+                recentResultColumn("ao5", values: averages, rowHeight: rowHeight, alignment: .leading)
+                    .frame(width: columnWidth, alignment: .leading)
+                Spacer(minLength: 0)
+                recentResultColumn("single", values: singles, rowHeight: rowHeight, alignment: .trailing)
+                    .frame(width: columnWidth, alignment: .trailing)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func recentResultColumn(
+        _ title: String,
+        values: [String],
+        rowHeight: CGFloat,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        if !values.isEmpty {
+            VStack(alignment: alignment, spacing: 0) {
+                Text(verbatim: title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.primary.opacity(0.42))
+                    .frame(height: rowHeight)
+                    .offset(y: 4)
+                ForEach(values.indices, id: \.self) { index in
+                    Text(verbatim: values[index])
+                        .font(.body.monospacedDigit())
+                        .foregroundStyle(Color.primary.opacity(0.60 - 0.06 * Double(index)))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(height: rowHeight)
+                        .accessibilityIdentifier("timer-recent.\(title).\(index)")
+                }
+            }
+        }
     }
 
     private func timerDisplay(fontSize: CGFloat, numberHeight: CGFloat) -> some View {
@@ -377,7 +464,8 @@ struct ContentView: View {
             let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? solve?.resultSeconds ?? 0
             let readout = solve?.penalty == .dnf
                 ? AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
-                : timerReadout(seconds, fontSize: fontSize)
+                : timerReadout(seconds, fontSize: fontSize,
+                               showsPlus: UIDevice.current.userInterfaceIdiom == .pad && solve?.penalty == .plusTwo)
             Text(readout)
                 .contentTransition(.identity)
                 .foregroundStyle(model.isReady ? Color.green : Color.primary)
@@ -439,8 +527,23 @@ struct ContentView: View {
         .accessibilityAddTraits(selected == penalty ? .isSelected : [])
     }
 
-    private func timerReadout(_ seconds: Double, fontSize: CGFloat) -> AttributedString {
-        let parts = TimerModel.displayParts(seconds)
+    private func longestTimerWidth(parts: [String], fontSize: CGFloat) -> CGFloat {
+        let wholeTime = parts.dropLast().joined()
+        let fraction = (parts.last ?? "") + "+"
+        func width(_ text: String, size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+            let font = UIFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+            let rounded = font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor
+            return (text as NSString).size(withAttributes: [.font: UIFont(descriptor: rounded, size: size)]).width
+        }
+        return ceil(width(wholeTime, size: fontSize, weight: .regular)
+            + width(fraction, size: fontSize * 0.55, weight: .bold))
+    }
+
+    private func timerReadout(_ seconds: Double, fontSize: CGFloat, showsPlus: Bool) -> AttributedString {
+        var parts = TimerModel.displayParts(seconds)
+        if showsPlus {
+            parts[parts.count - 1] += "+"
+        }
         var readout = AttributedString()
         for (index, part) in parts.enumerated() {
             let isMilliseconds = index == parts.count - 1
@@ -455,7 +558,12 @@ struct ContentView: View {
     private func scrambleFormula(width: CGFloat, fontScale: CGFloat) -> some View {
         let algorithm = model.scramble?.algorithm ?? language.text("准备你的下一次挑战", "Ready for your next solve")
         let preservesMegaminxRows = model.mode == .standard && model.event == "minx"
-        var fontSize = (preservesMegaminxRows ? standardMegaminxFontSize : scrambleFontSize) * fontScale
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let padWidthProgress = min(1, max(0, (width - 600) / 600))
+        let preferredSize = isPad
+            ? scrambleFontSize * (1 + 0.6 * padWidthProgress)
+            : (preservesMegaminxRows ? standardMegaminxFontSize : scrambleFontSize)
+        var fontSize = preferredSize * fontScale
         if preservesMegaminxRows, model.scramble != nil {
             let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             let widestLine = algorithm.components(separatedBy: .newlines).map { line in
@@ -627,8 +735,10 @@ private struct TimerSummary: View {
     let model: TimerModel
     let height: CGFloat
     var twoColumns = false
+    var usesLargeType = false
     @Environment(\.locale) private var locale
     @ScaledMetric(relativeTo: .footnote) private var preferredFontSize: CGFloat = 13
+    @ScaledMetric(relativeTo: .title3) private var largeFontSize: CGFloat = 20
 
     private static let averageKinds: [SolveAverage] = [.mo3, .ao5, .ao12]
 
@@ -661,8 +771,10 @@ private struct TimerSummary: View {
             }
         }
 
-        let rowHeight = min(20, height / (twoColumns ? 3 : 6))
-        let fontSize = min(preferredFontSize, rowHeight * 0.76)
+        let preferredSize = usesLargeType ? largeFontSize : preferredFontSize
+        let maximumRowHeight = usesLargeType ? preferredSize / 0.76 : 20
+        let rowHeight = min(maximumRowHeight, height / (twoColumns ? 3 : 6))
+        let fontSize = min(preferredSize, rowHeight * 0.76)
         let mean = validCount > 0 ? TimerModel.format(total / Double(validCount)) : "—"
 
         let overall = VStack(spacing: 0) {
