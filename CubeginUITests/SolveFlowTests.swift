@@ -335,6 +335,20 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(settings.exists)
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
 
+        let idleScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        idleScreenshot.name = "Landscape Timer Before Geometry Checks"
+        idleScreenshot.lifetime = .keepAlways
+        add(idleScreenshot)
+        let settledScramble = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                diagram.frame.minY - scramble.frame.maxY >= 15
+            },
+            object: nil
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [settledScramble], timeout: 10), .completed,
+            "Scramble frame: \(scramble.frame), diagram frame: \(diagram.frame)"
+        )
         let idleTimer = timer.frame
         XCTAssertLessThan(scramble.frame.maxX, idleTimer.midX)
         XCTAssertGreaterThanOrEqual(diagram.frame.minY - scramble.frame.maxY, 15)
