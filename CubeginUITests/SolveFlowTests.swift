@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 
 final class SolveFlowTests: XCTestCase {
@@ -306,7 +307,7 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testLandscapeNavigationAndCenteredTimer() {
+    func testLandscapeNavigationAndCenteredTimer() throws {
         continueAfterFailure = false
 
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -335,23 +336,8 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(settings.exists)
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
 
-        let idleScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        idleScreenshot.name = "Landscape Timer Before Geometry Checks"
-        idleScreenshot.lifetime = .keepAlways
-        add(idleScreenshot)
-        let settledScramble = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in
-                diagram.frame.minY - scramble.frame.maxY >= 15
-            },
-            object: nil
-        )
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [settledScramble], timeout: 10), .completed,
-            "Scramble frame: \(scramble.frame), diagram frame: \(diagram.frame)"
-        )
         let idleTimer = timer.frame
         XCTAssertLessThan(scramble.frame.maxX, idleTimer.midX)
-        XCTAssertGreaterThanOrEqual(diagram.frame.minY - scramble.frame.maxY, 15)
         XCTAssertLessThan(diagram.frame.maxX, idleTimer.midX)
         XCTAssertGreaterThan(count.frame.minY, idleTimer.maxY)
         XCTAssertLessThanOrEqual(count.frame.maxX, mo3.frame.minX)
@@ -369,11 +355,26 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(ao12.frame.maxY, settings.frame.maxY + 4, accuracy: 3)
         let columnTop = trainingFrame.midY + 22 + 8
         let columnBottom = settings.frame.maxY + 4
-        let scrambleGroup = scramble.frame.union(diagram.frame)
+        // On iOS 26.2, XCTest reports the selectable text's AX frame beyond
+        // its visible glyphs. Check the rendered formula and diagram instead.
+        let screen = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screen)
+        attachment.name = "Landscape Timer Before Geometry Checks"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let appFrame = app.frame
+        // Exclude the physical display cutout at the left edge.
+        let leading = max(scramble.frame.minX, appFrame.minX + appFrame.width * 0.08)
+        let column = CGRect(x: leading, y: columnTop,
+                            width: scramble.frame.maxX - leading, height: columnBottom - columnTop)
+        let bitmap = try XCTUnwrap(screen.image.cgImage)
+        let rendered = try XCTUnwrap(renderedScrambleFrames(bitmap, appFrame: appFrame, column: column))
+        XCTAssertGreaterThanOrEqual(rendered.diagram.minY - rendered.formula.maxY, 15)
+        let scrambleGroup = rendered.formula.union(rendered.diagram)
         XCTAssertEqual(scrambleGroup.midY, (columnTop + columnBottom) / 2, accuracy: 3)
 
         let left = app.coordinate(withNormalizedOffset: .zero).withOffset(
-            CGVector(dx: diagram.frame.midX - app.frame.minX, dy: diagram.frame.midY - app.frame.minY))
+            CGVector(dx: rendered.diagram.midX - appFrame.minX, dy: rendered.diagram.midY - appFrame.minY))
         timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.5)
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         XCTAssertEqual(timer.frame.midX, app.frame.midX, accuracy: 2)
@@ -518,4 +519,69 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(savedScramble.waitForExistence(timeout: 5))
         XCTAssertEqual(savedScramble.label, originalScramble)
     }
+}
+
+private func renderedScrambleFrames(
+    _ image: CGImage,
+    appFrame: CGRect,
+    column: CGRect
+) -> (formula: CGRect, diagram: CGRect)? {
+    guard let context = CGContext(
+        data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+        bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+    ), let data = context.data else { return nil }
+    context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    let pixels = data.assumingMemoryBound(to: UInt8.self)
+
+    // XCTest may supply the landscape-left screen as a portrait bitmap.
+    let rotatesLeft = image.width < image.height
+    let width = rotatesLeft ? image.height : image.width
+    let height = rotatesLeft ? image.width : image.height
+    let scaleX = CGFloat(width) / appFrame.width
+    let scaleY = CGFloat(height) / appFrame.height
+    let xStart = max(0, Int((column.minX - appFrame.minX) * scaleX))
+    let xEnd = min(width, Int((column.maxX - appFrame.minX) * scaleX))
+    let yStart = max(0, Int((column.minY - appFrame.minY) * scaleY))
+    let yEnd = min(height, Int((column.maxY - appFrame.minY) * scaleY))
+    guard xStart < xEnd, yStart < yEnd else { return nil }
+
+    func channels(atX x: Int, y: Int) -> (darkest: Int, brightest: Int) {
+        let imageX = rotatesLeft ? image.width - 1 - y : x
+        let imageY = rotatesLeft ? x : y
+        let index = (imageY * image.width + imageX) * 4
+        let red = Int(pixels[index])
+        let green = Int(pixels[index + 1])
+        let blue = Int(pixels[index + 2])
+        return (min(red, green, blue), max(red, green, blue))
+    }
+
+    func bounds(through end: Int, matching predicate: (Int, Int) -> Bool) -> CGRect? {
+        var left = xEnd, top = end, right = xStart - 1, bottom = yStart - 1
+        for y in yStart..<end {
+            for x in xStart..<xEnd {
+                let (darkest, brightest) = channels(atX: x, y: y)
+                if predicate(darkest, brightest) {
+                    left = min(left, x)
+                    top = min(top, y)
+                    right = max(right, x)
+                    bottom = max(bottom, y)
+                }
+            }
+        }
+        guard left <= right, top <= bottom else { return nil }
+        return CGRect(x: appFrame.minX + CGFloat(left) / scaleX,
+                      y: appFrame.minY + CGFloat(top) / scaleY,
+                      width: CGFloat(right - left + 1) / scaleX,
+                      height: CGFloat(bottom - top + 1) / scaleY)
+    }
+
+    guard let diagram = bounds(through: yEnd, matching: { $1 >= 180 && $1 - $0 >= 100 }) else { return nil }
+    // Leave the dark outline of the top cube stickers out of the text bounds.
+    let formulaEnd = max(yStart, Int((diagram.minY - appFrame.minY - 2) * scaleY))
+    let lightBackground = channels(atX: xStart, y: yStart).darkest >= 128
+    guard let formula = bounds(through: formulaEnd, matching: {
+        lightBackground ? $1 < 96 : $0 > 159
+    }) else { return nil }
+    return (formula, diagram)
 }
