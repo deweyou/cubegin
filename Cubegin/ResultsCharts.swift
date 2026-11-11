@@ -1,11 +1,35 @@
 import Charts
 import SwiftUI
 
-struct ResultsCharts: View {
+enum ResultsChartMode: CaseIterable, Sendable {
+    case trend, distribution
+
+    var icon: String {
+        switch self {
+        case .trend: "chart.xyaxis.line"
+        case .distribution: "chart.bar.xaxis"
+        }
+    }
+
+    func title(_ language: AppLanguage) -> String {
+        switch self {
+        case .trend: language.text("趋势", "Trend")
+        case .distribution: language.text("时间分布", "Time distribution")
+        }
+    }
+}
+
+struct ResultsCharts<ProjectPicker: View, TrainingButton: View, GroupPicker: View, ViewPicker: View>: View {
     let solves: [Solve]
+    @Binding var mode: ResultsChartMode
+    let usesLandscapeHeader: Bool
+    let projectPicker: ProjectPicker
+    let trainingButton: TrainingButton
+    let groupPicker: GroupPicker
+    let viewPicker: ViewPicker
 
     @Environment(\.locale) private var locale
-    @State private var mode = Mode.trend
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var range = AttemptRange.recent100
     @State private var hiddenAverages: Set<SolveAverage> = []
     @State private var plotColumns = 320
@@ -14,36 +38,18 @@ struct ResultsCharts: View {
     @State private var ordered: (source: [Solve], history: OrderedHistory)?
     private var language: AppLanguage { locale.appLanguage }
 
-    private enum Mode: CaseIterable, Sendable {
-        case trend, distribution
-
-        var icon: String {
-            switch self {
-            case .trend: "chart.xyaxis.line"
-            case .distribution: "chart.bar.xaxis"
-            }
-        }
-
-        func title(_ language: AppLanguage) -> String {
-            switch self {
-            case .trend: language.text("趋势", "Trend")
-            case .distribution: language.text("时间分布", "Time distribution")
-            }
-        }
-    }
-
     private enum AttemptRange: Int, CaseIterable, Sendable {
         case recent5 = 5, recent12 = 12, recent50 = 50, recent100 = 100
         case recent500 = 500, recent1000 = 1000, recent10000 = 10000, all = 0
 
         func title(_ language: AppLanguage) -> String {
-            self == .all ? language.text("全部", "All") : language.text("最近 \(rawValue) 次", "Last \(rawValue)")
+            self == .all ? language.text("全部成绩", "All solves") : language.text("最近 \(rawValue) 次", "Last \(rawValue)")
         }
     }
 
     private struct Request: Equatable, Sendable {
         let solves: [Solve]
-        let mode: Mode
+        let mode: ResultsChartMode
         let range: AttemptRange
         let averages: [SolveAverage]
         let columns: Int
@@ -62,6 +68,10 @@ struct ResultsCharts: View {
         averages.filter { !hiddenAverages.contains($0) }
     }
 
+    private var fitsTrendToScreen: Bool {
+        usesLandscapeHeader && mode == .trend && !dynamicTypeSize.isAccessibilitySize
+    }
+
     var body: some View {
         let rangeCounts = ordered?.source == solves ? ordered?.history.rangeCounts : nil
         let request = Request(solves: solves, mode: mode, range: range,
@@ -69,55 +79,102 @@ struct ResultsCharts: View {
                               columns: mode == .trend ? plotColumns : 0)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                controls(rangeCounts: rangeCounts)
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(mode.title(language)).font(.headline)
-                    if let rendered, rendered.0 == request {
-                        switch rendered.1 {
-                        case let .trend(data):
-                            TrendChart(data: data)
-                                .id(request.range)
-                        case .distribution(let data):
-                            distribution(data)
-                        }
-                    } else {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 300)
+                if !usesLandscapeHeader {
+                    HStack(spacing: 12) {
+                        modePicker
+                        Spacer(minLength: 0)
+                        filters(rangeCounts: rangeCounts)
                     }
                 }
-                .padding(16)
-                .background(.background, in: RoundedRectangle(cornerRadius: 24))
-                .onGeometryChange(for: Int.self) { geometry in
-                    // Snap to width bands so resizing doesn't launch a task for each point.
-                    max(128, min(768, Int(geometry.size.width - 60) / 32 * 32))
-                } action: { plotColumns = $0 }
+                if fitsTrendToScreen {
+                    chartCard(request)
+                        .containerRelativeFrame(.vertical) { height, _ in max(180, height - 16) }
+                } else {
+                    chartCard(request)
+                }
             }
             .frame(maxWidth: 832)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, usesLandscapeHeader ? LandscapeContentInsets.contentMargin : 16)
+            .padding(.vertical, usesLandscapeHeader ? 8 : 12)
             .frame(maxWidth: .infinity)
+        }
+        .scrollEdgeEffectStyle(usesLandscapeHeader ? .soft : nil, for: .top)
+        .safeAreaBar(edge: .top, spacing: 0) {
+            if usesLandscapeHeader {
+                landscapeHeader(rangeCounts: rangeCounts)
+            }
         }
         .task(id: request) {
             await load(request)
         }
     }
 
-    private func controls(rangeCounts: [AttemptRange: Int]?) -> some View {
+    private func chartCard(_ request: Request) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if !usesLandscapeHeader {
+                Text(mode.title(language)).font(.headline)
+            }
+            if let rendered, rendered.0 == request {
+                switch rendered.1 {
+                case let .trend(data):
+                    TrendChart(data: data, fillsHeight: fitsTrendToScreen)
+                        .id(request.range)
+                case .distribution(let data):
+                    distribution(data)
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: fitsTrendToScreen ? 0 : 300,
+                           maxHeight: fitsTrendToScreen ? .infinity : nil)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, usesLandscapeHeader ? 10 : 16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 24))
+        .onGeometryChange(for: Int.self) { geometry in
+            // Snap to width bands so resizing doesn't launch a task for each point.
+            max(128, min(768, Int(geometry.size.width - 60) / 32 * 32))
+        } action: { plotColumns = $0 }
+    }
+
+    private func landscapeHeader(rangeCounts: [AttemptRange: Int]?) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                projectPicker
+                Spacer(minLength: 12)
+                trainingButton
+            }
+            .frame(minHeight: 44)
+            HStack(spacing: 12) {
+                groupPicker
+                Spacer(minLength: 8)
+                filters(rangeCounts: rangeCounts)
+                viewPicker
+            }
+            .font(.subheadline)
+            .frame(minHeight: 44)
+        }
+        .padding(.horizontal, LandscapeContentInsets.contentMargin)
+        .padding(.top, 8)
+        .frame(maxWidth: 880)
+    }
+
+    private var modePicker: some View {
+        Picker(language.text("图表类型", "Chart type"), selection: $mode) {
+            ForEach(ResultsChartMode.allCases, id: \.self) { item in
+                Image(systemName: item.icon)
+                    .accessibilityLabel(item.title(language))
+                    .tag(item)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 96)
+        .accessibilityIdentifier("charts.mode")
+    }
+
+    private func filters(rangeCounts: [AttemptRange: Int]?) -> some View {
         let activeRange = rangeCounts?[range] == nil ? AttemptRange.all : range
         return HStack(spacing: 12) {
-            Picker(language.text("图表类型", "Chart type"), selection: $mode) {
-                ForEach(Mode.allCases, id: \.self) { item in
-                    Image(systemName: item.icon)
-                        .accessibilityLabel(item.title(language))
-                        .tag(item)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 96)
-            .accessibilityIdentifier("charts.mode")
-
-            Spacer(minLength: 0)
-
             Menu {
                 Picker(language.text("范围", "Range"), selection: Binding(get: { activeRange }, set: { range = $0 })) {
                     ForEach(AttemptRange.allCases.filter { $0 == .all || rangeCounts?[$0] != nil }, id: \.self) { item in
@@ -150,7 +207,7 @@ struct ResultsCharts: View {
                         ))
                     }
                 } label: {
-                    menuLabel(showsAllAverages ? language.text("全部", "All") : averagesTitle)
+                    menuLabel(averagesTitle)
                 }
                 .tint(.primary)
                 .accessibilityLabel(averagesTitle)
@@ -290,15 +347,15 @@ struct ResultsCharts: View {
 
 private struct TrendChart: View {
     let data: TrendData
+    let fillsHeight: Bool
 
     @Environment(\.locale) private var locale
-    @State private var selection: Int?
     private var language: AppLanguage { locale.appLanguage }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             plot
-                .frame(height: 290)
+                .frame(minHeight: fillsHeight ? 110 : 290, maxHeight: fillsHeight ? .infinity : 290)
                 .accessibilityLabel(language.text("成绩趋势", "Solve trend"))
             legend
         }
@@ -357,18 +414,7 @@ private struct TrendChart: View {
             ForEach(data.averages, id: \.kind) { average in
                 series(average.series, name: average.kind.title, color: averageColor(average.kind), width: 1.5)
             }
-            if let selection, (data.first...data.last).contains(selection) {
-                RuleMark(x: .value(language.text("序号", "Attempt"), Double(selection)))
-                    .foregroundStyle(.secondary.opacity(0.55))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            }
         }
-        .chartXSelection(value: Binding<Double?>(
-            get: { selection.map(Double.init) },
-            set: { value in
-                if let value { selection = Int(value.rounded()) }
-            }
-        ))
         .chartXScale(domain: Double(data.first) - 0.5...Double(data.last) + 0.5)
         .chartYScale(domain: data.scale.domain)
         .chartXAxis {

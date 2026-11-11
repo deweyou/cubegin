@@ -1,6 +1,34 @@
 import SwiftUI
 import UIKit
 
+struct LandscapeContentInsets {
+    static let contentMargin: CGFloat = 24
+    private static let clearEdgeMargin: CGFloat = 44
+    private static let cutoutMargin: CGFloat = 16
+    private static let railGap: CGFloat = 16
+
+    let leading: CGFloat
+    let trailing: CGFloat
+    private let safeLeading: CGFloat
+
+    init(safeLeading: CGFloat, cutoutOnRight: Bool, railWidth: CGFloat) {
+        self.safeLeading = safeLeading
+        leading = cutoutOnRight || safeLeading <= Self.contentMargin
+            ? Self.clearEdgeMargin - safeLeading : Self.cutoutMargin
+        trailing = railWidth + Self.railGap
+    }
+
+    // Lists and headers supply the inner margin; these are the remaining offsets.
+    var containerLeading: CGFloat { leading - Self.contentMargin }
+    var containerTrailing: CGFloat { trailing - Self.contentMargin }
+
+    // A grouped Form extends its scroll content to the display edge when the
+    // container crosses the safe area; the card margin then starts at that edge.
+    var formLeadingMargin: CGFloat {
+        containerLeading < 0 ? safeLeading + leading : Self.contentMargin
+    }
+}
+
 struct AppTabsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
@@ -20,41 +48,67 @@ struct AppTabsView: View {
     }
 
     @State private var selection = Destination.home
+    @State private var resultsPage = ResultsPage.solves
+    @State private var chartMode = ResultsChartMode.trend
+    @State private var isSelectingResults = false
+    @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let sideNavigationWidth: CGFloat = 52
+    // Measured from the portrait tab capsule to the display edge on iPhone 17 Pro.
+    private let sideNavigationEdgeGap: CGFloat = 21
 
-    private enum Destination { case home, results, settings }
+    private enum Destination: String, CaseIterable {
+        case home, results, settings
 
-    var body: some View {
-        TabView(selection: $selection) {
-            Tab(value: Destination.home) {
-                ContentView(model: model, isTimerActive: isActive && selection == .home && scenePhase == .active)
-                    .labelStyle(.titleAndIcon)
-                    .toolbar(model.started == nil ? .automatic : .hidden, for: .tabBar)
-            } label: {
-                Label(language.text("首页", "Home"), image: "NavigationHome")
-            }
-            Tab(value: Destination.results) {
-                ResultsView(model: model)
-                    .labelStyle(.titleAndIcon)
-            } label: {
-                Label {
-                    Text(language.text("成绩", "Results"))
-                } icon: {
-                    Image(uiImage: NavigationIcons.results)
-                }
-            }
-            Tab(value: Destination.settings) {
-                SettingsView()
-                    .labelStyle(.titleAndIcon)
-            } label: {
-                Label {
-                    Text(language.text("设置", "Settings"))
-                } icon: {
-                    Image(uiImage: NavigationIcons.settings)
-                }
+        func title(in language: AppLanguage) -> String {
+            switch self {
+            case .home: language.text("首页", "Home")
+            case .results: language.text("成绩", "Results")
+            case .settings: language.text("设置", "Settings")
             }
         }
-        .labelStyle(.iconOnly)
+
+        @MainActor var icon: Image {
+            switch self {
+            case .home: Image("NavigationHome")
+            case .results: Image(uiImage: NavigationIcons.results)
+            case .settings: Image(uiImage: NavigationIcons.settings)
+            }
+        }
+    }
+
+    var body: some View {
+        Group {
+            if UIDevice.current.userInterfaceIdiom == .phone {
+                GeometryReader { geometry in
+                    let insets = geometry.safeAreaInsets
+                    let trailingInset = insets.trailing
+                    // Landscape right places the phone's top cutout on the left.
+                    let canUseRightEdge = interfaceOrientation == .landscapeRight
+                    let edgeGap = canUseRightEdge ? sideNavigationEdgeGap : max(sideNavigationEdgeGap, trailingInset)
+                    // Match the Tab capsule's gap from the physical display edge.
+                    let chartTopPadding = max(0, ContentView.landscapeBottomInset + insets.bottom - insets.top)
+                    let usesSideNavigation = geometry.size.width > geometry.size.height
+                    let railInset = edgeGap - trailingInset
+                    let contentInsets = usesSideNavigation ? LandscapeContentInsets(
+                        safeLeading: insets.leading, cutoutOnRight: interfaceOrientation == .landscapeLeft,
+                        railWidth: sideNavigationWidth + railInset
+                    ) : nil
+                    tabs(sideNavigationInset: usesSideNavigation ? railInset : nil,
+                         chartTopPadding: chartTopPadding, contentInsets: contentInsets)
+                }
+                .background {
+                    InterfaceOrientationReader(orientation: $interfaceOrientation)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+                .onAppear { UIDevice.current.beginGeneratingDeviceOrientationNotifications() }
+                .onDisappear { UIDevice.current.endGeneratingDeviceOrientationNotifications() }
+            } else {
+                tabs(sideNavigationInset: nil)
+            }
+        }
         .task(id: isActive ? model.event : nil) {
             guard isActive else { return }
             model.refresh()
@@ -69,6 +123,166 @@ struct AppTabsView: View {
         }
     }
 
+    private func tabs(sideNavigationInset: CGFloat?, chartTopPadding: CGFloat = 0,
+                      contentInsets: LandscapeContentInsets? = nil) -> some View {
+        let usesSideNavigation = sideNavigationInset != nil
+        let trailingSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
+
+        return TabView(selection: $selection) {
+            Tab(value: Destination.home) {
+                ContentView(
+                    model: model,
+                    isTimerActive: isActive && selection == .home && scenePhase == .active,
+                    trailingNavigationWidth: trailingSpace,
+                    trailingNavigationInset: sideNavigationInset ?? 0,
+                    landscapeContentInsets: contentInsets
+                )
+                    .labelStyle(.titleAndIcon)
+                    .toolbar(usesSideNavigation || model.started != nil ? .hidden : .automatic, for: .tabBar)
+            } label: {
+                tabLabel(.home)
+            }
+            Tab(value: Destination.results) {
+                ResultsView(model: model, page: $resultsPage, chartMode: $chartMode,
+                            isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
+                            contentInsets: isSelectingResults ? nil : contentInsets)
+                    .labelStyle(.titleAndIcon)
+                    .toolbar(usesSideNavigation || isSelectingResults ? .hidden : .automatic, for: .tabBar)
+            } label: {
+                tabLabel(.results)
+            }
+            Tab(value: Destination.settings) {
+                SettingsView(contentInsets: contentInsets)
+                    .labelStyle(.titleAndIcon)
+                    .toolbar(usesSideNavigation ? .hidden : .automatic, for: .tabBar)
+            } label: {
+                tabLabel(.settings)
+            }
+        }
+        .labelStyle(.iconOnly)
+        .overlay(alignment: .bottomTrailing) {
+            ZStack {
+                if let sideNavigationInset, model.started == nil, !(selection == .results && isSelectingResults) {
+                    VStack(spacing: 0) {
+                        if selection == .results && resultsPage == .chart && !model.groupSolves.isEmpty {
+                            chartModeSwitcher
+                                .padding(.top, chartTopPadding)
+                            Spacer(minLength: 8)
+                        }
+                        sideNavigation
+                    }
+                        .padding(.trailing, sideNavigationInset)
+                        .padding(.bottom, ContentView.landscapeBottomInset)
+                        .transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : ContentView.landscapeTimingAnimation, value: model.started != nil)
+            .allowsHitTesting(model.started == nil)
+            .accessibilityHidden(model.started != nil)
+        }
+    }
+
+    private func tabLabel(_ destination: Destination) -> some View {
+        Label {
+            Text(destination.title(in: language))
+        } icon: {
+            destination.icon
+        }
+    }
+
+    private var sideNavigation: some View {
+        VStack(spacing: 2) {
+            ForEach(Destination.allCases, id: \.self) { destination in
+                Button {
+                    selection = destination
+                } label: {
+                    destination.icon
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .frame(width: 44, height: 44)
+                        .background {
+                            if selection == destination {
+                                Circle().fill(.primary.opacity(0.10))
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(destination.title(in: language))
+                .accessibilityAddTraits(selection == destination ? .isSelected : [])
+                .accessibilityIdentifier("side-nav.\(destination.rawValue)")
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: sideNavigationWidth)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private var chartModeSwitcher: some View {
+        VStack(spacing: 2) {
+            ForEach(ResultsChartMode.allCases, id: \.self) { mode in
+                Button {
+                    chartMode = mode
+                } label: {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .background {
+                            if chartMode == mode {
+                                Circle().fill(.primary.opacity(0.10))
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(mode.title(language))
+                .accessibilityAddTraits(chartMode == mode ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: sideNavigationWidth)
+        .glassEffect(.regular, in: .capsule)
+    }
+}
+
+private struct InterfaceOrientationReader: UIViewRepresentable {
+    @Binding var orientation: UIInterfaceOrientation
+
+    func makeUIView(context: Context) -> OrientationView {
+        OrientationView()
+    }
+
+    func updateUIView(_ view: OrientationView, context: Context) {
+        view.onChange = { value in
+            if orientation != value { orientation = value }
+        }
+        view.reportOrientation()
+    }
+
+    final class OrientationView: UIView {
+        var onChange: ((UIInterfaceOrientation) -> Void)?
+
+        init() {
+            super.init(frame: .zero)
+            NotificationCenter.default.addObserver(self, selector: #selector(reportOrientation),
+                name: UIDevice.orientationDidChangeNotification, object: nil)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            reportOrientation()
+        }
+
+        @objc func reportOrientation() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let scene = window?.windowScene else { return }
+                onChange?(scene.effectiveGeometry.interfaceOrientation)
+            }
+        }
+    }
 }
 
 // Fixed-size images keep native bars from overriding symbol point sizes.
@@ -127,20 +341,34 @@ private struct ResultsView: View {
     @State private var averageKind = SolveAverage.mo3
     @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
     @State private var showsProjects = false
-    @State private var page = ResultsPage.solves
+    @Binding var page: ResultsPage
+    @Binding var chartMode: ResultsChartMode
     @State private var showsGroups = false
     @State private var solvesToDelete: Set<Solve.ID> = []
     @State private var showsMoveGroups = false
-    @State private var isSelecting = false
+    @Binding var isSelecting: Bool
+    let usesSideNavigation: Bool
+    let contentInsets: LandscapeContentInsets?
     @State private var selectedSolveIDs: Set<Solve.ID> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     private var usesTopNavigation: Bool { isPad && horizontalSizeClass == .regular }
+    // Put part of the row inset outside the List so row actions clear the rail.
+    private var listRailInset: CGFloat { contentInsets == nil ? 0 : 12 }
+    private var resultRowInsets: EdgeInsets {
+        EdgeInsets(top: 0, leading: LandscapeContentInsets.contentMargin,
+                   bottom: 0, trailing: LandscapeContentInsets.contentMargin - listRailInset)
+    }
     private var results: [Solve] {
         model.groupSolves.sorted(by: Solve.newestFirst)
     }
 
     var body: some View {
         let groupSolves = model.groupSolves
+        let showsPageContent = page == .statistics || !groupSolves.isEmpty
+        let pinsPickers = showsPageContent && (
+            usesSideNavigation ? page == .statistics : !isPad && page == .solves
+        )
+        let showsChartHeader = showsPageContent && usesSideNavigation && page == .chart
         NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
@@ -157,7 +385,7 @@ private struct ResultsView: View {
                         }
                         .frame(minHeight: 44)
                     } else {
-                        if !isPad {
+                        if !isPad && !showsChartHeader {
                             HStack {
                                 projectPicker
                                 Spacer(minLength: 12)
@@ -165,20 +393,26 @@ private struct ResultsView: View {
                             }
                             .frame(height: 44)
                         }
-                        HStack {
-                            groupPicker
-                            Spacer(minLength: 12)
-                            viewPicker
+                        if !pinsPickers && !showsChartHeader {
+                            resultsPickerRow
                         }
-                        .font(.subheadline)
-                        .frame(minHeight: 44)
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
+                .padding(.horizontal, LandscapeContentInsets.contentMargin)
+                .padding(.top, showsChartHeader ? 0 : 8)
                 .frame(maxWidth: usesTopNavigation ? .infinity : 880)
 
-                if page != .statistics && groupSolves.isEmpty {
+                if showsPageContent {
+                    pageContent(groupSolves: groupSolves)
+                        .scrollEdgeEffectStyle(pinsPickers ? .soft : nil, for: .top)
+                        .safeAreaBar(edge: .top, spacing: 0) {
+                            if pinsPickers {
+                                resultsPickerRow
+                                    .padding(.horizontal, LandscapeContentInsets.contentMargin)
+                                    .frame(maxWidth: 880)
+                            }
+                        }
+                } else {
                     VStack(spacing: 12) {
                         Image(systemName: "stopwatch")
                             .font(.system(size: 36, weight: .regular))
@@ -189,10 +423,10 @@ private struct ResultsView: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    pageContent(groupSolves: groupSolves)
                 }
             }
+            .padding(.leading, contentInsets?.containerLeading ?? 0)
+            .padding(.trailing, contentInsets?.containerTrailing ?? 0)
             .appBackground()
             .navigationDestination(for: Solve.ID.self) { id in
                 SolveDetailsView(model: model, solveID: id)
@@ -200,15 +434,21 @@ private struct ResultsView: View {
             .navigationDestination(for: AverageDestination.self) { destination in
                 averageDetails(destination)
             }
-            .toolbar(isSelecting ? .hidden : .automatic, for: .tabBar)
+            .toolbar(usesSideNavigation || isSelecting ? .hidden : .automatic, for: .tabBar)
             .safeAreaPadding(.bottom, isSelecting ? 72 : 0)
             .sheet(isPresented: $showsMoveGroups) {
                 MoveSolvesSheet(model: model, ids: selectedSolveIDs, usesCenteredPresentation: usesTopNavigation) {
                     endSelection()
                 }
             }
-            .onChange(of: model.currentGroup?.id) { _, _ in endSelection() }
-            .onChange(of: page) { _, _ in endSelection() }
+            .onChange(of: model.currentGroup?.id) { _, _ in
+                chartMode = .trend
+                endSelection()
+            }
+            .onChange(of: page) { _, _ in
+                chartMode = .trend
+                endSelection()
+            }
             .toolbar(isPad ? .visible : .hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -234,6 +474,16 @@ private struct ResultsView: View {
                     .padding(.bottom, 8)
             }
         }
+    }
+
+    private var resultsPickerRow: some View {
+        HStack {
+            groupPicker
+            Spacer(minLength: 12)
+            viewPicker
+        }
+        .font(.subheadline)
+        .frame(minHeight: 44)
     }
 
     private var projectPicker: some View {
@@ -334,7 +584,7 @@ private struct ResultsView: View {
                         }
                     }
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 24))
+                .listRowInsets(resultRowInsets)
                 .listRowBackground(selectedSolveIDs.contains(solve.id) ? Color.accentColor.opacity(0.06) : Color.clear)
                 .accessibilityIdentifier("solve-row-\(orderedResults.count - index)")
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -351,6 +601,7 @@ private struct ResultsView: View {
                 }
             }
             .listStyle(.plain)
+            .padding(.trailing, listRailInset)
             .background {
                 SolveRangeSelection(ids: orderedResults.map(\.id), selectedIDs: selectedSolveIDs,
                     enabled: model.started == nil) { ids in
@@ -376,10 +627,18 @@ private struct ResultsView: View {
         case .averages:
             averagesView
         case .statistics:
-            ResultsOverview(solves: results)
+            ResultsOverview(solves: results, contentInsets: contentInsets)
         case .chart:
-            ResultsCharts(solves: groupSolves)
-                .id(model.currentGroup?.id)
+            ResultsCharts(
+                solves: groupSolves,
+                mode: $chartMode,
+                usesLandscapeHeader: usesSideNavigation,
+                projectPicker: projectPicker,
+                trainingButton: trainingButton,
+                groupPicker: groupPicker,
+                viewPicker: viewPicker
+            )
+            .id(model.currentGroup?.id)
         }
     }
 
@@ -419,7 +678,7 @@ private struct ResultsView: View {
                             }
                         }
                         .scrollIndicators(.hidden)
-                        .contentMargins(.horizontal, 24, for: .scrollContent)
+                        .contentMargins(.horizontal, LandscapeContentInsets.contentMargin, for: .scrollContent)
                         .accessibilityLabel(language.text("平均类型", "Average type"))
                         .accessibilityIdentifier("results.average-types")
                         .onChange(of: kind, initial: true) { previous, selected in
@@ -453,11 +712,12 @@ private struct ResultsView: View {
                                 averageRowLabel(number: number, total: orderedResults.count, summary: nil)
                             }
                         }
-                        .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 24))
+                        .listRowInsets(resultRowInsets)
                         .listRowBackground(Color.clear)
                         .accessibilityIdentifier("average-row-\(index)")
                     }
                     .listStyle(.plain)
+                    .padding(.trailing, listRailInset)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 24).onEnded { swipe in
                             let distance = swipe.translation.width
@@ -719,6 +979,7 @@ private func resultWorstColor(for colorScheme: ColorScheme) -> Color {
 
 private struct ResultsOverview: View {
     let solves: [Solve]
+    let contentInsets: LandscapeContentInsets?
     @Environment(\.locale) private var locale
     @Environment(\.timeZone) private var timeZone
     @Environment(\.colorScheme) private var colorScheme
@@ -787,6 +1048,8 @@ private struct ResultsOverview: View {
                 }
             }
         }
+        .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
+        .contentMargins(.trailing, contentInsets.map { _ in LandscapeContentInsets.contentMargin }, for: .scrollContent)
         .listSectionSpacing(12)
         .task(id: times) {
             var scores: [SolveAverage: String] = [:]
@@ -844,9 +1107,9 @@ private struct ResultsOverview: View {
     }
 
     private func dailyGrid(_ days: [(date: Date, count: Int)], columns: Int) -> some View {
-        VStack(spacing: 12) {
+        Grid(horizontalSpacing: 8, verticalSpacing: 12) {
             ForEach(Array(stride(from: 0, to: days.count, by: columns)), id: \.self) { start in
-                HStack(spacing: 8) {
+                GridRow {
                     ForEach(days[start..<min(start + columns, days.count)], id: \.date) { day in
                         VStack(spacing: 4) {
                             Text(dayLabel(day.date))
@@ -930,7 +1193,7 @@ private struct SolveDetailsView: View {
                         .textSelection(.enabled)
                     ZStack {
                         if let svg {
-                            SVGView(svg: svg, nextSVG: nil, centersContent: true)
+                            SVGView(svg: svg, nextSVG: nil, alignment: .center)
                                 .accessibilityLabel(language.text("本次成绩的打乱图", "Scramble diagram for this solve"))
                                 .accessibilityIdentifier("solve-detail.diagram")
                         } else if let diagramError {
@@ -1417,6 +1680,7 @@ private struct GroupEditor: View {
 }
 
 private struct SettingsView: View {
+    let contentInsets: LandscapeContentInsets?
     @AppStorage(AppLanguage.preferenceKey) private var selectedLanguage = AppLanguage.chinese
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
@@ -1449,6 +1713,10 @@ private struct SettingsView: View {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
                 }
             }
+            .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
+            .contentMargins(.trailing, contentInsets.map { _ in LandscapeContentInsets.contentMargin }, for: .scrollContent)
+            .padding(.leading, contentInsets?.containerLeading ?? 0)
+            .padding(.trailing, contentInsets?.containerTrailing ?? 0)
             .appBackground()
             .navigationTitle(language.text("设置", "Settings"))
             .navigationBarTitleDisplayMode(.inline)
