@@ -15,7 +15,7 @@ final class SolveFlowTests: XCTestCase {
         let event = app.buttons["Event"]
         let training = app.buttons["Training"]
         XCTAssertTrue(event.waitForExistence(timeout: 20))
-        XCTAssertTrue(app.staticTexts["timer.scramble"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 10))
         recordPortraitPage("Home", frames: [event.frame, training.frame])
 
         // The 12 seeded rows fit on a 17 Pro in portrait. Add a solve to make the list scroll.
@@ -157,9 +157,24 @@ final class SolveFlowTests: XCTestCase {
 
         let railX = trendButton.frame.midX
         XCUIDevice.shared.orientation = .landscapeRight
-        XCTAssertLessThan(trendButton.frame.midX, railX)
+        let rotatedRail = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                let frame = trendButton.frame
+                return frame.midX < railX
+                    && abs(frame.midX - home.frame.midX) < 1
+                    && abs((frame.minY - app.frame.minY) - (app.frame.maxY - settings.frame.maxY)) < 2
+            },
+            object: nil
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [rotatedRail], timeout: 10), .completed)
+        let rotatedScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        rotatedScreenshot.name = "Landscape Rotated Chart Controls"
+        rotatedScreenshot.lifetime = .keepAlways
+        add(rotatedScreenshot)
+        XCTAssertTrue(trendButton.wait(for: \.isHittable, toEqual: true, timeout: 5))
         trendButton.tap()
-        XCTAssertTrue(trend.waitForExistence(timeout: 5))
+        XCTAssertTrue(trendButton.wait(for: \.isSelected, toEqual: true, timeout: 5))
+        XCTAssertTrue(trend.waitForExistence(timeout: 10))
         XCTAssertLessThan(viewPicker.frame.maxX, trendButton.frame.minX)
         XCTAssertLessThan(trend.frame.maxX, trendButton.frame.minX)
         XCTAssertEqual(app.buttons["Event"].frame.minX - app.frame.minX, 44, accuracy: 2)
@@ -264,7 +279,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "222"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["timer.scramble"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 20))
 
         let picker = app.buttons["Event"]
         picker.tap()
@@ -302,7 +317,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
         app.launch()
 
-        let scramble = app.staticTexts["timer.scramble"]
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         let timer = app.descendants(matching: .any)["timer.readout"]
         let diagram = app.descendants(matching: .any)["timer.scramble-diagram"]
@@ -407,7 +422,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["timer.scramble"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 20))
         let timer = app.buttons["timer.readout"]
         let center = timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.press(forDuration: 0.5)
@@ -452,7 +467,7 @@ final class SolveFlowTests: XCTestCase {
         app.launch()
         XCUIDevice.shared.orientation = .portrait
 
-        let scramble = app.staticTexts["timer.scramble"]
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         let originalScramble = scramble.label
         XCTAssertFalse(originalScramble.isEmpty)

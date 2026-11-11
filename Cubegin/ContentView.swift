@@ -470,7 +470,6 @@ struct ContentView: View {
         return ViewThatFits(in: .vertical) {
             ForEach(sizes, id: \.self) { size in
                 Text(algorithm)
-                    .accessibilityIdentifier(model.scramble == nil ? "timer.placeholder" : "timer.scramble")
                     .font(.system(size: size, design: .monospaced))
                     .multilineTextAlignment(.center)
                     .lineSpacing((preservesMegaminxRows ? 4 : 7) * size / fontSize)
@@ -479,6 +478,9 @@ struct ContentView: View {
                     .textSelection(.enabled)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(algorithm)
+        .accessibilityIdentifier(model.scramble == nil ? "timer.placeholder" : "timer.scramble")
     }
 
     private var projectMenu: some View {
