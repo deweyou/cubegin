@@ -307,7 +307,7 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testLandscapeNavigationAndCenteredTimer() throws {
+    func testLandscapeNavigationAndCenteredTimer() async throws {
         continueAfterFailure = false
 
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -357,18 +357,29 @@ final class SolveFlowTests: XCTestCase {
         let columnBottom = settings.frame.maxY + 4
         // On iOS 26.2, XCTest reports the selectable text's AX frame beyond
         // its visible glyphs. Check the rendered formula and diagram instead.
-        let screen = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screen)
-        attachment.name = "Landscape Timer Before Geometry Checks"
-        attachment.lifetime = .keepAlways
-        add(attachment)
         let appFrame = app.frame
         // Exclude the physical display cutout at the left edge.
         let leading = max(scramble.frame.minX, appFrame.minX + appFrame.width * 0.08)
         let column = CGRect(x: leading, y: columnTop,
                             width: scramble.frame.maxX - leading, height: columnBottom - columnTop)
-        let bitmap = try XCTUnwrap(screen.image.cgImage)
-        let rendered = try XCTUnwrap(renderedScrambleFrames(bitmap, appFrame: appFrame, column: column))
+        // WebKit can finish painting the diagram after its AX element appears.
+        let deadline = ContinuousClock.now + .seconds(10)
+        var screen: XCUIScreenshot
+        var renderedFrames: (formula: CGRect, diagram: CGRect)?
+        repeat {
+            screen = XCUIScreen.main.screenshot()
+            renderedFrames = screen.image.cgImage.flatMap {
+                renderedScrambleFrames($0, appFrame: appFrame, column: column)
+            }
+            if renderedFrames == nil && ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+        } while renderedFrames == nil && ContinuousClock.now < deadline
+        let attachment = XCTAttachment(screenshot: screen)
+        attachment.name = "Landscape Timer Before Geometry Checks"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let rendered = try XCTUnwrap(renderedFrames, "The scramble formula and diagram must both be visible")
         XCTAssertGreaterThanOrEqual(rendered.diagram.minY - rendered.formula.maxY, 15)
         let scrambleGroup = rendered.formula.union(rendered.diagram)
         XCTAssertEqual(scrambleGroup.midY, (columnTop + columnBottom) / 2, accuracy: 3)
