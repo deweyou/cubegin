@@ -137,9 +137,7 @@ struct ContentView: View {
             }
             let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
             Group {
-                if isDuoInnerDisplay, !isLandscape, #available(iOS 27.1, *),
-                   let fold = geometry.reservedRegions(kind: .division).first?.frame,
-                   fold.width > fold.height, fold.minY > 0, fold.maxY < geometry.size.height {
+                if isDuoInnerDisplay, !isLandscape, let fold = horizontalFold(in: geometry) {
                     foldedPortraitPage(size: geometry.size, fold: fold)
                 } else if usesDuoWideLayout {
                     page(frame: frame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
@@ -160,6 +158,18 @@ struct ContentView: View {
                 if !isTiming { idlePageFrame = measuredFrame }
             }
         }
+    }
+
+    private func horizontalFold(in geometry: GeometryProxy) -> CGRect? {
+        // The iOS 26 SDK does not declare SwiftUI's reserved region API.
+#if compiler(>=6.4)
+        if #available(iOS 27.1, *),
+           let fold = geometry.reservedRegions(kind: .division).first?.frame,
+           fold.width > fold.height, fold.minY > 0, fold.maxY < geometry.size.height {
+            return fold
+        }
+#endif
+        return nil
     }
 
     private func foldedPortraitPage(size: CGSize, fold: CGRect) -> some View {
