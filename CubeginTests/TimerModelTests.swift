@@ -190,7 +190,10 @@ struct TimerModelTests {
         #expect(TimerModel.format(59.9999) == "59.999")
         #expect(TimerModel.format(60.001) == "1:00.001")
         #expect(TimerModel.format(3_605.125) == "1:00:05.125")
+        #expect(TimerModel.format(35_999.999) == "9:59:59.999")
         #expect(TimerModel.format(36_000) == "9:59:59.999")
+        let penalized = Solve(seconds: 35_999, event: "333", scramble: "R U", penalty: .plusTwo)
+        #expect(penalized.resultText == "9:59:59.999+")
     }
 
     private func waitForGeneration(_ model: TimerModel) async throws {

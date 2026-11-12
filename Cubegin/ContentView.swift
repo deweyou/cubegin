@@ -4,9 +4,16 @@ import WebKit
 struct ContentView: View {
     @Bindable var model: TimerModel
     let isTimerActive: Bool
+    var leadingNavigationWidth: CGFloat = 0
+    var trailingNavigationWidth: CGFloat = 0
+    var navigationInset: CGFloat = 0
+    var navigationOnLeft = false
+    var isDuoInnerDisplay = false
+    var landscapeContentInsets: LandscapeContentInsets?
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @FocusState private var hasTimerKeyboardFocus: Bool
     @State private var idlePageFrame: CGRect?
+    @State private var centersLandscapeReadout = false
     private var isTiming: Bool { model.started != nil }
     @State private var showsProjectList = false
     @State private var timerTouchResumesAt: ContinuousClock.Instant?
@@ -18,8 +25,11 @@ struct ContentView: View {
     private let controlRowHeight: CGFloat = 44
     private let compactControlSize: CGFloat = 32
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
+    static let landscapeTimingAnimation = Animation.easeInOut(duration: 0.2)
+    static let landscapeBottomInset: CGFloat = 8
 
     // The native iPad TabView uses the top bar in regular-width layouts.
     private var usesTopNavigation: Bool {
@@ -117,27 +127,228 @@ struct ContentView: View {
                 && max(insets.leading, insets.trailing) > 24
             let diagramBottomPadding = hasSideRail ? 18 - insets.bottom : 12
             let frame = geometry.frame(in: .global)
-            page(frame: frame, diagramBottomPadding: diagramBottomPadding)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { measuredFrame in
-                    if !isTiming { idlePageFrame = measuredFrame }
+            let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+            let isLandscape = frame.width > frame.height
+            let timerFrame = if isTiming, let idlePageFrame,
+                                !isPhone || (idlePageFrame.width > idlePageFrame.height) == isLandscape {
+                idlePageFrame
+            } else {
+                frame
+            }
+            let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
+            Group {
+                if isDuoInnerDisplay, !isLandscape, let fold = horizontalFold(in: geometry) {
+                    foldedPortraitPage(size: geometry.size, fold: fold)
+                } else if usesDuoWideLayout {
+                    page(frame: frame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
+                         timerFrame: timerFrame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
+                         diagramBottomPadding: diagramBottomPadding, usesDuoWideLayout: true)
+                        .padding(.trailing, trailingNavigationWidth)
+                } else if isPhone && isLandscape {
+                    let screenCenter = CGPoint(
+                        x: frame.midX + (insets.trailing - insets.leading) / 2,
+                        y: frame.midY + (insets.bottom - insets.top) / 2
+                    )
+                    landscapePage(frame: frame, timerFrame: timerFrame, screenCenter: screenCenter)
+                } else {
+                    page(frame: frame, timerFrame: timerFrame, diagramBottomPadding: diagramBottomPadding)
                 }
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { measuredFrame in
+                if !isTiming { idlePageFrame = measuredFrame }
+            }
         }
     }
 
-    private func page(frame: CGRect, diagramBottomPadding: CGFloat) -> some View {
+    private func horizontalFold(in geometry: GeometryProxy) -> CGRect? {
+        // The iOS 26 SDK does not declare SwiftUI's reserved region API.
+#if compiler(>=6.4)
+        if #available(iOS 27.1, *),
+           let fold = geometry.reservedRegions(kind: .division).first?.frame,
+           fold.width > fold.height, fold.minY > 0, fold.maxY < geometry.size.height {
+            return fold
+        }
+#endif
+        return nil
+    }
+
+    private func foldedPortraitPage(size: CGSize, fold: CGRect) -> some View {
+        let padding: CGFloat = 16
+        let foldClearance: CGFloat = 8
+        let width = max(1, size.width - 2 * padding)
+        let upperHeight = max(0, fold.minY - 2 * foldClearance)
+        let lowerHeight = max(0, size.height - fold.maxY - foldClearance)
+        let formulaHeight = upperHeight * 0.48
+        let footerHeight = max(0, upperHeight - formulaHeight - 8)
+        let summaryWidth = min(144, width * 0.38)
+        let diagramWidth = max(0, width - summaryWidth - 12)
+        let timerAreaHeight = max(0, lowerHeight - controlRowHeight)
+        let timerFontSize = max(1, min(90, timerAreaHeight * 0.36))
+
+        return VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                currentScramble(width: width)
+                    .frame(height: formulaHeight)
+                HStack(alignment: .bottom, spacing: 12) {
+                    TimerSummary(model: model, height: footerHeight)
+                        .frame(width: summaryWidth)
+                    scrambleDiagram()
+                        .frame(width: diagramWidth * 0.8, height: min(140, footerHeight))
+                        .frame(width: diagramWidth, alignment: .trailing)
+                }
+                .frame(height: footerHeight, alignment: .bottom)
+            }
+            .frame(width: width, height: upperHeight)
+            .opacity(isTiming ? 0 : 1)
+            .accessibilityHidden(isTiming)
+            .padding(.top, foldClearance)
+
+            Color.clear.frame(height: fold.height + 2 * foldClearance)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 0) {
+                phoneControls
+                    .opacity(isTiming ? 0 : 1)
+                    .accessibilityHidden(isTiming)
+                ZStack {
+                    timerTouchSurface
+                    timerDisplay(fontSize: timerFontSize, numberHeight: timerFontSize * 1.2)
+                }
+                .frame(height: timerAreaHeight)
+            }
+            .frame(width: width, height: lowerHeight)
+        }
+        .frame(width: size.width, height: size.height, alignment: .top)
+        .appBackground()
+    }
+
+    private func landscapePage(frame: CGRect, timerFrame: CGRect, screenCenter: CGPoint) -> some View {
+        let edgePadding: CGFloat = 8
+        let columnSpacing: CGFloat = 16
+        let rowSpacing: CGFloat = 8
+        let headerTop = edgePadding + (landscapeContentInsets?.headerTopOffset ?? 0)
+        let controlsHeight = headerTop + controlRowHeight
+        let columnsTop = controlsHeight + rowSpacing
+        let availableWidth = timerFrame.width - leadingNavigationWidth - trailingNavigationWidth
+        let layoutWidth = min(availableWidth, 880)
+        let centeredInset = (availableWidth - layoutWidth) / 2
+        let columnShift = (trailingNavigationWidth - leadingNavigationWidth) / 2
+        let headerLeadingInset = (landscapeContentInsets?.leading ?? edgePadding) + centeredInset
+        let headerTrailingInset = (landscapeContentInsets?.trailing ?? trailingNavigationWidth + 12) + centeredInset
+        let columnsWidth = max(2, layoutWidth - 2 * edgePadding - columnSpacing)
+        let scrambleWidth = columnsWidth * (landscapeContentInsets?.scrambleColumnFraction ?? 0.55)
+        let timerWidth = columnsWidth - scrambleWidth
+        let columnsHeight = max(1, timerFrame.height - columnsTop - Self.landscapeBottomInset)
+        let diagramWidth = scrambleWidth * 0.72
+        let diagramAspectRatio = model.scramble?.diagramAspectRatio ?? (4.0 / 3)
+        let diagramHeight = min(columnsHeight * 0.34, diagramWidth / CGFloat(diagramAspectRatio))
+        let summaryHeight: CGFloat = 60
+        let belowReadoutHeight = summaryHeight + compactControlSize + 2 * rowSpacing
+        let numberHeight = max(1, min(132, columnsHeight - belowReadoutHeight))
+        let summaryOffset = max(0, columnsHeight - numberHeight - belowReadoutHeight) / 2
+        let touchTop = isTiming ? 0 : controlsHeight
+        let touchOverhang = isTiming ? max(0, -navigationInset) : 0
+        let columnCenterX = timerFrame.midX + (scrambleWidth + columnSpacing) / 2 - columnShift
+        let idleReadoutCenterY = timerFrame.minY + columnsTop + (columnsHeight - belowReadoutHeight) / 2
+        let readoutShift = centersLandscapeReadout && !reduceMotion
+            ? CGSize(width: screenCenter.x - columnCenterX, height: screenCenter.y - idleReadoutCenterY)
+            : .zero
+        let animation = reduceMotion ? nil : Self.landscapeTimingAnimation
+
+        return ZStack(alignment: .top) {
+            timerTouchSurface
+                .frame(width: frame.width + touchOverhang,
+                       height: max(0, frame.height - touchTop))
+                .frame(width: frame.width, alignment: navigationOnLeft ? .trailing : .leading)
+                .padding(.top, touchTop)
+
+            if !isTiming {
+                phoneControls
+                    .padding(.top, headerTop)
+                    .frame(width: frame.width - headerLeadingInset - headerTrailingInset)
+                    .offset(x: (headerLeadingInset - headerTrailingInset) / 2)
+            }
+
+            HStack(spacing: columnSpacing) {
+                LandscapeScrambleLayout {
+                    if !isTiming {
+                        currentScramble(width: scrambleWidth, fontScale: 1.1)
+                            .transition(.opacity)
+                    }
+                    scrambleDiagram(alignment: .center)
+                        .frame(width: diagramWidth, height: diagramHeight)
+                        .opacity(isTiming ? 0 : 1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(isTiming)
+                }
+                .frame(width: scrambleWidth, height: columnsHeight)
+                .animation(animation, value: isTiming)
+                .allowsHitTesting(!isTiming)
+                .accessibilityHidden(isTiming)
+
+                VStack(spacing: rowSpacing) {
+                    timerNumber(fontSize: numberHeight / 1.2, height: numberHeight, minimumScale: 0.35)
+                        .frame(width: timerWidth, height: numberHeight)
+                        .offset(readoutShift)
+                    postSolveControls
+                    ZStack {
+                        // Reserve the summary's height while timing.
+                        Color.clear
+                            .accessibilityHidden(true)
+                        if !isTiming {
+                            TimerSummary(model: model, height: summaryHeight, twoColumns: true)
+                                .frame(maxWidth: 220)
+                                .transition(.opacity)
+                        }
+                    }
+                    .frame(height: summaryHeight)
+                    .offset(y: summaryOffset)
+                    .animation(animation, value: isTiming)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(isTiming)
+                }
+                .frame(width: timerWidth, height: columnsHeight)
+                .zIndex(1)
+            }
+            .padding(.top, columnsTop)
+            .offset(x: timerFrame.midX - frame.midX - columnShift,
+                    y: timerFrame.minY - frame.minY)
+        }
+        .frame(width: frame.width, height: frame.height, alignment: .top)
+        .onChange(of: isTiming, initial: true) { _, timing in
+            withAnimation(animation) { centersLandscapeReadout = timing }
+        }
+        .appBackground()
+    }
+
+    private func page(frame: CGRect, timerFrame: CGRect, diagramBottomPadding: CGFloat,
+                      usesDuoWideLayout: Bool = false) -> some View {
         let width = frame.width
         let height = frame.height
-        let timerFrame = (isTiming ? idlePageFrame : nil) ?? frame
-        let contentWidth = max(1, min(width, 880) - 48)
-        let timerFontSize: CGFloat = timerFrame.width > 600 ? 110 : 76
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let maximumWidth: CGFloat = isPad ? .infinity : 880
+        let horizontalPadding: CGFloat = 24
+        let contentWidth = max(1, min(width, maximumWidth) - 2 * horizontalPadding)
+        let timerFontSize: CGFloat
+        if isPad {
+            let limit: CGFloat = timerFrame.width > timerFrame.height ? 140 : 120
+            timerFontSize = max(1, min(limit, (timerFrame.width - 2 * horizontalPadding) * 0.16, timerFrame.height * 0.18))
+        } else if usesDuoWideLayout {
+            timerFontSize = 90
+        } else {
+            timerFontSize = timerFrame.width > 600 ? 110 : 76
+        }
         let timerNumberHeight = timerFontSize * 1.2
         let showsControlsInPage = usesTopNavigation || UIDevice.current.userInterfaceIdiom != .pad
         let controlsHeight = showsControlsInPage ? controlRowHeight : 0
         let topClearance: CGFloat = 8
         let controlSpacing: CGFloat = showsControlsInPage ? 8 : 0
         let timerTouchTop = isTiming ? 0 : topClearance + controlsHeight + controlSpacing
+        let recentRowHeight: CGFloat = 26
+        let recentHalfHeight = 3 * recentRowHeight
+        let formulaClearance = usesDuoWideLayout ? max(timerNumberHeight / 2, recentHalfHeight) : timerNumberHeight / 2
         let formulaHeight = max(1, min(height * 0.3,
-            height / 2 - timerNumberHeight / 2 - controlsHeight - controlSpacing - topClearance - 8))
+            height / 2 - formulaClearance - controlsHeight - controlSpacing - topClearance - 8))
         let footerSpacing: CGFloat = 12
         let footerWidth = max(0, contentWidth - footerSpacing)
         let summaryWidth = min(144, footerWidth * 0.46)
@@ -145,23 +356,34 @@ struct ContentView: View {
         let diagramClearance: CGFloat = model.lastSolve == nil ? 68 : max(68, 14 + compactControlSize + diagramBottomPadding + 8)
         let diagramHeight = max(0, min(180, height / 2 - timerNumberHeight / 2 - diagramClearance))
 
-        let diagramAspectRatio = model.scramble?.diagramAspectRatio ?? (4.0 / 3)
-        let summaryHeight = min(diagramHeight, diagramWidth / CGFloat(diagramAspectRatio))
+        let diagramAspectRatio = CGFloat(model.scramble?.diagramAspectRatio ?? (4.0 / 3))
+        let summaryHeight = min(diagramHeight, diagramWidth / diagramAspectRatio)
+        let usesLargeSummary = isPad && width > height
+        let visibleDiagramWidth = summaryHeight * diagramAspectRatio
+        let availableSummaryWidth = max(summaryWidth, footerWidth - visibleDiagramWidth)
+        let summaryTextWidth = usesLargeSummary ? min(220, availableSummaryWidth) : summaryWidth
+        let timerWidth = max(1, min(timerFrame.width, maximumWidth) - 2 * horizontalPadding)
+        let longestTimeParts = TimerModel.displayParts(.infinity)
+        let longestSingle = longestTimeParts.joined() + "+"
+        let recentValueStyle: Font = usesDuoWideLayout ? .subheadline : .body
+        let recentValueTextStyle: UIFont.TextStyle = usesDuoWideLayout ? .subheadline : .body
+        let recentColumnWidth = ceil((longestSingle as NSString).size(withAttributes: [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: recentValueTextStyle).pointSize,
+                                                    weight: .regular)
+        ]).width)
+        let recentColumnGap: CGFloat = 24
+        let sideWidth = 2 * (recentColumnWidth + recentColumnGap)
+        let timerHorizontalPadding: CGFloat = 12
+        let fitsRecentResults = (isPad || usesDuoWideLayout)
+            && timerWidth - sideWidth >= longestTimerWidth(parts: longestTimeParts, fontSize: timerFontSize)
+                + 2 * timerHorizontalPadding
+            && height / 2 - recentHalfHeight >= topClearance + controlsHeight + controlSpacing + formulaHeight
+            && height / 2 - recentHalfHeight >= diagramHeight + diagramBottomPadding
 
         return ZStack {
-            TimerTouchSurface(
-                onDown: {
-                    guard isTimerActive, !showsProjectList, solveToDelete == nil else { return }
-                    if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
-                    model.press(.touch, delayTenths: startDelayTenths)
-                },
-                onUp: { model.release(.touch) },
-                onCancel: { model.cancelPress(.touch) }
-            )
-            .frame(width: width, height: max(0, height - timerTouchTop))
-            .frame(width: contentWidth, height: height, alignment: .bottom)
-            .allowsHitTesting(isTimerActive && !showsProjectList && solveToDelete == nil)
-            .accessibilityHidden(true)
+            timerTouchSurface
+                .frame(width: width, height: max(0, height - timerTouchTop))
+                .frame(width: contentWidth, height: height, alignment: .bottom)
 
             if !isTiming {
                 VStack(spacing: 0) {
@@ -171,27 +393,11 @@ struct ContentView: View {
                             .frame(height: controlRowHeight)
                             .disabled(model.busy || model.started != nil)
                     } else if showsControlsInPage {
-                        HStack(spacing: 0) {
-                            projectMenu
-                            Spacer(minLength: 12)
-                            trailingControls
-                        }
-                        .frame(height: controlRowHeight)
-                        .disabled(model.busy || model.started != nil)
+                        phoneControls
                     }
-                    Group {
-                        if model.busy {
-                            if showsGenerating {
-                                Text(language.text("生成中…", "Generating…"))
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            scrambleFormula(width: contentWidth)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: formulaHeight)
-                    .padding(.top, controlSpacing)
+                    currentScramble(width: contentWidth)
+                        .frame(height: formulaHeight)
+                        .padding(.top, controlSpacing)
                 }
                 .padding(.top, topClearance)
                 .frame(height: height, alignment: .top)
@@ -199,13 +405,16 @@ struct ContentView: View {
 
             HStack(alignment: .bottom, spacing: footerSpacing) {
                 if !isTiming && summaryHeight > 0 {
-                    TimerSummary(model: model, height: summaryHeight)
-                        .frame(width: summaryWidth)
+                    Color.clear
+                        .frame(width: summaryWidth, height: summaryHeight)
+                        .overlay(alignment: .bottomLeading) {
+                            TimerSummary(model: model, height: summaryHeight, usesLargeType: usesLargeSummary)
+                                .frame(width: summaryTextWidth)
+                                .opacity(usesLargeSummary ? 0.8 : 1)
+                        }
                 }
-                SVGView(svg: model.scramble?.svg, nextSVG: model.nextScramble?.svg)
+                scrambleDiagram()
                     .frame(width: diagramWidth, height: diagramHeight)
-                    .accessibilityLabel(language.text("当前打乱状态图", "Current scramble diagram"))
-                    .accessibilityIdentifier("timer.scramble-diagram")
             }
             .padding(.bottom, diagramBottomPadding)
             .frame(height: height, alignment: .bottom)
@@ -213,68 +422,175 @@ struct ContentView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(isTiming || diagramHeight == 0)
 
+            if fitsRecentResults && !isTiming {
+                recentResults(columnWidth: recentColumnWidth, rowHeight: recentRowHeight, valueFont: recentValueStyle)
+                    .frame(width: contentWidth)
+                    .allowsHitTesting(false)
+            }
+
             timerDisplay(fontSize: timerFontSize, numberHeight: timerNumberHeight)
-                .frame(width: max(1, min(timerFrame.width, 880) - 48))
+                .frame(width: fitsRecentResults && !isTiming ? timerWidth - sideWidth : timerWidth)
                 .offset(x: timerFrame.midX - frame.midX, y: timerFrame.midY - frame.midY)
         }
         .frame(height: height)
-        .padding(.horizontal, 24)
-        .frame(maxWidth: 880)
+        .padding(.horizontal, horizontalPadding)
+        .frame(maxWidth: maximumWidth)
         .frame(maxWidth: .infinity)
         .appBackground()
     }
 
-    private func timerDisplay(fontSize: CGFloat, numberHeight: CGFloat) -> some View {
-        VStack(spacing: 14) {
-            // Mirror the reserved action row so the digits stay centered.
-            Color.clear.frame(height: compactControlSize)
-            TimelineView(.animation(minimumInterval: 0.03, paused: !isTiming)) { _ in
-                let duration = model.started.map { $0.duration(to: .now) }
-                let solve = model.lastSolve
-                let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? solve?.resultSeconds ?? 0
-                let readout = solve?.penalty == .dnf
-                    ? AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
-                    : timerReadout(seconds, fontSize: fontSize)
-                Text(readout)
-                    .foregroundStyle(model.isReady ? Color.green : Color.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .padding(.horizontal, 12)
-                    .frame(height: numberHeight)
-                    .accessibilityLabel(isTiming ? language.text("停止计时", "Stop timer") : language.text("开始计时", "Start timer"))
-                    .accessibilityValue(solve?.resultText ?? TimerModel.format(seconds))
-                    .accessibilityIdentifier("timer.readout")
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityAction { model.activateAccessibleTimer() }
+    @ViewBuilder
+    private func recentResults(columnWidth: CGFloat, rowHeight: CGFloat, valueFont: Font) -> some View {
+        let average = SolveAverage.ao5
+        let recent = Array(model.groupSolves.sorted(by: Solve.newestFirst).prefix(5 + average.count - 1))
+        if !recent.isEmpty {
+            let singles = recent.prefix(5).map(\.resultText)
+            let averages = singles.indices.prefix(max(0, recent.count - average.count + 1)).map { index in
+                average.summarize(recent[index..<(index + average.count)]).mean.map(TimerModel.format) ?? "DNF"
             }
-            .allowsHitTesting(false)
+            HStack(alignment: .top, spacing: 0) {
+                recentResultColumn("ao5", values: averages, rowHeight: rowHeight, valueFont: valueFont, alignment: .leading)
+                    .frame(width: columnWidth, alignment: .leading)
+                Spacer(minLength: 0)
+                recentResultColumn("single", values: singles, rowHeight: rowHeight, valueFont: valueFont, alignment: .trailing)
+                    .frame(width: columnWidth, alignment: .trailing)
+            }
+        }
+    }
 
-            Group {
-                if !isTiming, let solve = model.lastSolve {
-                    HStack(spacing: 10) {
-                        penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, selected: solve.penalty)
-                        penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, selected: solve.penalty)
-                        Button(role: .destructive) {
-                            model.cancelPress()
-                            solveToDelete = solve
-                        } label: {
-                            Image(systemName: "trash")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 16, height: 16)
-                                .foregroundStyle(Color.secondary)
-                                .modifier(CompactControlTarget(size: compactControlSize))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
-                    }
-                } else {
-                    Color.clear
-                        .allowsHitTesting(false)
+    @ViewBuilder
+    private func recentResultColumn(
+        _ title: String,
+        values: [String],
+        rowHeight: CGFloat,
+        valueFont: Font,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        if !values.isEmpty {
+            VStack(alignment: alignment, spacing: 0) {
+                Text(verbatim: title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.primary.opacity(0.42))
+                    .frame(height: rowHeight)
+                    .offset(y: 4)
+                ForEach(values.indices, id: \.self) { index in
+                    Text(verbatim: values[index])
+                        .font(valueFont.monospacedDigit())
+                        .foregroundStyle(Color.primary.opacity(0.60 - 0.06 * Double(index)))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(height: rowHeight)
+                        .accessibilityIdentifier("timer-recent.\(title).\(index)")
                 }
             }
-            .frame(height: compactControlSize)
         }
+    }
+
+    private func timerDisplay(fontSize: CGFloat, numberHeight: CGFloat) -> some View {
+        VStack(spacing: UIDevice.current.userInterfaceIdiom == .phone ? 8 : 14) {
+            // Mirror the reserved action row so the digits stay centered.
+            Color.clear.frame(height: compactControlSize)
+            timerNumber(fontSize: fontSize, height: numberHeight)
+            postSolveControls
+        }
+    }
+
+    private var timerTouchSurface: some View {
+        TimerTouchSurface(
+            onDown: {
+                guard isTimerActive, !showsProjectList, solveToDelete == nil else { return }
+                if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
+                model.press(.touch, delayTenths: startDelayTenths)
+            },
+            onUp: { model.release(.touch) },
+            onCancel: { model.cancelPress(.touch) }
+        )
+        .allowsHitTesting(isTimerActive && !showsProjectList && solveToDelete == nil)
+        .accessibilityHidden(true)
+    }
+
+    private var phoneControls: some View {
+        HStack(spacing: 0) {
+            projectMenu
+            Spacer(minLength: 12)
+            trailingControls
+        }
+        .frame(height: controlRowHeight)
+        .disabled(model.busy || model.started != nil)
+    }
+
+    private func currentScramble(width: CGFloat, fontScale: CGFloat = 1) -> some View {
+        Group {
+            if model.busy {
+                if showsGenerating {
+                    Text(language.text("生成中…", "Generating…"))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                scrambleFormula(width: width, fontScale: fontScale)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func scrambleDiagram(alignment: SVGView.ContentAlignment = .bottomTrailing) -> some View {
+        SVGView(svg: model.scramble?.svg, nextSVG: model.nextScramble?.svg, alignment: alignment)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(language.text("当前打乱状态图", "Current scramble diagram"))
+            .accessibilityIdentifier("timer.scramble-diagram")
+    }
+
+    private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5) -> some View {
+        TimelineView(.animation(minimumInterval: 0.03, paused: !isTiming)) { _ in
+            let duration = model.started.map { $0.duration(to: .now) }
+            let solve = model.lastSolve
+            let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? solve?.resultSeconds ?? 0
+            let readout = solve?.penalty == .dnf
+                ? AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
+                : timerReadout(seconds, fontSize: fontSize,
+                               showsPlus: UIDevice.current.userInterfaceIdiom == .pad && solve?.penalty == .plusTwo)
+            Text(readout)
+                .contentTransition(.identity)
+                .foregroundStyle(model.isReady ? Color.green : Color.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(minimumScale)
+                .padding(.horizontal, 12)
+                .frame(height: height)
+                .accessibilityLabel(isTiming ? language.text("停止计时", "Stop timer") : language.text("开始计时", "Start timer"))
+                .accessibilityValue(solve?.resultText ?? TimerModel.format(seconds))
+                .accessibilityIdentifier("timer.readout")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { model.activateAccessibleTimer() }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var postSolveControls: some View {
+        Group {
+            if !isTiming, let solve = model.lastSolve {
+                HStack(spacing: 10) {
+                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, selected: solve.penalty)
+                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, selected: solve.penalty)
+                    Button(role: .destructive) {
+                        model.cancelPress()
+                        solveToDelete = solve
+                    } label: {
+                        Image(systemName: "trash")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 16, height: 16)
+                            .foregroundStyle(Color.secondary)
+                            .modifier(CompactControlTarget(size: compactControlSize))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
+                }
+            } else {
+                Color.clear
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(height: compactControlSize)
     }
 
     private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, selected: SolvePenalty?) -> some View {
@@ -294,8 +610,23 @@ struct ContentView: View {
         .accessibilityAddTraits(selected == penalty ? .isSelected : [])
     }
 
-    private func timerReadout(_ seconds: Double, fontSize: CGFloat) -> AttributedString {
-        let parts = TimerModel.displayParts(seconds)
+    private func longestTimerWidth(parts: [String], fontSize: CGFloat) -> CGFloat {
+        let wholeTime = parts.dropLast().joined()
+        let fraction = (parts.last ?? "") + "+"
+        func width(_ text: String, size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+            let font = UIFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+            let rounded = font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor
+            return (text as NSString).size(withAttributes: [.font: UIFont(descriptor: rounded, size: size)]).width
+        }
+        return ceil(width(wholeTime, size: fontSize, weight: .regular)
+            + width(fraction, size: fontSize * 0.55, weight: .bold))
+    }
+
+    private func timerReadout(_ seconds: Double, fontSize: CGFloat, showsPlus: Bool) -> AttributedString {
+        var parts = TimerModel.displayParts(seconds)
+        if showsPlus {
+            parts[parts.count - 1] += "+"
+        }
         var readout = AttributedString()
         for (index, part) in parts.enumerated() {
             let isMilliseconds = index == parts.count - 1
@@ -307,11 +638,17 @@ struct ContentView: View {
         return readout
     }
 
-    private func scrambleFormula(width: CGFloat) -> some View {
+    private func scrambleFormula(width: CGFloat, fontScale: CGFloat) -> some View {
         let algorithm = model.scramble?.algorithm ?? language.text("准备你的下一次挑战", "Ready for your next solve")
         let preservesMegaminxRows = model.mode == .standard && model.event == "minx"
-        var fontSize = preservesMegaminxRows ? standardMegaminxFontSize : scrambleFontSize
-        if preservesMegaminxRows, model.scramble != nil {
+        let alignsMegaminxRows = preservesMegaminxRows && model.scramble != nil
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let padWidthProgress = min(1, max(0, (width - 600) / 600))
+        let preferredSize = isPad
+            ? scrambleFontSize * (1 + 0.6 * padWidthProgress)
+            : (preservesMegaminxRows ? standardMegaminxFontSize : scrambleFontSize)
+        var fontSize = preferredSize * fontScale
+        if alignsMegaminxRows {
             let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             let widestLine = algorithm.components(separatedBy: .newlines).map { line in
                 (line as NSString).size(withAttributes: [.font: font]).width
@@ -325,15 +662,17 @@ struct ContentView: View {
         return ViewThatFits(in: .vertical) {
             ForEach(sizes, id: \.self) { size in
                 Text(algorithm)
-                    .accessibilityIdentifier(model.scramble == nil ? "timer.placeholder" : "timer.scramble")
                     .font(.system(size: size, design: .monospaced))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(alignsMegaminxRows ? .leading : .center)
                     .lineSpacing((preservesMegaminxRows ? 4 : 7) * size / fontSize)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .fixedSize(horizontal: alignsMegaminxRows, vertical: true)
                     .frame(maxWidth: .infinity)
                     .textSelection(.enabled)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(algorithm)
+        .accessibilityIdentifier(model.scramble == nil ? "timer.placeholder" : "timer.scramble")
     }
 
     private var projectMenu: some View {
@@ -383,6 +722,30 @@ struct ContentView: View {
 
     private var trainingButton: some View { TrainingButton(model: model) }
 
+}
+
+private struct LandscapeScrambleLayout: Layout {
+    private let minimumGap: CGFloat = 16
+    private let maximumGap: CGFloat = 48
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let diagram = subviews.last else { return }
+        let diagramSize = diagram.sizeThatFits(.unspecified)
+        let formula = subviews.count > 1 ? subviews.first : nil
+        let formulaProposal = ProposedViewSize(width: bounds.width,
+                                              height: max(0, bounds.height - diagramSize.height - minimumGap))
+        let formulaHeight = formula?.sizeThatFits(formulaProposal).height ?? 0
+        let unusedHeight = max(0, bounds.height - formulaHeight - diagramSize.height)
+        let gap = formula == nil ? 0 : min(maximumGap, max(minimumGap, unusedHeight / 3))
+        let top = bounds.minY + max(0, unusedHeight - gap) / 2
+        formula?.place(at: CGPoint(x: bounds.midX, y: top), anchor: .top, proposal: formulaProposal)
+        diagram.place(at: CGPoint(x: bounds.midX, y: top + formulaHeight + gap),
+                      anchor: .top, proposal: ProposedViewSize(diagramSize))
+    }
 }
 
 private struct CompactControlTarget: ViewModifier {
@@ -455,8 +818,11 @@ private struct TimerTouchSurface: UIViewRepresentable {
 private struct TimerSummary: View {
     let model: TimerModel
     let height: CGFloat
+    var twoColumns = false
+    var usesLargeType = false
     @Environment(\.locale) private var locale
     @ScaledMetric(relativeTo: .footnote) private var preferredFontSize: CGFloat = 13
+    @ScaledMetric(relativeTo: .title3) private var largeFontSize: CGFloat = 20
 
     private static let averageKinds: [SolveAverage] = [.mo3, .ao5, .ao12]
 
@@ -489,11 +855,13 @@ private struct TimerSummary: View {
             }
         }
 
-        let rowHeight = min(20, height / 6)
-        let fontSize = min(preferredFontSize, rowHeight * 0.76)
+        let preferredSize = usesLargeType ? largeFontSize : preferredFontSize
+        let maximumRowHeight = usesLargeType ? preferredSize / 0.76 : 20
+        let rowHeight = min(maximumRowHeight, height / (twoColumns ? 3 : 6))
+        let fontSize = min(preferredSize, rowHeight * 0.76)
         let mean = validCount > 0 ? TimerModel.format(total / Double(validCount)) : "—"
 
-        return VStack(spacing: 0) {
+        let overall = VStack(spacing: 0) {
             row(nil, value: "\(validCount.formatted()) / \(solves.count.formatted())",
                 accessibilityName: language.text("有效成绩次数 / 总次数", "Valid solves / Total attempts"),
                 id: "count", fontSize: fontSize, height: rowHeight)
@@ -501,12 +869,28 @@ private struct TimerSummary: View {
                 id: "mean", fontSize: fontSize, height: rowHeight)
             row("best", value: best?.resultText ?? "—", accessibilityName: language.text("最好单次", "Best single"),
                 id: "best", fontSize: fontSize, height: rowHeight)
+        }
+        let rolling = VStack(spacing: 0) {
             ForEach(Self.averageKinds, id: \.self) { kind in
                 let value = recent.count >= kind.count
                     ? kind.summarize(recent.prefix(kind.count)).mean.map(TimerModel.format) ?? "DNF"
                     : "—"
                 row(kind.title, value: value, accessibilityName: kind.title,
                     id: kind.title, fontSize: fontSize, height: rowHeight)
+            }
+        }
+
+        return Group {
+            if twoColumns {
+                HStack(spacing: 12) {
+                    overall
+                    rolling
+                }
+            } else {
+                VStack(spacing: 0) {
+                    overall
+                    rolling
+                }
             }
         }
     }
@@ -533,14 +917,19 @@ private struct TimerSummary: View {
 }
 
 struct SVGView: UIViewRepresentable {
+    enum ContentAlignment: String {
+        case bottomTrailing = "right bottom"
+        case center
+    }
+
     let svg: String?
     let nextSVG: String?
-    var centersContent = false
+    var alignment: ContentAlignment = .bottomTrailing
 
     func makeUIView(context: Context) -> UIView { UIView() }
 
     func updateUIView(_ view: UIView, context: Context) {
-        context.coordinator.setCentersContent(centersContent)
+        context.coordinator.setAlignment(alignment)
         context.coordinator.update(in: view, svg: svg, nextSVG: nextSVG)
     }
 
@@ -548,11 +937,11 @@ struct SVGView: UIViewRepresentable {
 
     // Keep the visible diagram intact while the other WebView loads its replacement.
     final class Coordinator: NSObject, WKNavigationDelegate {
-        private var centersContent = false
+        private var alignment = ContentAlignment.bottomTrailing
 
-        func setCentersContent(_ value: Bool) {
-            guard centersContent != value else { return }
-            centersContent = value
+        func setAlignment(_ value: ContentAlignment) {
+            guard alignment != value else { return }
+            alignment = value
             slots.forEach { $0.svg = nil }
         }
         @MainActor private final class Slot {
@@ -614,7 +1003,7 @@ struct SVGView: UIViewRepresentable {
                 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
                 <style>
                   html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-                  img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: \(centersContent ? "center" : "right bottom"); }
+                  img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: \(alignment.rawValue); }
                 </style>
                 <img src="data:image/svg+xml;base64,\(encodedSVG)" alt="">
                 """, baseURL: nil)
@@ -662,7 +1051,8 @@ struct EventPicker: View {
                 }
             }
             .listStyle(.plain)
-            .frame(width: 300, height: 400)
+            .frame(width: 300)
+            .frame(idealHeight: 400, maxHeight: 400)
             .presentationCompactAdaptation(.popover)
         }
     }

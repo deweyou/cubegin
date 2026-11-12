@@ -1,49 +1,70 @@
 import Charts
 import SwiftUI
 
+enum ResultsChartMode: CaseIterable, Sendable {
+    case trend, distribution
+
+    var icon: String {
+        switch self {
+        case .trend: "chart.xyaxis.line"
+        case .distribution: "chart.bar.xaxis"
+        }
+    }
+
+    func title(_ language: AppLanguage) -> String {
+        switch self {
+        case .trend: language.text("趋势", "Trend")
+        case .distribution: language.text("时间分布", "Time distribution")
+        }
+    }
+}
+
+struct StatisticsCardSection<Card: View>: View {
+    let title: String
+    @ViewBuilder var card: Card
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(Color(uiColor: .label))
+                .accessibilityAddTraits(.isHeader)
+                .padding(.leading, 16)
+            card
+        }
+        // The enclosing Form supplies the other 12 pt of section spacing.
+        .padding(.top, 8)
+    }
+}
+
 struct ResultsCharts: View {
     let solves: [Solve]
 
     @Environment(\.locale) private var locale
-    @State private var mode = Mode.trend
+    @State private var mode = ResultsChartMode.trend
     @State private var range = AttemptRange.recent100
+    @State private var selectedDistributionBin: Int?
     @State private var hiddenAverages: Set<SolveAverage> = []
+    @ScaledMetric(relativeTo: .caption) private var minimumChartHeight = 225.0
+    @State private var chartWidth: CGFloat = 0
     @State private var plotColumns = 320
     @State private var rendered: (Request, ChartData)?
     @State private var cachedMeans: [SolveAverage: [Double?]] = [:]
     @State private var ordered: (source: [Solve], history: OrderedHistory)?
     private var language: AppLanguage { locale.appLanguage }
 
-    private enum Mode: CaseIterable, Sendable {
-        case trend, distribution
-
-        var icon: String {
-            switch self {
-            case .trend: "chart.xyaxis.line"
-            case .distribution: "chart.bar.xaxis"
-            }
-        }
-
-        func title(_ language: AppLanguage) -> String {
-            switch self {
-            case .trend: language.text("趋势", "Trend")
-            case .distribution: language.text("时间分布", "Time distribution")
-            }
-        }
-    }
-
     private enum AttemptRange: Int, CaseIterable, Sendable {
         case recent5 = 5, recent12 = 12, recent50 = 50, recent100 = 100
         case recent500 = 500, recent1000 = 1000, recent10000 = 10000, all = 0
 
         func title(_ language: AppLanguage) -> String {
-            self == .all ? language.text("全部", "All") : language.text("最近 \(rawValue) 次", "Last \(rawValue)")
+            self == .all ? language.text("全部成绩", "All solves") : language.text("最近 \(rawValue) 次", "Last \(rawValue)")
         }
     }
 
     private struct Request: Equatable, Sendable {
         let solves: [Solve]
-        let mode: Mode
+        let mode: ResultsChartMode
         let range: AttemptRange
         let averages: [SolveAverage]
         let columns: Int
@@ -67,57 +88,82 @@ struct ResultsCharts: View {
         let request = Request(solves: solves, mode: mode, range: range,
                               averages: mode == .trend ? visibleAverages : [],
                               columns: mode == .trend ? plotColumns : 0)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                controls(rangeCounts: rangeCounts)
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(mode.title(language)).font(.headline)
-                    if let rendered, rendered.0 == request {
-                        switch rendered.1 {
-                        case let .trend(data):
-                            TrendChart(data: data)
-                                .id(request.range)
-                        case .distribution(let data):
-                            distribution(data)
-                        }
-                    } else {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 300)
-                    }
-                }
-                .padding(16)
-                .background(.background, in: RoundedRectangle(cornerRadius: 24))
-                .onGeometryChange(for: Int.self) { geometry in
-                    // Snap to width bands so resizing doesn't launch a task for each point.
-                    max(128, min(768, Int(geometry.size.width - 60) / 32 * 32))
-                } action: { plotColumns = $0 }
-            }
-            .frame(maxWidth: 832)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
+        StatisticsCardSection(title: mode.title(language)) {
+            chartCard(request, rangeCounts: rangeCounts)
+        }
+        .onChange(of: request) { _, _ in
+            selectedDistributionBin = nil
         }
         .task(id: request) {
             await load(request)
         }
     }
 
-    private func controls(rangeCounts: [AttemptRange: Int]?) -> some View {
-        let activeRange = rangeCounts?[range] == nil ? AttemptRange.all : range
-        return HStack(spacing: 12) {
-            Picker(language.text("图表类型", "Chart type"), selection: $mode) {
-                ForEach(Mode.allCases, id: \.self) { item in
-                    Image(systemName: item.icon)
-                        .accessibilityLabel(item.title(language))
-                        .tag(item)
+    private func chartControls(rangeCounts: [AttemptRange: Int]?) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                modePicker
+                Spacer(minLength: 0)
+                filters(rangeCounts: rangeCounts).fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                modePicker
+                filters(rangeCounts: rangeCounts)
+            }
+        }
+        .frame(minHeight: 44)
+    }
+
+    private func chartCard(_ request: Request, rangeCounts: [AttemptRange: Int]?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            chartControls(rangeCounts: rangeCounts)
+            Group {
+                if let rendered, rendered.0 == request {
+                    switch rendered.1 {
+                    case let .trend(data):
+                        TrendChart(data: data)
+                            .id(request.range)
+                    case .distribution(let data):
+                        distribution(data)
+                    }
+                } else {
+                    ProgressView()
                 }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 96)
-            .accessibilityIdentifier("charts.mode")
+            .frame(maxWidth: .infinity)
+            .frame(height: max(minimumChartHeight, min(340, chartWidth * 0.27)))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 24))
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
+            chartWidth = width
+            // Snap to width bands so resizing doesn't launch a task for each point.
+            plotColumns = max(128, min(768, Int(width - 60) / 32 * 32))
+        }
+    }
 
-            Spacer(minLength: 0)
+    private var modePicker: some View {
+        Picker(language.text("图表类型", "Chart type"), selection: $mode) {
+            ForEach(ResultsChartMode.allCases, id: \.self) { item in
+                Image(systemName: item.icon)
+                    .accessibilityLabel(item.title(language))
+                    .tag(item)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 96)
+        .accessibilityIdentifier("charts.mode")
+    }
 
+    private func filters(rangeCounts: [AttemptRange: Int]?) -> some View {
+        let activeRange = rangeCounts?[range] == nil ? AttemptRange.all : range
+        let averagesTitle = language.text("平均线", "Averages")
+        return HStack(spacing: 12) {
+            if mode == .distribution && !averages.isEmpty {
+                // Preserve the filter row width with the range aligned to the trailing edge.
+                menuLabel(averagesTitle).hidden()
+            }
             Menu {
                 Picker(language.text("范围", "Range"), selection: Binding(get: { activeRange }, set: { range = $0 })) {
                     ForEach(AttemptRange.allCases.filter { $0 == .all || rangeCounts?[$0] != nil }, id: \.self) { item in
@@ -133,7 +179,6 @@ struct ResultsCharts: View {
 
             if mode == .trend && !averages.isEmpty {
                 let showsAllAverages = visibleAverages.count == averages.count
-                let averagesTitle = language.text("平均线", "Averages")
                 Menu {
                     Button(showsAllAverages
                            ? language.text("全部隐藏", "Hide all")
@@ -150,7 +195,7 @@ struct ResultsCharts: View {
                         ))
                     }
                 } label: {
-                    menuLabel(showsAllAverages ? language.text("全部", "All") : averagesTitle)
+                    menuLabel(averagesTitle)
                 }
                 .tint(.primary)
                 .accessibilityLabel(averagesTitle)
@@ -171,40 +216,74 @@ struct ResultsCharts: View {
         .foregroundStyle(.primary)
     }
 
+    @ViewBuilder
     private func distribution(_ data: DistributionData) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if data.bins.isEmpty {
-                Text(language.text("暂无有效成绩", "No valid times"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 160)
-            }
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
-                ForEach(data.bins) { bin in
-                    let label = bin.label(locale)
-                    GridRow {
-                        Text(label)
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(bin.count == 0 ? .secondary : .primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        GeometryReader { geometry in
-                            if bin.count > 0 {
-                                Capsule()
-                                    .fill(Color.accentColor.opacity(bin.count == data.peak ? 0.9 : 0.34))
-                                    .frame(width: geometry.size.width * CGFloat(bin.count) / CGFloat(data.peak))
-                            }
+        if data.bins.isEmpty {
+            Text(language.text("暂无有效成绩", "No valid times"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        } else {
+            let interval = language.text("用时区间", "Time interval")
+            let count = language.text("次数", "Solves")
+            let tickStep = max(1, Int(ceil(Double(data.peak) / 4)))
+            let upperBound = max(2, (data.peak + tickStep - 1) / tickStep * tickStep)
+            let barWidth = min(56, max(3, (chartWidth - 64) / CGFloat(data.bins.count) * 0.5))
+            let highlightedID = selectedDistributionBin ?? data.bins.first { $0.count == data.peak }?.id
+            let headroom = max(1, Int(ceil(Double(upperBound) * 0.08)))
+            let labelBudget = max(2, Int((chartWidth - 60) / 100))
+            let labelStep = max(1, (data.bins.count + labelBudget - 1) / labelBudget)
+            let labels = data.bins.map { $0.label(locale) }
+            let ticks = Array(stride(from: 0, to: labels.count, by: labelStep)).map { labels[$0] }
+
+            Chart(data.bins) { bin in
+                let isHighlighted = bin.id == highlightedID
+                BarMark(x: .value(interval, bin.label(locale)), y: .value(count, bin.count),
+                        width: .fixed(barWidth))
+                    .cornerRadius(4)
+                    .foregroundStyle(Color.accentColor.opacity(isHighlighted ? 0.72 : 0.27))
+                    .annotation(position: .top, spacing: 4) {
+                        if isHighlighted {
+                            Text(bin.count.formatted())
+                                .font(.caption2.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                                .accessibilityHidden(true)
                         }
-                        .frame(height: 10)
-                        Text(bin.count.formatted())
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(bin.count == 0 ? .secondary : .primary)
-                            .gridColumnAlignment(.trailing)
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(label)
-                    .accessibilityValue(language.text("\(bin.count) 次", "\(bin.count) solves"))
+            }
+            .chartXScale(domain: labels)
+            .chartYScale(domain: 0...(upperBound + headroom))
+            .chartXAxis {
+                AxisMarks(values: ticks) { _ in
+                    AxisValueLabel()
+                        .font(.caption2.monospacedDigit())
                 }
             }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: Array(stride(from: 0, through: upperBound, by: tickStep))) { _ in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(Color.secondary.opacity(0.14))
+                    AxisValueLabel()
+                        .font(.caption2.monospacedDigit())
+                }
+            }
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    if let plotFrame = proxy.plotFrame {
+                        let plot = geometry[plotFrame]
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+                                guard plot.contains(tap.location),
+                                      let label = proxy.value(atX: tap.location.x - plot.minX, as: String.self),
+                                      let index = labels.firstIndex(of: label) else { return }
+                                selectedDistributionBin = data.bins[index].id
+                            })
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+            .accessibilityIdentifier("charts.distribution")
         }
     }
 
@@ -292,13 +371,12 @@ private struct TrendChart: View {
     let data: TrendData
 
     @Environment(\.locale) private var locale
-    @State private var selection: Int?
     private var language: AppLanguage { locale.appLanguage }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             plot
-                .frame(height: 290)
+                .frame(maxHeight: .infinity)
                 .accessibilityLabel(language.text("成绩趋势", "Solve trend"))
             legend
         }
@@ -357,18 +435,7 @@ private struct TrendChart: View {
             ForEach(data.averages, id: \.kind) { average in
                 series(average.series, name: average.kind.title, color: averageColor(average.kind), width: 1.5)
             }
-            if let selection, (data.first...data.last).contains(selection) {
-                RuleMark(x: .value(language.text("序号", "Attempt"), Double(selection)))
-                    .foregroundStyle(.secondary.opacity(0.55))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            }
         }
-        .chartXSelection(value: Binding<Double?>(
-            get: { selection.map(Double.init) },
-            set: { value in
-                if let value { selection = Int(value.rounded()) }
-            }
-        ))
         .chartXScale(domain: Double(data.first) - 0.5...Double(data.last) + 0.5)
         .chartYScale(domain: data.scale.domain)
         .chartXAxis {
@@ -639,6 +706,8 @@ private struct DistributionData: Sendable {
 
         func label(_ locale: Locale) -> String {
             switch (lower, upper) {
+            case let (lower?, upper?) where upper < 60:
+                "\(chartTime(lower, locale: locale).dropLast())–\(chartTime(upper, locale: locale))"
             case let (lower?, upper?): "\(chartTime(lower, locale: locale))–\(chartTime(upper, locale: locale))"
             case let (nil, upper?): "< \(chartTime(upper, locale: locale))"
             case let (lower?, nil): "≥ \(chartTime(lower, locale: locale))"

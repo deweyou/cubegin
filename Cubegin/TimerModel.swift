@@ -105,6 +105,16 @@ enum TimerInput { case touch, keyboard }
     private let now: () -> ContinuousClock.Instant
     private let generateScramble: @Sendable (String) async throws -> Scramble
 
+#if DEBUG
+    private static let isLongSolveUITest: Bool = {
+        let environment = ProcessInfo.processInfo.environment
+        guard let session = environment["CUBEGIN_UI_TEST_SESSION"], UUID(uuidString: session) != nil else {
+            return false
+        }
+        return environment["CUBEGIN_UI_TEST_LONG_SOLVE"] == "1"
+    }()
+#endif
+
     init(
         storage: URL = URL.documentsDirectory.appending(path: "solves.json"),
         defaults: UserDefaults = .standard,
@@ -127,6 +137,14 @@ enum TimerInput { case touch, keyboard }
             }
         }
         catch { if FileManager.default.fileExists(atPath: storage.path) { self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription } }
+#if DEBUG
+        if Self.isLongSolveUITest, solves.isEmpty {
+            solves = (0..<12).reversed().map { index in
+                Solve(seconds: 35_998, event: "333", scramble: "R U",
+                      date: Date(timeIntervalSinceReferenceDate: Double(index)), penalty: .plusTwo)
+            }
+        }
+#endif
         let events = Set((ScrambleCatalog.standard + ScrambleCatalog.training).map(\.id) + solves.map(\.event))
         for event in events.sorted() where !groups.contains(where: { $0.event == event }) {
             groups.append(SolveGroup(id: SolveGroup.initialID(for: event), event: event, name: "", isDefault: true))
@@ -282,7 +300,11 @@ enum TimerInput { case touch, keyboard }
 
     private func start(at instant: ContinuousClock.Instant) {
         lastSolveID = nil
+#if DEBUG
+        started = Self.isLongSolveUITest ? instant.advanced(by: .seconds(-36_000)) : instant
+#else
         started = instant
+#endif
         guard prefetchTask == nil else { return }
         let event = self.event
         prefetchTask = Task { [weak self, generateScramble] in
