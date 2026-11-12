@@ -184,6 +184,10 @@ final class PadChartTests: XCTestCase {
         XCTAssertTrue(dailyPractice.isHittable)
         XCTAssertLessThan(plot.frame.maxY, dailyPractice.frame.minY)
         attachScreenshot("iPad Statistics Daily Practice")
+        app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.switches["settings.results.includeDNFInWorst"].isHittable)
+        attachScreenshot("iPad Settings")
         XCUIDevice.shared.orientation = .landscapeLeft
     }
 

@@ -31,7 +31,7 @@ final class SolveFlowTests: XCTestCase {
         recordPortraitPage("Stopped timer", frames: [timer.frame, actions.frame])
 
         app.tabBars.buttons["Settings"].tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
         let worst = app.switches["settings.results.includeDNFInWorst"]
         XCTAssertTrue(worst.waitForExistence(timeout: 5))
         recordPortraitPage("Settings", frames: [worst.frame])
@@ -175,6 +175,144 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testDuoCoverTabsAlignWithUpperLeftCamera() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en"]
+        app.launchEnvironment["CUBEGIN_UI_TEST_DUO_TAB_SIDE"] = "left"
+        app.launch()
+        try XCTSkipUnless(app.frame.width > app.frame.height && app.frame.width < 750,
+                          "Run with the Duo cover display active in landscape.")
+
+        let home = app.buttons["side-nav.home"]
+        let results = app.buttons["side-nav.results"]
+        let settings = app.buttons["side-nav.settings"]
+        XCTAssertTrue(home.waitForExistence(timeout: 10))
+        let leftTabs = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            home.frame.midX < app.frame.midX
+        }, object: home)
+        XCTAssertEqual(XCTWaiter.wait(for: [leftTabs], timeout: 5), .completed)
+        XCTAssertEqual(home.frame.midX - app.frame.minX, 48, accuracy: 3)
+        let event = app.buttons["Event"]
+        let timerHeader = event.frame
+        XCTAssertGreaterThan(timerHeader.minX, home.frame.maxX)
+        captureLandscapePage("Duo cover", cutout: "left")
+
+        results.tap()
+        let group = app.buttons["Group"]
+        XCTAssertTrue(group.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(group.frame.minX, results.frame.maxX)
+        let resultsHeader = event.frame
+        settings.tap()
+        let title = app.staticTexts["settings.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.frame.minX, resultsHeader.minX, accuracy: 2)
+        XCTAssertEqual(title.frame.midY, resultsHeader.midY, accuracy: 2)
+        XCTAssertEqual(title.frame.midY, timerHeader.midY, accuracy: 2)
+        captureLandscapePage("Duo settings header", cutout: "left")
+        home.tap()
+        XCTAssertTrue(app.buttons["Event"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDuoInnerRightStatusColumnTabsAreUsable() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launch()
+        try XCTSkipUnless(app.frame.width >= 750 && app.frame.width > app.frame.height,
+                          "Run with the Duo inner display active in landscape.")
+
+        let results = app.buttons["side-nav.results"]
+        XCTAssertTrue(results.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(results.frame.midX - app.frame.minX, app.frame.width * 0.9)
+        XCTAssertTrue(results.isHittable)
+        results.tap()
+        XCTAssertTrue(app.buttons["solve-row-12"].waitForExistence(timeout: 5))
+        app.buttons["side-nav.settings"].tap()
+        XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDuoCoverFormsLeaveRoomForRightTabs() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeRight
+        defer { XCUIDevice.shared.orientation = .portrait }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launchEnvironment["CUBEGIN_UI_TEST_DUO_TAB_SIDE"] = "right"
+        app.launch()
+        try XCTSkipUnless(app.frame.width > app.frame.height && app.frame.width < 750,
+                          "Run with the Duo cover display active in landscape.")
+
+        let settings = app.buttons["side-nav.settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        let rightTabs = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            settings.frame.midX > app.frame.midX
+        }, object: settings)
+        XCTAssertEqual(XCTWaiter.wait(for: [rightTabs], timeout: 5), .completed)
+        let event = app.buttons["Event"]
+        let training = app.buttons["Training"]
+        XCTAssertTrue(event.waitForExistence(timeout: 5))
+        let timerEventFrame = event.frame
+        let timerTrainingFrame = training.frame
+        captureLandscapePage("Duo timer header", cutout: "right")
+        app.buttons["side-nav.results"].tap()
+        let picker = app.buttons["results.view"]
+        let group = app.buttons["Group"]
+        let firstRow = app.buttons["solve-row-12"]
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
+        XCTAssertEqual(event.frame.minX, timerEventFrame.minX, accuracy: 2)
+        XCTAssertEqual(event.frame.midY, timerEventFrame.midY, accuracy: 2)
+        XCTAssertEqual(training.frame.maxX, timerTrainingFrame.maxX + 40, accuracy: 2) // Sparkles slot and spacing.
+        XCTAssertEqual(training.frame.midY, timerTrainingFrame.midY, accuracy: 2)
+        let groupFrame = group.frame
+        let pickerFrame = picker.frame
+        let firstRowY = firstRow.frame.midY
+        let listDrag = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+        listDrag.press(forDuration: 0.05, thenDragTo: listDrag.withOffset(CGVector(dx: 0, dy: -72)),
+                       withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(!firstRow.exists || firstRow.frame.midY < firstRowY)
+        XCTAssertEqual(group.frame, groupFrame)
+        XCTAssertEqual(picker.frame, pickerFrame)
+        captureLandscapePage("Duo results scrolled", cutout: "right")
+        picker.tap()
+        app.buttons["Statistics"].tap()
+        let overview = app.staticTexts["Valid / Total"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 10))
+        captureLandscapePage("Duo statistics", cutout: "right")
+        let initialOverviewY = overview.frame.midY
+        app.swipeUp()
+        XCTAssertTrue(!overview.exists || overview.frame.midY < initialOverviewY)
+        captureLandscapePage("Duo statistics scrolled", cutout: "right")
+
+        settings.tap()
+        let dnf = app.switches["settings.results.includeDNFInWorst"]
+        XCTAssertTrue(dnf.waitForExistence(timeout: 5))
+        XCTAssertLessThan(dnf.frame.maxX, settings.frame.minX)
+        captureLandscapePage("Duo settings", cutout: "right")
+        let settingsTitle = app.staticTexts["settings.title"]
+        let titleFrame = settingsTitle.frame
+        let toggleY = dnf.frame.midY
+        app.swipeUp()
+        XCTAssertTrue(!dnf.exists || dnf.frame.midY < toggleY)
+        XCTAssertEqual(settingsTitle.frame, titleFrame)
+        captureLandscapePage("Duo settings scrolled", cutout: "right")
+    }
+
+    @MainActor
     func testLandscapePageEdgesAlignInBothDirections() {
         continueAfterFailure = false
         defer { XCUIDevice.shared.orientation = .portrait }
@@ -233,7 +371,7 @@ final class SolveFlowTests: XCTestCase {
             captureLandscapePage("Statistics", cutout: cutout)
 
             settings.tap()
-            XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
             XCTAssertTrue(app.switches["settings.results.includeDNFInWorst"].exists)
             captureLandscapePage("Settings", cutout: cutout)
             app.terminate()
@@ -405,7 +543,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(time.exists)
 
         settings.tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
         XCUIDevice.shared.orientation = .landscapeRight
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
@@ -416,14 +554,28 @@ final class SolveFlowTests: XCTestCase {
 
     @MainActor
     func testLandscapeLongestTimerAndSummary() {
+        verifyLandscapeLongestTimerAndSummary(orientation: .landscapeRight, railOnLeft: false)
+    }
+
+    @MainActor
+    func testDuoCoverLongestTimerWithLeftTabs() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
+        verifyLandscapeLongestTimerAndSummary(orientation: .landscapeLeft, railOnLeft: true)
+    }
+
+    @MainActor
+    private func verifyLandscapeLongestTimerAndSummary(orientation: UIDeviceOrientation, railOnLeft: Bool) {
         continueAfterFailure = false
-        XCUIDevice.shared.orientation = .landscapeRight
+        XCUIDevice.shared.orientation = orientation
         defer { XCUIDevice.shared.orientation = .portrait }
 
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
+        if railOnLeft {
+            app.launchEnvironment["CUBEGIN_UI_TEST_DUO_TAB_SIDE"] = "left"
+        }
         app.launch()
 
         XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 20))
@@ -453,12 +605,17 @@ final class SolveFlowTests: XCTestCase {
         }
         XCTAssertEqual(summary["timer-summary.best"].value as? String, "9:59:59.999+")
         XCTAssertEqual(summary["timer-summary.count"].value as? String, "13 / 13")
-        XCTAssertLessThan(timer.frame.maxX, app.buttons["side-nav.settings"].frame.minX)
-        XCTAssertLessThan(plusTwo.frame.maxY, summary["timer-summary.count"].frame.minY)
         let stopped = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         stopped.name = "long-timer-stopped"
         stopped.lifetime = .keepAlways
         add(stopped)
+        let rail = app.buttons["side-nav.settings"]
+        if railOnLeft {
+            XCTAssertLessThan(rail.frame.maxX, timer.frame.minX)
+        } else {
+            XCTAssertLessThan(timer.frame.maxX, rail.frame.minX)
+        }
+        XCTAssertLessThan(plusTwo.frame.maxY, summary["timer-summary.count"].frame.minY)
     }
 
     @MainActor

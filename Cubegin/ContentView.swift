@@ -4,8 +4,11 @@ import WebKit
 struct ContentView: View {
     @Bindable var model: TimerModel
     let isTimerActive: Bool
+    var leadingNavigationWidth: CGFloat = 0
     var trailingNavigationWidth: CGFloat = 0
-    var trailingNavigationInset: CGFloat = 0
+    var navigationInset: CGFloat = 0
+    var navigationOnLeft = false
+    var isDuoInnerDisplay = false
     var landscapeContentInsets: LandscapeContentInsets?
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @FocusState private var hasTimerKeyboardFocus: Bool
@@ -132,8 +135,18 @@ struct ContentView: View {
             } else {
                 frame
             }
+            let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
             Group {
-                if isPhone && isLandscape {
+                if isDuoInnerDisplay, !isLandscape, #available(iOS 27.1, *),
+                   let fold = geometry.reservedRegions(kind: .division).first?.frame,
+                   fold.width > fold.height, fold.minY > 0, fold.maxY < geometry.size.height {
+                    foldedPortraitPage(size: geometry.size, fold: fold)
+                } else if usesDuoWideLayout {
+                    page(frame: frame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
+                         timerFrame: timerFrame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
+                         diagramBottomPadding: diagramBottomPadding, usesDuoWideLayout: true)
+                        .padding(.trailing, trailingNavigationWidth)
+                } else if isPhone && isLandscape {
                     let screenCenter = CGPoint(
                         x: frame.midX + (insets.trailing - insets.leading) / 2,
                         y: frame.midY + (insets.bottom - insets.top) / 2
@@ -149,18 +162,71 @@ struct ContentView: View {
         }
     }
 
+    private func foldedPortraitPage(size: CGSize, fold: CGRect) -> some View {
+        let padding: CGFloat = 16
+        let foldClearance: CGFloat = 8
+        let width = max(1, size.width - 2 * padding)
+        let upperHeight = max(0, fold.minY - 2 * foldClearance)
+        let lowerHeight = max(0, size.height - fold.maxY - foldClearance)
+        let formulaHeight = upperHeight * 0.48
+        let footerHeight = max(0, upperHeight - formulaHeight - 8)
+        let summaryWidth = min(144, width * 0.38)
+        let diagramWidth = max(0, width - summaryWidth - 12)
+        let timerAreaHeight = max(0, lowerHeight - controlRowHeight)
+        let timerFontSize = max(1, min(90, timerAreaHeight * 0.36))
+
+        return VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                currentScramble(width: width)
+                    .frame(height: formulaHeight)
+                HStack(alignment: .bottom, spacing: 12) {
+                    TimerSummary(model: model, height: footerHeight)
+                        .frame(width: summaryWidth)
+                    scrambleDiagram()
+                        .frame(width: diagramWidth * 0.8, height: min(140, footerHeight))
+                        .frame(width: diagramWidth, alignment: .trailing)
+                }
+                .frame(height: footerHeight, alignment: .bottom)
+            }
+            .frame(width: width, height: upperHeight)
+            .opacity(isTiming ? 0 : 1)
+            .accessibilityHidden(isTiming)
+            .padding(.top, foldClearance)
+
+            Color.clear.frame(height: fold.height + 2 * foldClearance)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 0) {
+                phoneControls
+                    .opacity(isTiming ? 0 : 1)
+                    .accessibilityHidden(isTiming)
+                ZStack {
+                    timerTouchSurface
+                    timerDisplay(fontSize: timerFontSize, numberHeight: timerFontSize * 1.2)
+                }
+                .frame(height: timerAreaHeight)
+            }
+            .frame(width: width, height: lowerHeight)
+        }
+        .frame(width: size.width, height: size.height, alignment: .top)
+        .appBackground()
+    }
+
     private func landscapePage(frame: CGRect, timerFrame: CGRect, screenCenter: CGPoint) -> some View {
         let edgePadding: CGFloat = 8
         let columnSpacing: CGFloat = 16
         let rowSpacing: CGFloat = 8
-        let controlsHeight = edgePadding + controlRowHeight
+        let headerTop = edgePadding + (landscapeContentInsets?.headerTopOffset ?? 0)
+        let controlsHeight = headerTop + controlRowHeight
         let columnsTop = controlsHeight + rowSpacing
-        let layoutWidth = min(timerFrame.width - trailingNavigationWidth, 880)
-        let centeredInset = (timerFrame.width - trailingNavigationWidth - layoutWidth) / 2
+        let availableWidth = timerFrame.width - leadingNavigationWidth - trailingNavigationWidth
+        let layoutWidth = min(availableWidth, 880)
+        let centeredInset = (availableWidth - layoutWidth) / 2
+        let columnShift = (trailingNavigationWidth - leadingNavigationWidth) / 2
         let headerLeadingInset = (landscapeContentInsets?.leading ?? edgePadding) + centeredInset
         let headerTrailingInset = (landscapeContentInsets?.trailing ?? trailingNavigationWidth + 12) + centeredInset
         let columnsWidth = max(2, layoutWidth - 2 * edgePadding - columnSpacing)
-        let scrambleWidth = columnsWidth * 0.55
+        let scrambleWidth = columnsWidth * (landscapeContentInsets?.scrambleColumnFraction ?? 0.55)
         let timerWidth = columnsWidth - scrambleWidth
         let columnsHeight = max(1, timerFrame.height - columnsTop - Self.landscapeBottomInset)
         let diagramWidth = scrambleWidth * 0.72
@@ -171,8 +237,8 @@ struct ContentView: View {
         let numberHeight = max(1, min(132, columnsHeight - belowReadoutHeight))
         let summaryOffset = max(0, columnsHeight - numberHeight - belowReadoutHeight) / 2
         let touchTop = isTiming ? 0 : controlsHeight
-        let touchOverhang = isTiming ? max(0, -trailingNavigationInset) : 0
-        let columnCenterX = timerFrame.midX + (scrambleWidth + columnSpacing - trailingNavigationWidth) / 2
+        let touchOverhang = isTiming ? max(0, -navigationInset) : 0
+        let columnCenterX = timerFrame.midX + (scrambleWidth + columnSpacing) / 2 - columnShift
         let idleReadoutCenterY = timerFrame.minY + columnsTop + (columnsHeight - belowReadoutHeight) / 2
         let readoutShift = centersLandscapeReadout && !reduceMotion
             ? CGSize(width: screenCenter.x - columnCenterX, height: screenCenter.y - idleReadoutCenterY)
@@ -183,12 +249,12 @@ struct ContentView: View {
             timerTouchSurface
                 .frame(width: frame.width + touchOverhang,
                        height: max(0, frame.height - touchTop))
-                .frame(width: frame.width, alignment: .leading)
+                .frame(width: frame.width, alignment: navigationOnLeft ? .trailing : .leading)
                 .padding(.top, touchTop)
 
             if !isTiming {
                 phoneControls
-                    .padding(.top, edgePadding)
+                    .padding(.top, headerTop)
                     .frame(width: frame.width - headerLeadingInset - headerTrailingInset)
                     .offset(x: (headerLeadingInset - headerTrailingInset) / 2)
             }
@@ -235,7 +301,7 @@ struct ContentView: View {
                 .zIndex(1)
             }
             .padding(.top, columnsTop)
-            .offset(x: timerFrame.midX - frame.midX - trailingNavigationWidth / 2,
+            .offset(x: timerFrame.midX - frame.midX - columnShift,
                     y: timerFrame.minY - frame.minY)
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
@@ -245,7 +311,8 @@ struct ContentView: View {
         .appBackground()
     }
 
-    private func page(frame: CGRect, timerFrame: CGRect, diagramBottomPadding: CGFloat) -> some View {
+    private func page(frame: CGRect, timerFrame: CGRect, diagramBottomPadding: CGFloat,
+                      usesDuoWideLayout: Bool = false) -> some View {
         let width = frame.width
         let height = frame.height
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
@@ -256,6 +323,8 @@ struct ContentView: View {
         if isPad {
             let limit: CGFloat = timerFrame.width > timerFrame.height ? 140 : 120
             timerFontSize = max(1, min(limit, (timerFrame.width - 2 * horizontalPadding) * 0.16, timerFrame.height * 0.18))
+        } else if usesDuoWideLayout {
+            timerFontSize = 90
         } else {
             timerFontSize = timerFrame.width > 600 ? 110 : 76
         }
@@ -265,8 +334,11 @@ struct ContentView: View {
         let topClearance: CGFloat = 8
         let controlSpacing: CGFloat = showsControlsInPage ? 8 : 0
         let timerTouchTop = isTiming ? 0 : topClearance + controlsHeight + controlSpacing
+        let recentRowHeight: CGFloat = 26
+        let recentHalfHeight = 3 * recentRowHeight
+        let formulaClearance = usesDuoWideLayout ? max(timerNumberHeight / 2, recentHalfHeight) : timerNumberHeight / 2
         let formulaHeight = max(1, min(height * 0.3,
-            height / 2 - timerNumberHeight / 2 - controlsHeight - controlSpacing - topClearance - 8))
+            height / 2 - formulaClearance - controlsHeight - controlSpacing - topClearance - 8))
         let footerSpacing: CGFloat = 12
         let footerWidth = max(0, contentWidth - footerSpacing)
         let summaryWidth = min(144, footerWidth * 0.46)
@@ -283,16 +355,16 @@ struct ContentView: View {
         let timerWidth = max(1, min(timerFrame.width, maximumWidth) - 2 * horizontalPadding)
         let longestTimeParts = TimerModel.displayParts(.infinity)
         let longestSingle = longestTimeParts.joined() + "+"
+        let recentValueStyle: Font = usesDuoWideLayout ? .subheadline : .body
+        let recentValueTextStyle: UIFont.TextStyle = usesDuoWideLayout ? .subheadline : .body
         let recentColumnWidth = ceil((longestSingle as NSString).size(withAttributes: [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize,
+            .font: UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: recentValueTextStyle).pointSize,
                                                     weight: .regular)
         ]).width)
         let recentColumnGap: CGFloat = 24
         let sideWidth = 2 * (recentColumnWidth + recentColumnGap)
         let timerHorizontalPadding: CGFloat = 12
-        let recentRowHeight: CGFloat = 26
-        let recentHalfHeight = 3 * recentRowHeight
-        let fitsRecentResults = isPad
+        let fitsRecentResults = (isPad || usesDuoWideLayout)
             && timerWidth - sideWidth >= longestTimerWidth(parts: longestTimeParts, fontSize: timerFontSize)
                 + 2 * timerHorizontalPadding
             && height / 2 - recentHalfHeight >= topClearance + controlsHeight + controlSpacing + formulaHeight
@@ -341,7 +413,7 @@ struct ContentView: View {
             .accessibilityHidden(isTiming || diagramHeight == 0)
 
             if fitsRecentResults && !isTiming {
-                recentResults(columnWidth: recentColumnWidth, rowHeight: recentRowHeight)
+                recentResults(columnWidth: recentColumnWidth, rowHeight: recentRowHeight, valueFont: recentValueStyle)
                     .frame(width: contentWidth)
                     .allowsHitTesting(false)
             }
@@ -358,7 +430,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func recentResults(columnWidth: CGFloat, rowHeight: CGFloat) -> some View {
+    private func recentResults(columnWidth: CGFloat, rowHeight: CGFloat, valueFont: Font) -> some View {
         let average = SolveAverage.ao5
         let recent = Array(model.groupSolves.sorted(by: Solve.newestFirst).prefix(5 + average.count - 1))
         if !recent.isEmpty {
@@ -367,10 +439,10 @@ struct ContentView: View {
                 average.summarize(recent[index..<(index + average.count)]).mean.map(TimerModel.format) ?? "DNF"
             }
             HStack(alignment: .top, spacing: 0) {
-                recentResultColumn("ao5", values: averages, rowHeight: rowHeight, alignment: .leading)
+                recentResultColumn("ao5", values: averages, rowHeight: rowHeight, valueFont: valueFont, alignment: .leading)
                     .frame(width: columnWidth, alignment: .leading)
                 Spacer(minLength: 0)
-                recentResultColumn("single", values: singles, rowHeight: rowHeight, alignment: .trailing)
+                recentResultColumn("single", values: singles, rowHeight: rowHeight, valueFont: valueFont, alignment: .trailing)
                     .frame(width: columnWidth, alignment: .trailing)
             }
         }
@@ -381,6 +453,7 @@ struct ContentView: View {
         _ title: String,
         values: [String],
         rowHeight: CGFloat,
+        valueFont: Font,
         alignment: HorizontalAlignment
     ) -> some View {
         if !values.isEmpty {
@@ -392,7 +465,7 @@ struct ContentView: View {
                     .offset(y: 4)
                 ForEach(values.indices, id: \.self) { index in
                     Text(verbatim: values[index])
-                        .font(.body.monospacedDigit())
+                        .font(valueFont.monospacedDigit())
                         .foregroundStyle(Color.primary.opacity(0.60 - 0.06 * Double(index)))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
@@ -558,13 +631,14 @@ struct ContentView: View {
     private func scrambleFormula(width: CGFloat, fontScale: CGFloat) -> some View {
         let algorithm = model.scramble?.algorithm ?? language.text("准备你的下一次挑战", "Ready for your next solve")
         let preservesMegaminxRows = model.mode == .standard && model.event == "minx"
+        let alignsMegaminxRows = preservesMegaminxRows && model.scramble != nil
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
         let padWidthProgress = min(1, max(0, (width - 600) / 600))
         let preferredSize = isPad
             ? scrambleFontSize * (1 + 0.6 * padWidthProgress)
             : (preservesMegaminxRows ? standardMegaminxFontSize : scrambleFontSize)
         var fontSize = preferredSize * fontScale
-        if preservesMegaminxRows, model.scramble != nil {
+        if alignsMegaminxRows {
             let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             let widestLine = algorithm.components(separatedBy: .newlines).map { line in
                 (line as NSString).size(withAttributes: [.font: font]).width
@@ -579,9 +653,9 @@ struct ContentView: View {
             ForEach(sizes, id: \.self) { size in
                 Text(algorithm)
                     .font(.system(size: size, design: .monospaced))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(alignsMegaminxRows ? .leading : .center)
                     .lineSpacing((preservesMegaminxRows ? 4 : 7) * size / fontSize)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .fixedSize(horizontal: alignsMegaminxRows, vertical: true)
                     .frame(maxWidth: .infinity)
                     .textSelection(.enabled)
             }

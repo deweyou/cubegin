@@ -9,13 +9,26 @@ struct LandscapeContentInsets {
 
     let leading: CGFloat
     let trailing: CGFloat
+    let headerTopOffset: CGFloat
+    let scrambleColumnFraction: CGFloat
     private let safeLeading: CGFloat
+    private let safeTrailing: CGFloat
 
-    init(safeLeading: CGFloat, cutoutOnRight: Bool, railWidth: CGFloat) {
+    init(safeLeading: CGFloat, safeTrailing: CGFloat, cutoutOnRight: Bool, railWidth: CGFloat,
+         leadingRailWidth: CGFloat? = nil, isDuoOuterDisplay: Bool = false) {
+        scrambleColumnFraction = isDuoOuterDisplay ? 0.5 : 0.55
         self.safeLeading = safeLeading
-        leading = cutoutOnRight || safeLeading <= Self.contentMargin
-            ? Self.clearEdgeMargin - safeLeading : Self.cutoutMargin
-        trailing = railWidth + Self.railGap
+        self.safeTrailing = safeTrailing
+        if let leadingRailWidth {
+            leading = leadingRailWidth + Self.railGap
+            trailing = Self.clearEdgeMargin
+        } else {
+            leading = cutoutOnRight || safeLeading <= Self.contentMargin
+                ? Self.clearEdgeMargin - safeLeading : Self.cutoutMargin
+            trailing = railWidth + Self.railGap
+        }
+        // The cover camera center is 48 pt from the top; the controls normally center at 30 pt.
+        headerTopOffset = leadingRailWidth != nil ? 18 : 0
     }
 
     // Lists and headers supply the inner margin; these are the remaining offsets.
@@ -26,6 +39,18 @@ struct LandscapeContentInsets {
     // container crosses the safe area; the card margin then starts at that edge.
     var formLeadingMargin: CGFloat {
         containerLeading < 0 ? safeLeading + leading : Self.contentMargin
+    }
+
+    var formTrailingMargin: CGFloat {
+        containerTrailing < 0 ? safeTrailing + trailing : Self.contentMargin
+    }
+}
+
+private extension View {
+    // Keep the same transition behind pinned headers on Results, Statistics, and Settings.
+    func pinnedScrollHeader<Header: View>(@ViewBuilder header: () -> Header) -> some View {
+        scrollEdgeEffectStyle(.soft, for: .top)
+            .safeAreaBar(edge: .top, spacing: 0, content: header)
     }
 }
 
@@ -51,6 +76,8 @@ struct AppTabsView: View {
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false
     @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
+    @State private var isDuoOuterDisplay = false
+    @State private var isDuoInnerDisplay = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let sideNavigationWidth: CGFloat = 52
@@ -85,18 +112,40 @@ struct AppTabsView: View {
                     let trailingInset = insets.trailing
                     // Landscape right places the phone's top cutout on the left.
                     let canUseRightEdge = interfaceOrientation == .landscapeRight
-                    let edgeGap = canUseRightEdge ? sideNavigationEdgeGap : max(sideNavigationEdgeGap, trailingInset)
+                    // Safe area insets move with the camera during a 180-degree rotation.
+                    let coverCameraOnLeft = insets.leading == insets.trailing
+                        ? canUseRightEdge : insets.leading > insets.trailing
+                    let railOnLeft = isDuoOuterDisplay && coverCameraOnLeft
+                    let hasLowerRightCamera = isDuoOuterDisplay && !coverCameraOnLeft
+                    // On the cover display the rail shares the lower camera's centerline.
+                    let edgeGap = hasLowerRightCamera ? 11
+                        : (canUseRightEdge ? sideNavigationEdgeGap : max(sideNavigationEdgeGap, trailingInset))
                     let usesSideNavigation = geometry.size.width > geometry.size.height
-                    let railInset = edgeGap - trailingInset
+                    let usesRightStatusColumn = isDuoInnerDisplay
+                        && trailingInset > insets.leading && trailingInset >= sideNavigationWidth
+                    let trailingRailInset = usesRightStatusColumn
+                        ? -(trailingInset + sideNavigationWidth) / 2 : edgeGap - trailingInset
+                    // The cover camera sits 48 pt from the left edge.
+                    let railInset = railOnLeft ? 48 - sideNavigationWidth / 2 - insets.leading : trailingRailInset
+                    let contentRailWidth: CGFloat = usesRightStatusColumn ? 0
+                        : sideNavigationWidth + railInset + (hasLowerRightCamera ? 4 : 0)
                     let contentInsets = usesSideNavigation ? LandscapeContentInsets(
-                        safeLeading: insets.leading, cutoutOnRight: interfaceOrientation == .landscapeLeft,
-                        railWidth: sideNavigationWidth + railInset
+                        safeLeading: insets.leading, safeTrailing: trailingInset, cutoutOnRight: isDuoOuterDisplay
+                            ? hasLowerRightCamera : interfaceOrientation == .landscapeLeft,
+                        railWidth: contentRailWidth,
+                        leadingRailWidth: railOnLeft ? sideNavigationWidth + railInset : nil,
+                        isDuoOuterDisplay: isDuoOuterDisplay
                     ) : nil
                     tabs(sideNavigationInset: usesSideNavigation ? railInset : nil,
+                         railOnLeft: railOnLeft,
+                         alignsSideNavigationWithCoverCamera: hasLowerRightCamera,
+                         alignsSideNavigationWithStatusIndicators: usesRightStatusColumn,
                          contentInsets: contentInsets)
                 }
                 .background {
-                    InterfaceOrientationReader(orientation: $interfaceOrientation)
+                    InterfaceOrientationReader(orientation: $interfaceOrientation,
+                                               isDuoOuterDisplay: $isDuoOuterDisplay,
+                                               isDuoInnerDisplay: $isDuoInnerDisplay)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -121,17 +170,23 @@ struct AppTabsView: View {
     }
 
     private func tabs(sideNavigationInset: CGFloat?,
+                      railOnLeft: Bool = false,
+                      alignsSideNavigationWithCoverCamera: Bool = false,
+                      alignsSideNavigationWithStatusIndicators: Bool = false,
                       contentInsets: LandscapeContentInsets? = nil) -> some View {
         let usesSideNavigation = sideNavigationInset != nil
-        let trailingSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
+        let railSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
 
         return TabView(selection: $selection) {
             Tab(value: Destination.home) {
                 ContentView(
                     model: model,
                     isTimerActive: isActive && selection == .home && scenePhase == .active,
-                    trailingNavigationWidth: trailingSpace,
-                    trailingNavigationInset: sideNavigationInset ?? 0,
+                    leadingNavigationWidth: railOnLeft ? railSpace : 0,
+                    trailingNavigationWidth: railOnLeft ? 0 : railSpace,
+                    navigationInset: sideNavigationInset ?? 0,
+                    navigationOnLeft: railOnLeft,
+                    isDuoInnerDisplay: isDuoInnerDisplay,
                     landscapeContentInsets: contentInsets
                 )
                     .labelStyle(.titleAndIcon)
@@ -157,12 +212,13 @@ struct AppTabsView: View {
             }
         }
         .labelStyle(.iconOnly)
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: railOnLeft ? .bottomLeading : .bottomTrailing) {
             ZStack {
                 if let sideNavigationInset, model.started == nil, !(selection == .results && isSelectingResults) {
                     sideNavigation
-                        .padding(.trailing, sideNavigationInset)
-                        .padding(.bottom, ContentView.landscapeBottomInset)
+                        .padding(railOnLeft ? .leading : .trailing, sideNavigationInset)
+                        .padding(.bottom, ContentView.landscapeBottomInset + (alignsSideNavigationWithCoverCamera ? 44 : 0))
+                        .offset(x: alignsSideNavigationWithCoverCamera || alignsSideNavigationWithStatusIndicators ? 10 : 0)
                         .transition(.opacity)
                 }
             }
@@ -214,20 +270,39 @@ struct AppTabsView: View {
 
 private struct InterfaceOrientationReader: UIViewRepresentable {
     @Binding var orientation: UIInterfaceOrientation
+    @Binding var isDuoOuterDisplay: Bool
+    @Binding var isDuoInnerDisplay: Bool
 
     func makeUIView(context: Context) -> OrientationView {
         OrientationView()
     }
 
     func updateUIView(_ view: OrientationView, context: Context) {
-        view.onChange = { value in
+        view.onChange = { value, outerDisplay, innerDisplay in
             if orientation != value { orientation = value }
+            if isDuoOuterDisplay != outerDisplay { isDuoOuterDisplay = outerDisplay }
+            if isDuoInnerDisplay != innerDisplay { isDuoInnerDisplay = innerDisplay }
         }
         view.reportOrientation()
     }
 
     final class OrientationView: UIView {
-        var onChange: ((UIInterfaceOrientation) -> Void)?
+        var onChange: ((UIInterfaceOrientation, Bool, Bool) -> Void)?
+#if DEBUG
+        private var requestedQAOrientation = false
+#endif
+
+        private static let isDuo: Bool = {
+#if targetEnvironment(simulator)
+            ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4"
+#else
+            var device = utsname()
+            uname(&device)
+            return withUnsafeBytes(of: device.machine) {
+                String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) == "iPhone19,4"
+            }
+#endif
+        }()
 
         init() {
             super.init(frame: .zero)
@@ -245,7 +320,22 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
         @objc func reportOrientation() {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let scene = window?.windowScene else { return }
-                onChange?(scene.effectiveGeometry.interfaceOrientation)
+                let display = scene.screen.nativeBounds.size
+                // The Duo cover display has a 1398 px short edge, versus 2007 px inside.
+                let shortEdge = min(display.width, display.height)
+                let outerDisplay = Self.isDuo && shortEdge == 1398
+                let innerDisplay = Self.isDuo && shortEdge == 2007
+#if DEBUG
+                if outerDisplay, !requestedQAOrientation,
+                   let tabSide = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_DUO_TAB_SIDE"] {
+                    requestedQAOrientation = true
+                    let orientation: UIInterfaceOrientationMask = tabSide == "left" ? .landscapeRight : .landscapeLeft
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
+                        print("Duo QA orientation request failed: \(error)")
+                    }
+                }
+#endif
+                onChange?(scene.effectiveGeometry.interfaceOrientation, outerDisplay, innerDisplay)
             }
         }
     }
@@ -303,6 +393,7 @@ private struct ResultsView: View {
     @Bindable var model: TimerModel
     @State private var detailPath = NavigationPath()
     @State private var averageKind: SolveAverage?
+    @State private var resultTypeOverflow: HorizontalScrollOverflow = []
     @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
@@ -328,32 +419,22 @@ private struct ResultsView: View {
     var body: some View {
         let groupSolves = model.groupSolves
         let showsPageContent = page == .statistics || !groupSolves.isEmpty
-        let pinsPickers = showsPageContent && (!usesSideNavigation || page == .statistics)
         let availableKinds = SolveAverage.allCases.filter { $0.count <= groupSolves.count }
         let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
         NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
-                if !pinsPickers {
-                    resultsHeader
-                }
-
-                if page == .solves && !pinsPickers && !isSelecting {
-                    resultTypePicker(availableKinds, selected: selectedKind)
-                }
                 if showsPageContent {
                     pageContent(selectedKind: selectedKind, availableKinds: availableKinds)
-                        .scrollEdgeEffectStyle(pinsPickers ? .soft : nil, for: .top)
-                        .safeAreaBar(edge: .top, spacing: 0) {
-                            if pinsPickers {
-                                VStack(spacing: 0) {
-                                    resultsHeader
-                                    if page == .solves && !isSelecting {
-                                        resultTypePicker(availableKinds, selected: selectedKind)
-                                    }
+                        .pinnedScrollHeader {
+                            VStack(spacing: 0) {
+                                resultsHeader
+                                if page == .solves && !isSelecting && !availableKinds.isEmpty {
+                                    resultTypePicker(availableKinds, selected: selectedKind)
                                 }
                             }
                         }
                 } else {
+                    resultsHeader
                     VStack(spacing: 12) {
                         Image(systemName: "stopwatch")
                             .font(.system(size: 36, weight: .regular))
@@ -438,7 +519,7 @@ private struct ResultsView: View {
             }
         }
         .padding(.horizontal, LandscapeContentInsets.contentMargin)
-        .padding(.top, 8)
+        .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
         .frame(maxWidth: usesTopNavigation ? .infinity : 880)
     }
 
@@ -607,6 +688,13 @@ private struct ResultsView: View {
         }
     }
 
+    private struct HorizontalScrollOverflow: OptionSet {
+        let rawValue: Int
+
+        static let leading = Self(rawValue: 1 << 0)
+        static let trailing = Self(rawValue: 1 << 1)
+    }
+
     private func resultTypePicker(_ availableKinds: [SolveAverage], selected: SolveAverage?) -> some View {
         let options: [SolveAverage?] = [nil] + availableKinds.map(Optional.some)
         return ScrollViewReader { scroll in
@@ -635,8 +723,32 @@ private struct ResultsView: View {
                     }
                 }
             }
-            .scrollIndicators(.hidden)
-            .contentMargins(.horizontal, LandscapeContentInsets.contentMargin, for: .scrollContent)
+            .onScrollGeometryChange(for: HorizontalScrollOverflow.self) { geometry in
+                let offset = geometry.contentOffset.x + geometry.contentInsets.leading
+                let scrollableWidth = geometry.contentSize.width + geometry.contentInsets.leading
+                    + geometry.contentInsets.trailing - geometry.containerSize.width
+                var overflow: HorizontalScrollOverflow = []
+                if scrollableWidth > 1 {
+                    if offset > 1 { overflow.insert(.leading) }
+                    if scrollableWidth - offset > 1 { overflow.insert(.trailing) }
+                }
+                return overflow
+            } action: { _, overflow in
+                resultTypeOverflow = overflow
+            }
+            .mask {
+                HStack(spacing: 0) {
+                    if resultTypeOverflow.contains(.leading) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 16)
+                    }
+                    Rectangle()
+                    if resultTypeOverflow.contains(.trailing) {
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 16)
+                    }
+                }
+            }
             .accessibilityLabel(language.text("成绩类型", "Result type"))
             .accessibilityIdentifier("results.average-types")
             .onChange(of: selected, initial: true) { _, selected in
@@ -644,7 +756,8 @@ private struct ResultsView: View {
             }
         }
         .frame(height: 44)
-        .frame(maxWidth: usesTopNavigation ? .infinity : 880)
+        .padding(.leading, resultRowInsets.leading)
+        .padding(.trailing, resultRowInsets.trailing + listRailInset)
         .padding(.vertical, 4)
     }
 
@@ -1017,7 +1130,7 @@ private struct ResultsOverview: View {
         }
         .contentMargins(.top, 8, for: .scrollContent)
         .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
-        .contentMargins(.trailing, contentInsets.map { _ in LandscapeContentInsets.contentMargin }, for: .scrollContent)
+        .contentMargins(.trailing, contentInsets?.formTrailingMargin, for: .scrollContent)
         .listSectionSpacing(12)
         .task(id: times) {
             var scores: [SolveAverage: String] = [:]
@@ -1679,13 +1792,21 @@ private struct SettingsView: View {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
                 }
             }
+            .pinnedScrollHeader {
+                Text(language.text("设置", "Settings"))
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("settings.title")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, LandscapeContentInsets.contentMargin)
+                    .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
+            }
             .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
-            .contentMargins(.trailing, contentInsets.map { _ in LandscapeContentInsets.contentMargin }, for: .scrollContent)
+            .contentMargins(.trailing, contentInsets?.formTrailingMargin, for: .scrollContent)
             .padding(.leading, contentInsets?.containerLeading ?? 0)
             .padding(.trailing, contentInsets?.containerTrailing ?? 0)
             .appBackground()
-            .navigationTitle(language.text("设置", "Settings"))
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }

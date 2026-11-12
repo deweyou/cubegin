@@ -10,6 +10,7 @@ struct CubeginApp: App {
         WindowGroup {
             LaunchRootView(hasFinishedLaunch: $hasFinishedLaunch)
                 .environment(\.locale, language.locale)
+                .scrollIndicators(.hidden)
                 .background {
                     if UIDevice.current.userInterfaceIdiom == .pad {
                         MinimumWindowHeight()
