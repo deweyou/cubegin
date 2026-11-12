@@ -48,14 +48,29 @@ final class SolveFlowTests: XCTestCase {
 
         let start = app.coordinate(withNormalizedOffset: .zero).withOffset(
             CGVector(dx: rowFrame.midX, dy: rowFrame.midY + 45))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -36)),
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -88)),
                     withVelocity: .slow, thenHoldForDuration: 0.3)
         recordPortraitPage("Results after scroll", frames: [group.frame, view.frame, row.frame])
         XCTAssertLessThan(row.frame.minY, groupFrame.maxY)
         XCTAssertEqual(group.frame, groupFrame)
         XCTAssertEqual(view.frame, viewFrame)
         view.tap()
-        XCTAssertTrue(app.buttons["Overview"].waitForExistence(timeout: 5))
+        let statistics = app.buttons["Statistics"]
+        XCTAssertTrue(statistics.waitForExistence(timeout: 5))
+        statistics.tap()
+
+        let metric = app.staticTexts["Valid / Total"]
+        XCTAssertTrue(metric.waitForExistence(timeout: 5))
+        let statisticsGroupFrame = group.frame
+        let statisticsViewFrame = view.frame
+        let dragStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
+        dragStart.press(forDuration: 0.05, thenDragTo: dragStart.withOffset(CGVector(dx: 0, dy: -76)),
+                        withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(metric.exists)
+        XCTAssertLessThan(metric.frame.minY, statisticsGroupFrame.maxY)
+        XCTAssertEqual(group.frame, statisticsGroupFrame)
+        XCTAssertEqual(view.frame, statisticsViewFrame)
+        recordPortraitPage("Statistics after scroll", frames: [group.frame, view.frame, metric.frame])
     }
 
     @MainActor
@@ -84,7 +99,7 @@ final class SolveFlowTests: XCTestCase {
         results.tap()
         let viewPicker = app.buttons["results.view"]
         viewPicker.tap()
-        app.buttons["Overview"].tap()
+        app.buttons["Statistics"].tap()
 
         let groupPicker = app.buttons["Group"]
         let home = app.buttons["side-nav.home"]
@@ -112,78 +127,38 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(defaultGroup.waitForExistence(timeout: 5))
         defaultGroup.tap()
 
-        viewPicker.tap()
-        let charts = app.buttons["Charts"]
-        XCTAssertTrue(charts.waitForExistence(timeout: 5))
-        charts.tap()
-        XCTAssertEqual(viewPicker.value as? String, "Charts")
-
-        let trendButton = app.buttons["Trend"]
-        let distributionButton = app.buttons["Time distribution"]
+        let mode = app.segmentedControls["charts.mode"]
         let range = app.buttons["charts.range"]
         let averages = app.buttons["charts.average"]
-        let trend = app.descendants(matching: .any)["Solve trend"].firstMatch
-        let legend = app.staticTexts["Single"]
-        XCTAssertTrue(trend.waitForExistence(timeout: 5))
-        XCTAssertTrue(legend.isHittable)
         let settings = app.buttons["side-nav.settings"]
-        // Both capsules inset their buttons by 4pt.
-        XCTAssertEqual(trendButton.frame.minY - app.frame.minY, app.frame.maxY - settings.frame.maxY, accuracy: 2)
-        XCTAssertEqual(home.frame, homeFrame)
-        XCTAssertLessThan(trendButton.frame.maxY, distributionButton.frame.minY)
-        XCTAssertLessThan(distributionButton.frame.maxY, home.frame.minY)
-        XCTAssertEqual(trendButton.frame.midX, home.frame.midX, accuracy: 1)
-        XCTAssertEqual(distributionButton.frame.midX, home.frame.midX, accuracy: 1)
-        XCTAssertGreaterThan(trendButton.frame.minX, viewPicker.frame.maxX)
-        XCTAssertEqual(range.frame.midY, viewPicker.frame.midY, accuracy: 2)
-        XCTAssertLessThan(range.frame.maxX, averages.frame.minX)
-        XCTAssertLessThan(averages.frame.maxX, viewPicker.frame.minX)
-        XCTAssertLessThan(viewPicker.frame.maxY, trend.frame.minY)
-        XCTAssertLessThan(legend.frame.maxY, app.frame.maxY)
-
-        let chartScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        chartScreenshot.name = "Landscape Charts Fit"
-        chartScreenshot.lifetime = .keepAlways
-        add(chartScreenshot)
-
-        distributionButton.tap()
+        let scrollStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
+        let scrollEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.56))
+        // A full swipe can skip the controls in the short landscape viewport.
+        for _ in 0..<8 {
+            if mode.exists && mode.isHittable { break }
+            scrollStart.press(forDuration: 0.05, thenDragTo: scrollEnd,
+                              withVelocity: .slow, thenHoldForDuration: 0.25)
+        }
+        XCTAssertTrue(mode.isHittable)
         XCTAssertTrue(range.isHittable)
+        XCTAssertTrue(averages.isHittable)
+        XCTAssertEqual(home.frame, homeFrame)
+        XCTAssertLessThan(mode.frame.maxX, settings.frame.minX)
+        XCTAssertEqual(groupPicker.frame, groupFrame)
+        XCTAssertEqual(viewPicker.frame, viewFrame)
+        captureLandscapePage("Statistics chart controls", cutout: "left")
+
+        mode.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(app.staticTexts["Time distribution"].waitForExistence(timeout: 5))
         XCTAssertFalse(averages.exists)
-        XCTAssertTrue(distributionButton.isSelected)
-        XCTAssertEqual(trendButton.frame.minY - app.frame.minY, app.frame.maxY - settings.frame.maxY, accuracy: 2)
-        let distributionScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        distributionScreenshot.name = "Landscape Distribution Rail"
-        distributionScreenshot.lifetime = .keepAlways
-        add(distributionScreenshot)
+        XCTAssertTrue(range.isHittable)
 
-        let railX = trendButton.frame.midX
         XCUIDevice.shared.orientation = .landscapeRight
-        let rotatedRail = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in
-                let frame = trendButton.frame
-                return frame.midX < railX
-                    && abs(frame.midX - home.frame.midX) < 1
-                    && abs((frame.minY - app.frame.minY) - (app.frame.maxY - settings.frame.maxY)) < 2
-            },
-            object: nil
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [rotatedRail], timeout: 10), .completed)
-        let rotatedScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        rotatedScreenshot.name = "Landscape Rotated Chart Controls"
-        rotatedScreenshot.lifetime = .keepAlways
-        add(rotatedScreenshot)
-        XCTAssertTrue(trendButton.wait(for: \.isHittable, toEqual: true, timeout: 5))
-        trendButton.tap()
-        XCTAssertTrue(trendButton.wait(for: \.isSelected, toEqual: true, timeout: 5))
-        XCTAssertTrue(trend.waitForExistence(timeout: 10))
-        XCTAssertLessThan(viewPicker.frame.maxX, trendButton.frame.minX)
-        XCTAssertLessThan(trend.frame.maxX, trendButton.frame.minX)
-        XCTAssertEqual(app.buttons["Event"].frame.minX - app.frame.minX, 44, accuracy: 2)
-
-        let oppositeScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        oppositeScreenshot.name = "Landscape Charts Right Cutout"
-        oppositeScreenshot.lifetime = .keepAlways
-        add(oppositeScreenshot)
+        XCTAssertTrue(mode.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        mode.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["Solve trend"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertLessThan(mode.frame.maxX, settings.frame.minX)
+        captureLandscapePage("Statistics chart controls", cutout: "right")
 
         viewPicker.tap()
         app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Results", "side-nav.results")).firstMatch.tap()
@@ -191,7 +166,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(solveRow.waitForExistence(timeout: 5))
         XCTAssertLessThan(viewPicker.frame.maxX, settings.frame.minX)
         XCTAssertLessThan(solveRow.frame.maxX, settings.frame.minX)
-        XCTAssertFalse(trendButton.exists)
+        XCTAssertFalse(mode.exists)
 
         let listScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         listScreenshot.name = "Landscape Results Right Cutout"
@@ -238,21 +213,24 @@ final class SolveFlowTests: XCTestCase {
             captureLandscapePage("Results", cutout: cutout)
             XCTAssertLessThan(row.frame.maxX, settings.frame.minX)
 
-            for (page, content) in [
-                ("Averages", app.buttons["average-row-0"]),
-                ("Overview", app.staticTexts["Valid / Total"]),
-                ("Charts", app.descendants(matching: .any)["Solve trend"].firstMatch)
-            ] {
-                picker.tap()
-                app.buttons[page].tap()
-                XCTAssertTrue(content.waitForExistence(timeout: 10))
-                XCTAssertEqual(event.frame.minX, leading, accuracy: 2)
-                XCTAssertEqual(training.frame.maxX, trailing, accuracy: 2)
-                XCTAssertEqual(group.frame.minX, groupFrame.minX, accuracy: 2)
-                XCTAssertEqual(picker.frame.maxX, pickerFrame.maxX, accuracy: 2)
-                captureLandscapePage(page, cutout: cutout)
-                XCTAssertLessThan(content.frame.maxX, settings.frame.minX)
-            }
+            app.buttons["results.average-type.ao5"].tap()
+            let average = app.buttons["average-row-0"]
+            XCTAssertTrue(average.waitForExistence(timeout: 10))
+            XCTAssertLessThan(average.frame.maxX, settings.frame.minX)
+            captureLandscapePage("Average results", cutout: cutout)
+            app.buttons["results.average-type.single"].tap()
+            XCTAssertTrue(row.waitForExistence(timeout: 5))
+
+            picker.tap()
+            app.buttons["Statistics"].tap()
+            let overview = app.staticTexts["Valid / Total"]
+            XCTAssertTrue(overview.waitForExistence(timeout: 10))
+            XCTAssertEqual(event.frame.minX, leading, accuracy: 2)
+            XCTAssertEqual(training.frame.maxX, trailing, accuracy: 2)
+            XCTAssertEqual(group.frame.minX, groupFrame.minX, accuracy: 2)
+            XCTAssertEqual(picker.frame.maxX, pickerFrame.maxX, accuracy: 2)
+            XCTAssertLessThan(overview.frame.maxX, settings.frame.minX)
+            captureLandscapePage("Statistics", cutout: cutout)
 
             settings.tap()
             XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))

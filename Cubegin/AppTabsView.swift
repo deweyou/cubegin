@@ -49,7 +49,6 @@ struct AppTabsView: View {
 
     @State private var selection = Destination.home
     @State private var resultsPage = ResultsPage.solves
-    @State private var chartMode = ResultsChartMode.trend
     @State private var isSelectingResults = false
     @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
     @Environment(\.scenePhase) private var scenePhase
@@ -87,8 +86,6 @@ struct AppTabsView: View {
                     // Landscape right places the phone's top cutout on the left.
                     let canUseRightEdge = interfaceOrientation == .landscapeRight
                     let edgeGap = canUseRightEdge ? sideNavigationEdgeGap : max(sideNavigationEdgeGap, trailingInset)
-                    // Match the Tab capsule's gap from the physical display edge.
-                    let chartTopPadding = max(0, ContentView.landscapeBottomInset + insets.bottom - insets.top)
                     let usesSideNavigation = geometry.size.width > geometry.size.height
                     let railInset = edgeGap - trailingInset
                     let contentInsets = usesSideNavigation ? LandscapeContentInsets(
@@ -96,7 +93,7 @@ struct AppTabsView: View {
                         railWidth: sideNavigationWidth + railInset
                     ) : nil
                     tabs(sideNavigationInset: usesSideNavigation ? railInset : nil,
-                         chartTopPadding: chartTopPadding, contentInsets: contentInsets)
+                         contentInsets: contentInsets)
                 }
                 .background {
                     InterfaceOrientationReader(orientation: $interfaceOrientation)
@@ -123,7 +120,7 @@ struct AppTabsView: View {
         }
     }
 
-    private func tabs(sideNavigationInset: CGFloat?, chartTopPadding: CGFloat = 0,
+    private func tabs(sideNavigationInset: CGFloat?,
                       contentInsets: LandscapeContentInsets? = nil) -> some View {
         let usesSideNavigation = sideNavigationInset != nil
         let trailingSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
@@ -143,7 +140,7 @@ struct AppTabsView: View {
                 tabLabel(.home)
             }
             Tab(value: Destination.results) {
-                ResultsView(model: model, page: $resultsPage, chartMode: $chartMode,
+                ResultsView(model: model, page: $resultsPage,
                             isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
                             contentInsets: isSelectingResults ? nil : contentInsets)
                     .labelStyle(.titleAndIcon)
@@ -163,14 +160,7 @@ struct AppTabsView: View {
         .overlay(alignment: .bottomTrailing) {
             ZStack {
                 if let sideNavigationInset, model.started == nil, !(selection == .results && isSelectingResults) {
-                    VStack(spacing: 0) {
-                        if selection == .results && resultsPage == .chart && !model.groupSolves.isEmpty {
-                            chartModeSwitcher
-                                .padding(.top, chartTopPadding)
-                            Spacer(minLength: 8)
-                        }
-                        sideNavigation
-                    }
+                    sideNavigation
                         .padding(.trailing, sideNavigationInset)
                         .padding(.bottom, ContentView.landscapeBottomInset)
                         .transition(.opacity)
@@ -219,31 +209,7 @@ struct AppTabsView: View {
         .glassEffect(.regular, in: .capsule)
     }
 
-    private var chartModeSwitcher: some View {
-        VStack(spacing: 2) {
-            ForEach(ResultsChartMode.allCases, id: \.self) { mode in
-                Button {
-                    chartMode = mode
-                } label: {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: 20, weight: .medium))
-                        .frame(width: 44, height: 44)
-                        .background {
-                            if chartMode == mode {
-                                Circle().fill(.primary.opacity(0.10))
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(mode.title(language))
-                .accessibilityAddTraits(chartMode == mode ? .isSelected : [])
-            }
-        }
-        .padding(.vertical, 4)
-        .frame(width: sideNavigationWidth)
-        .glassEffect(.regular, in: .capsule)
-    }
+
 }
 
 private struct InterfaceOrientationReader: UIViewRepresentable {
@@ -306,14 +272,12 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
 }
 
 private enum ResultsPage: String, CaseIterable, Identifiable {
-    case solves, averages, statistics, chart
+    case solves, statistics
     var id: Self { self }
     func title(_ language: AppLanguage) -> String {
         switch self {
         case .solves: language.text("成绩", "Results")
-        case .averages: language.text("平均", "Averages")
-        case .statistics: language.text("概要", "Overview")
-        case .chart: language.text("图表", "Charts")
+        case .statistics: language.text("统计", "Statistics")
         }
     }
 }
@@ -338,11 +302,10 @@ private struct ResultsView: View {
     private var language: AppLanguage { locale.appLanguage }
     @Bindable var model: TimerModel
     @State private var detailPath = NavigationPath()
-    @State private var averageKind = SolveAverage.mo3
+    @State private var averageKind: SolveAverage?
     @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
-    @Binding var chartMode: ResultsChartMode
     @State private var showsGroups = false
     @State private var solvesToDelete: Set<Solve.ID> = []
     @State private var showsMoveGroups = false
@@ -365,51 +328,29 @@ private struct ResultsView: View {
     var body: some View {
         let groupSolves = model.groupSolves
         let showsPageContent = page == .statistics || !groupSolves.isEmpty
-        let pinsPickers = showsPageContent && (
-            usesSideNavigation ? page == .statistics : !isPad && page == .solves
-        )
-        let showsChartHeader = showsPageContent && usesSideNavigation && page == .chart
+        let pinsPickers = showsPageContent && (!usesSideNavigation || page == .statistics)
+        let availableKinds = SolveAverage.allCases.filter { $0.count <= groupSolves.count }
+        let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
         NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    if usesTopNavigation {
-                        HStack(spacing: 12) {
-                            if isSelecting {
-                                selectAllButton.frame(maxWidth: .infinity, alignment: .leading)
-                                groupPicker.frame(maxWidth: .infinity)
-                            } else {
-                                groupPicker.frame(maxWidth: .infinity, alignment: .leading)
-                                projectPicker.frame(maxWidth: .infinity)
-                            }
-                            viewPicker.frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-                        .frame(minHeight: 44)
-                    } else {
-                        if !isPad && !showsChartHeader {
-                            HStack {
-                                projectPicker
-                                Spacer(minLength: 12)
-                                trainingButton
-                            }
-                            .frame(height: 44)
-                        }
-                        if !pinsPickers && !showsChartHeader {
-                            resultsPickerRow
-                        }
-                    }
+                if !pinsPickers {
+                    resultsHeader
                 }
-                .padding(.horizontal, LandscapeContentInsets.contentMargin)
-                .padding(.top, showsChartHeader ? 0 : 8)
-                .frame(maxWidth: usesTopNavigation ? .infinity : 880)
 
+                if page == .solves && !pinsPickers && !isSelecting {
+                    resultTypePicker(availableKinds, selected: selectedKind)
+                }
                 if showsPageContent {
-                    pageContent(groupSolves: groupSolves)
+                    pageContent(selectedKind: selectedKind, availableKinds: availableKinds)
                         .scrollEdgeEffectStyle(pinsPickers ? .soft : nil, for: .top)
                         .safeAreaBar(edge: .top, spacing: 0) {
                             if pinsPickers {
-                                resultsPickerRow
-                                    .padding(.horizontal, LandscapeContentInsets.contentMargin)
-                                    .frame(maxWidth: 880)
+                                VStack(spacing: 0) {
+                                    resultsHeader
+                                    if page == .solves && !isSelecting {
+                                        resultTypePicker(availableKinds, selected: selectedKind)
+                                    }
+                                }
                             }
                         }
                 } else {
@@ -442,11 +383,10 @@ private struct ResultsView: View {
                 }
             }
             .onChange(of: model.currentGroup?.id) { _, _ in
-                chartMode = .trend
+                averageKind = nil
                 endSelection()
             }
             .onChange(of: page) { _, _ in
-                chartMode = .trend
                 endSelection()
             }
             .toolbar(isPad ? .visible : .hidden, for: .navigationBar)
@@ -474,6 +414,41 @@ private struct ResultsView: View {
                     .padding(.bottom, 8)
             }
         }
+    }
+
+    private var resultsHeader: some View {
+        VStack(spacing: 0) {
+            if usesTopNavigation {
+                HStack(spacing: 12) {
+                    if isSelecting {
+                        selectAllButton.frame(maxWidth: .infinity, alignment: .leading)
+                        groupPicker.frame(maxWidth: .infinity)
+                    } else {
+                        groupPicker.frame(maxWidth: .infinity, alignment: .leading)
+                        projectPicker.frame(maxWidth: .infinity)
+                    }
+                    viewPicker.frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .frame(minHeight: 44)
+            } else {
+                if !isPad {
+                    resultsProjectRow
+                }
+                resultsPickerRow
+            }
+        }
+        .padding(.horizontal, LandscapeContentInsets.contentMargin)
+        .padding(.top, 8)
+        .frame(maxWidth: usesTopNavigation ? .infinity : 880)
+    }
+
+    private var resultsProjectRow: some View {
+        HStack {
+            projectPicker
+            Spacer(minLength: 12)
+            trainingButton
+        }
+        .frame(height: 44)
     }
 
     private var resultsPickerRow: some View {
@@ -554,9 +529,11 @@ private struct ResultsView: View {
         .frame(minHeight: 24)
     }
 
-    @ViewBuilder private func pageContent(groupSolves: [Solve]) -> some View {
-        switch page {
-        case .solves:
+    @ViewBuilder private func pageContent(selectedKind: SolveAverage?, availableKinds: [SolveAverage]) -> some View {
+        switch (page, selectedKind) {
+        case (.solves, .some(let kind)):
+            averagesView(kind: kind, availableKinds: availableKinds)
+        case (.solves, nil):
             let orderedResults = results
             let extremes = orderedResults.enumerated().reduce(into: ResultExtremes(includesDNF: includesDNFInWorst)) { extremes, entry in
                 extremes.record(entry.element.resultSeconds, at: entry.offset)
@@ -624,125 +601,99 @@ private struct ResultsView: View {
             } message: { _ in
                 Text(language.text("删除后，成绩无法恢复。", "Deleted solves cannot be recovered."))
             }
-        case .averages:
-            averagesView
-        case .statistics:
+        case (.statistics, _):
             ResultsOverview(solves: results, contentInsets: contentInsets)
-        case .chart:
-            ResultsCharts(
-                solves: groupSolves,
-                mode: $chartMode,
-                usesLandscapeHeader: usesSideNavigation,
-                projectPicker: projectPicker,
-                trainingButton: trainingButton,
-                groupPicker: groupPicker,
-                viewPicker: viewPicker
-            )
-            .id(model.currentGroup?.id)
+                .id(model.currentGroup?.id)
         }
     }
 
-    private var averagesView: some View {
-        let orderedResults = results
-        let availableKinds = SolveAverage.allCases.filter { $0.count <= orderedResults.count }
-        let selectedKind = availableKinds.contains(averageKind) ? averageKind : availableKinds.first
-        return Group {
-            if let kind = selectedKind {
-                let input = AverageHighlightInput(kind: kind, times: orderedResults.map(\.resultSeconds), includesDNF: includesDNFInWorst)
-                let extremes = averageHighlights?.input == input ? averageHighlights?.extremes : nil
-                VStack(spacing: 0) {
-                    ScrollViewReader { scroll in
-                        ScrollView(.horizontal) {
-                            HStack(spacing: 8) {
-                                ForEach(availableKinds, id: \.self) { option in
-                                    let isSelected = option == kind
-                                    Button {
-                                        averageKind = option
-                                    } label: {
-                                        Text(option.title)
-                                            .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                                            .foregroundStyle(isSelected ? .primary : .secondary)
-                                            .fixedSize()
-                                            .padding(.horizontal, 11)
-                                            .padding(.vertical, 6)
-                                            .frame(minWidth: 44)
-                                            .background(isSelected ? Color.primary.opacity(0.08) : .clear, in: Capsule())
-                                            .frame(minHeight: 44)
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                                    .accessibilityIdentifier("results.average-type.\(option.title)")
-                                    .id(option)
-                                }
-                            }
+    private func resultTypePicker(_ availableKinds: [SolveAverage], selected: SolveAverage?) -> some View {
+        let options: [SolveAverage?] = [nil] + availableKinds.map(Optional.some)
+        return ScrollViewReader { scroll in
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(options, id: \.self) { option in
+                        let isSelected = option == selected
+                        Button {
+                            averageKind = option
+                        } label: {
+                            Text(option?.title ?? language.text("单次", "Single"))
+                                .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                                .foregroundStyle(isSelected ? .primary : .secondary)
+                                .fixedSize()
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .frame(minWidth: 44)
+                                .background(isSelected ? Color.primary.opacity(0.08) : .clear, in: Capsule())
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                         }
-                        .scrollIndicators(.hidden)
-                        .contentMargins(.horizontal, LandscapeContentInsets.contentMargin, for: .scrollContent)
-                        .accessibilityLabel(language.text("平均类型", "Average type"))
-                        .accessibilityIdentifier("results.average-types")
-                        .onChange(of: kind, initial: true) { previous, selected in
-                            if previous == selected {
-                                scroll.scrollTo(selected, anchor: .center)
-                            } else {
-                                withAnimation {
-                                    scroll.scrollTo(selected, anchor: .center)
-                                }
-                            }
-                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .accessibilityIdentifier("results.average-type.\(option?.title ?? "single")")
+                        .id(option)
                     }
-                    .frame(maxWidth: 880)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
-
-                    List(orderedResults.indices, id: \.self) { index in
-                        let number = orderedResults.count - index
-                        Group {
-                            if number >= kind.count {
-                                let window = orderedResults[index..<(index + kind.count)]
-                                NavigationLink(value: AverageDestination(kind: kind, newestSolveID: orderedResults[index].id)) {
-                                    averageRowLabel(
-                                        number: number,
-                                        total: orderedResults.count,
-                                        summary: kind.summarize(window),
-                                        highlight: resultHighlight(at: index, best: extremes?.best, worst: extremes?.worst)
-                                    )
-                                }
-                            } else {
-                                averageRowLabel(number: number, total: orderedResults.count, summary: nil)
-                            }
-                        }
-                        .listRowInsets(resultRowInsets)
-                        .listRowBackground(Color.clear)
-                        .accessibilityIdentifier("average-row-\(index)")
-                    }
-                    .listStyle(.plain)
-                    .padding(.trailing, listRailInset)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 24).onEnded { swipe in
-                            let distance = swipe.translation.width
-                            guard abs(distance) >= 48,
-                                  abs(distance) > 1.5 * abs(swipe.translation.height),
-                                  let index = availableKinds.firstIndex(of: kind) else { return }
-                            let next = index + (distance < 0 ? 1 : -1)
-                            guard availableKinds.indices.contains(next) else { return }
-                            averageKind = availableKinds[next]
-                        }
-                    )
-                    .id(kind)
                 }
-                .task(id: input) {
-                    let extremes = await kind.rollingExtremes(input.times, includesDNF: input.includesDNF)
-                    guard !Task.isCancelled else { return }
-                    averageHighlights = (input, extremes)
-                }
-            } else {
-                ContentUnavailableView(
-                    language.text("成绩不足", "More solves needed"),
-                    systemImage: "stopwatch",
-                    description: Text(language.text("至少需要 3 条成绩才能计算平均。", "Record at least 3 solves to calculate an average."))
-                )
             }
+            .scrollIndicators(.hidden)
+            .contentMargins(.horizontal, LandscapeContentInsets.contentMargin, for: .scrollContent)
+            .accessibilityLabel(language.text("成绩类型", "Result type"))
+            .accessibilityIdentifier("results.average-types")
+            .onChange(of: selected, initial: true) { _, selected in
+                scroll.scrollTo(selected, anchor: .center)
+            }
+        }
+        .frame(height: 44)
+        .frame(maxWidth: usesTopNavigation ? .infinity : 880)
+        .padding(.vertical, 4)
+    }
+
+    private func averagesView(kind: SolveAverage, availableKinds: [SolveAverage]) -> some View {
+        let orderedResults = results
+        let input = AverageHighlightInput(kind: kind, times: orderedResults.map(\.resultSeconds), includesDNF: includesDNFInWorst)
+        let extremes = averageHighlights?.input == input ? averageHighlights?.extremes : nil
+        return List(orderedResults.indices, id: \.self) { index in
+            let number = orderedResults.count - index
+            Group {
+                if number >= kind.count {
+                    let window = orderedResults[index..<(index + kind.count)]
+                    NavigationLink(value: AverageDestination(kind: kind, newestSolveID: orderedResults[index].id)) {
+                        averageRowLabel(
+                            number: number,
+                            total: orderedResults.count,
+                            summary: kind.summarize(window),
+                            highlight: resultHighlight(at: index, best: extremes?.best, worst: extremes?.worst)
+                        )
+                    }
+                } else {
+                    averageRowLabel(number: number, total: orderedResults.count, summary: nil)
+                }
+            }
+            .listRowInsets(resultRowInsets)
+            .listRowBackground(Color.clear)
+            .accessibilityIdentifier("average-row-\(index)")
+        }
+        .listStyle(.plain)
+        .padding(.trailing, listRailInset)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { swipe in
+                let distance = swipe.translation.width
+                guard abs(distance) >= 48,
+                      abs(distance) > 1.5 * abs(swipe.translation.height),
+                      let index = availableKinds.firstIndex(of: kind) else { return }
+                let next = index + (distance < 0 ? 1 : -1)
+                if next == -1 {
+                    averageKind = nil
+                } else if availableKinds.indices.contains(next) {
+                    averageKind = availableKinds[next]
+                }
+            }
+        )
+        .id(kind)
+        .task(id: input) {
+            let extremes = await kind.rollingExtremes(input.times, includesDNF: input.includesDNF)
+            guard !Task.isCancelled else { return }
+            averageHighlights = (input, extremes)
         }
     }
 
@@ -1033,21 +984,38 @@ private struct ResultsOverview: View {
                 }
             }
 
-            Section {
-                let days = recentDays()
-                if days.isEmpty {
-                    Text(language.text("暂无记录", "No activity yet"))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ViewThatFits(in: .horizontal) {
-                        ForEach((1...min(4, days.count)).reversed(), id: \.self) { columns in
-                            dailyGrid(days, columns: columns)
-                        }
-                    }
-                    .padding(.vertical, 8)
+            if !solves.isEmpty {
+                Section {
+                    ResultsCharts(solves: solves)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                 }
             }
+
+            Section {
+                let days = recentDays()
+                StatisticsCardSection(title: language.text("练习量", "Practice volume")) {
+                    Group {
+                        if days.isEmpty {
+                            Text(language.text("暂无记录", "No activity yet"))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ViewThatFits(in: .horizontal) {
+                                ForEach((1...min(4, days.count)).reversed(), id: \.self) { columns in
+                                    dailyGrid(days, columns: columns)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 24))
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
         }
+        .contentMargins(.top, 8, for: .scrollContent)
         .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
         .contentMargins(.trailing, contentInsets.map { _ in LandscapeContentInsets.contentMargin }, for: .scrollContent)
         .listSectionSpacing(12)
@@ -1117,14 +1085,12 @@ private struct ResultsOverview: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
-                            let count = Text(day.count.formatted(.number.locale(locale)))
+                            let count = day.count.formatted(.number.locale(locale))
+                            Text(count)
                                 .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                            let unit = Text(language.text("次", day.count == 1 ? "solve" : "solves"))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text("\(count) \(unit)")
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
+                                .accessibilityLabel(language.text("\(count) 次", day.count == 1 ? "\(count) solve" : "\(count) solves"))
                         }
                         .frame(minWidth: columns == 1 ? 0 : dailyColumnWidth, maxWidth: .infinity)
                         .accessibilityElement(children: .combine)

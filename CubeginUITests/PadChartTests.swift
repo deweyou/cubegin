@@ -132,33 +132,58 @@ final class PadChartTests: XCTestCase {
         let results = app.buttons.matching(identifier: "Results").firstMatch
         XCTAssertTrue(results.waitForExistence(timeout: 20))
         results.tap()
+        let single = app.buttons["results.average-type.single"]
+        let solve = app.buttons["solve-row-12"]
+        XCTAssertTrue(solve.waitForExistence(timeout: 10))
+        XCTAssertTrue(single.isSelected)
+        attachScreenshot("iPad Single Results")
+
+        let ao5 = app.buttons["results.average-type.ao5"]
+        ao5.tap()
+        let average = app.buttons["average-row-0"]
+        XCTAssertTrue(average.waitForExistence(timeout: 5))
+        XCTAssertTrue(ao5.isSelected)
+        attachScreenshot("iPad Average Results")
+        average.tap()
+        XCTAssertTrue(app.staticTexts["Worst single"].waitForExistence(timeout: 5))
+        app.navigationBars.firstMatch.buttons.firstMatch.tap()
+        XCTAssertTrue(single.waitForExistence(timeout: 5))
+        single.tap()
+        XCTAssertTrue(solve.waitForExistence(timeout: 5))
+
         let view = app.buttons["results.view"]
         view.tap()
-        app.buttons["Charts"].tap()
+        app.buttons["Statistics"].tap()
+        let overview = app.staticTexts["Valid / Total"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 10))
+        attachScreenshot("iPad Statistics Overview")
 
+        let mode = app.segmentedControls["charts.mode"]
+        for _ in 0..<4 where !mode.isHittable { app.swipeUp() }
+        XCTAssertTrue(mode.isHittable)
         let plot = app.descendants(matching: .any)["Solve trend"].firstMatch
-        let legend = app.staticTexts["Single"]
         XCTAssertTrue(plot.waitForExistence(timeout: 15))
         XCTAssertGreaterThan(plot.frame.width, app.frame.width * 0.8)
-        XCTAssertGreaterThan(plot.frame.maxY, app.frame.height * 0.8)
-        XCTAssertTrue(legend.isHittable)
-        XCTAssertLessThan(legend.frame.maxY, app.frame.maxY)
-        XCTAssertEqual(app.segmentedControls["charts.mode"].frame.minX,
-                       app.buttons["Group"].frame.minX, accuracy: 2)
-        attachScreenshot("iPad Landscape Full Chart")
+        XCTAssertLessThan(mode.frame.maxY, plot.frame.minY)
+        XCTAssertTrue(app.buttons["charts.range"].isHittable)
+        XCTAssertTrue(app.buttons["charts.average"].isHittable)
+        let controlsY = mode.frame.minY
+        attachScreenshot("iPad Statistics Trend")
 
-        app.segmentedControls["charts.mode"].buttons.element(boundBy: 1).tap()
+        mode.buttons.element(boundBy: 1).tap()
         XCTAssertTrue(app.staticTexts["Time distribution"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["charts.range"].isHittable)
-        attachScreenshot("iPad Landscape Distribution")
-        app.segmentedControls["charts.mode"].buttons.element(boundBy: 0).tap()
+        XCTAssertFalse(app.buttons["charts.average"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["charts.distribution"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(mode.frame.minY, controlsY, accuracy: 1)
+        attachScreenshot("iPad Statistics Distribution")
+        mode.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(plot.waitForExistence(timeout: 10))
-
-        XCUIDevice.shared.orientation = .portrait
-        XCTAssertTrue(plot.waitForExistence(timeout: 10))
-        XCTAssertGreaterThan(plot.frame.width, app.frame.width * 0.8)
-        XCTAssertTrue(legend.isHittable)
-        attachScreenshot("iPad Portrait Full Chart")
+        let dailyPractice = app.staticTexts["Practice volume"]
+        for _ in 0..<4 where !dailyPractice.isHittable { app.swipeUp() }
+        XCTAssertTrue(dailyPractice.isHittable)
+        XCTAssertLessThan(plot.frame.maxY, dailyPractice.frame.minY)
+        attachScreenshot("iPad Statistics Daily Practice")
         XCUIDevice.shared.orientation = .landscapeLeft
     }
 
