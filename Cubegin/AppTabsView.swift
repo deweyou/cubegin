@@ -204,7 +204,7 @@ struct AppTabsView: View {
                 tabLabel(.results)
             }
             Tab(value: Destination.settings) {
-                SettingsView(contentInsets: contentInsets)
+                SettingsView(model: model, contentInsets: contentInsets, isSelected: selection == .settings)
                     .labelStyle(.titleAndIcon)
                     .toolbar(usesSideNavigation ? .hidden : .automatic, for: .tabBar)
             } label: {
@@ -1759,7 +1759,11 @@ private struct GroupEditor: View {
 }
 
 private struct SettingsView: View {
+    let model: TimerModel
     let contentInsets: LandscapeContentInsets?
+    let isSelected: Bool
+    private enum Page: Hashable { case imports, clearResults }
+    @State private var path: [Page] = []
     @AppStorage(AppLanguage.preferenceKey) private var selectedLanguage = AppLanguage.chinese
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
@@ -1767,7 +1771,7 @@ private struct SettingsView: View {
     private var language: AppLanguage { locale.appLanguage }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Form {
                 Picker(language.text("语言", "Language"), selection: $selectedLanguage) {
                     ForEach(AppLanguage.allCases) { option in
@@ -1783,6 +1787,14 @@ private struct SettingsView: View {
                 Section(language.text("成绩", "Results")) {
                     Toggle(language.text("DNF 可标为最差", "Allow DNF as worst"), isOn: $includesDNFInWorst)
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
+                    NavigationLink(value: Page.imports) {
+                        Text(language.text("导入", "Import"))
+                    }
+                    .accessibilityIdentifier("settings.results.import")
+                    NavigationLink(value: Page.clearResults) {
+                        Text(language.text("清空成绩", "Clear results"))
+                    }
+                    .accessibilityIdentifier("settings.results.clear")
                 }
                 Section(language.text("外观", "Appearance")) {
                     LabeledContent(language.text("主题", "Theme"), value: language.text("跟随系统", "System"))
@@ -1790,6 +1802,12 @@ private struct SettingsView: View {
                 Section(language.text("关于", "About")) {
                     LabeledContent(language.text("应用", "App"), value: "cubegin")
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
+                }
+            }
+            .navigationDestination(for: Page.self) { page in
+                switch page {
+                case .imports: ResultsImportView(model: model)
+                case .clearResults: ClearResultsView(model: model)
                 }
             }
             .pinnedScrollHeader {
@@ -1808,6 +1826,213 @@ private struct SettingsView: View {
             .appBackground()
             .toolbar(.hidden, for: .navigationBar)
         }
+        .onChange(of: isSelected) { _, selected in
+            if !selected { path.removeAll() }
+        }
+    }
+}
+
+private struct ClearResultsView: View {
+    private struct Request: Identifiable {
+        let id = UUID()
+        let solveIDs: Set<Solve.ID>
+        let title: String
+    }
+
+    let model: TimerModel
+    @Environment(\.locale) private var locale
+    @State private var selection: Set<String> = []
+    @State private var request: Request?
+    @State private var deletedCount: Int?
+    private var language: AppLanguage { locale.appLanguage }
+
+    var body: some View {
+        let byGroup = model.solveIDsByGroup
+        let groups = model.groups.filter { byGroup[$0.id] != nil }
+        let selectedIDs = selection.reduce(into: Set<Solve.ID>()) { ids, groupID in
+            if let results = byGroup[groupID] { ids.formUnion(results) }
+        }
+
+        Form {
+            if model.solves.isEmpty {
+                Text(language.text("暂无成绩", "No results yet"))
+                    .foregroundStyle(.secondary)
+            } else {
+                Section(language.text("选择分组", "Select groups")) {
+                    ForEach(groups) { group in
+                        Button {
+                            if !selection.insert(group.id).inserted { selection.remove(group.id) }
+                        } label: {
+                            HStack {
+                                Image(systemName: selection.contains(group.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(Color.accentColor)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading) {
+                                    Text(group.name.isEmpty ? language.text("默认分组", "Default group") : group.name)
+                                    Text(ScrambleCatalog.title(group.event, in: language))
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text((byGroup[group.id]?.count ?? 0).formatted())
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selection.contains(group.id) ? .isSelected : [])
+                        .accessibilityIdentifier("settings.clear.group.\(group.id)")
+                    }
+                }
+            }
+            if !selection.isEmpty {
+                Section {
+                    Button(role: .destructive) {
+                        guard request == nil, !selectedIDs.isEmpty else { return }
+                        request = Request(solveIDs: selectedIDs,
+                                          title: language.text("清空所选分组？", "Clear selected groups?"))
+                    } label: {
+                        Text(language.text("清空所选分组（\(selectedIDs.count.formatted()) 条）", "Clear selected groups (\(selectedIDs.count.formatted()))"))
+                    }
+                    .disabled(selectedIDs.isEmpty || model.started != nil)
+                    .accessibilityIdentifier("settings.results.clearSelected")
+                }
+            } else {
+                Section {
+                    Button(language.text("清空所有成绩", "Clear all results"), role: .destructive) {
+                        guard request == nil, selection.isEmpty else { return }
+                        request = Request(solveIDs: Set(model.solves.map(\.id)),
+                                          title: language.text("清空所有成绩？", "Clear all results?"))
+                    }
+                    .disabled(model.solves.isEmpty || model.started != nil)
+                    .accessibilityIdentifier("settings.results.clearAll")
+                }
+            }
+        }
+        .navigationTitle(language.text("清空成绩", "Clear results"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .allowsHitTesting(request == nil)
+        .accessibilityHidden(request != nil)
+        .overlay {
+            if let pending = request {
+                ClearResultsConfirmation(
+                    title: pending.title,
+                    count: pending.solveIDs.count,
+                    language: language,
+                    onCancel: { request = nil }
+                ) {
+                    guard model.deleteSolves(pending.solveIDs) else { return false }
+                    selection.removeAll()
+                    deletedCount = pending.solveIDs.count
+                    request = nil
+                    return true
+                }
+                .id(pending.id)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let count = deletedCount, request == nil {
+                let message = language.text("已删除 \(count.formatted()) 条成绩。",
+                                            count == 1 ? "Deleted 1 result." : "Deleted \(count.formatted()) results.")
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.black, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.24)))
+                    .padding()
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("settings.clear.notice")
+                    .onAppear { AccessibilityNotification.Announcement(message).post() }
+            }
+        }
+        .task(id: deletedCount) {
+            guard deletedCount != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(4))
+                deletedCount = nil
+            } catch {}
+        }
+    }
+}
+
+private struct ClearResultsConfirmation: View {
+    let title: String
+    let count: Int
+    let language: AppLanguage
+    let onCancel: () -> Void
+    let onConfirm: () -> Bool
+    @State private var seconds = 5
+    @State private var failed = false
+    @AccessibilityFocusState private var titleFocused: Bool
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
+            VStack(spacing: 16) {
+                VStack(spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($titleFocused)
+                    Text(language.text("将永久删除 \(count.formatted()) 条成绩。",
+                                       count == 1 ? "This will permanently delete 1 result."
+                                           : "This will permanently delete \(count.formatted()) results."))
+                        .font(.subheadline)
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { actions }
+                    VStack(spacing: 8) { actions }
+                }
+            }
+            .multilineTextAlignment(.center)
+            .padding(20)
+            .frame(maxWidth: 340)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+            .shadow(color: .black.opacity(0.15), radius: 20, y: 8)
+            .padding(24)
+            .accessibilityElement(children: .contain)
+            .accessibilityAction(.escape, onCancel)
+            .onAppear { titleFocused = true }
+        }
+        .alert(language.text("无法清空成绩", "Couldn’t clear results"), isPresented: $failed) {
+            Button(language.text("好", "OK"), role: .cancel) {}
+        }
+        .task {
+            do {
+                while seconds > 0 {
+                    try await Task.sleep(for: .seconds(1))
+                    seconds -= 1
+                }
+            } catch {}
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button(role: .cancel, action: onCancel) {
+            Text(language.text("取消", "Cancel"))
+                .frame(maxWidth: .infinity, minHeight: 32)
+        }
+        .buttonStyle(.bordered)
+
+        Button(role: .destructive) {
+            guard seconds == 0 else { return }
+            failed = !onConfirm()
+        } label: {
+            Text(seconds > 0
+                 ? language.text("清空（\(seconds) 秒）", "Clear (\(seconds)s)")
+                 : language.text("清空", "Clear"))
+                .frame(maxWidth: .infinity, minHeight: 32)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+        .disabled(seconds > 0)
+        .accessibilityIdentifier("settings.results.confirmClearAll")
     }
 }
 
