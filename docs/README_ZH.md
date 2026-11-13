@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg">
-  <img src="../apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg" alt="Cubegin logo" width="260">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg">
+  <img src="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg" alt="Cubegin logo" width="260">
 </picture>
 
 # Cubegin
@@ -21,4 +21,4 @@ Rust 引擎提供标准打乱、训练打乱、完整求解和辅助求解、SVG
 
 [Swift SDK](https://github.com/deweyou/cubegin/blob/main/sdk/swift/README_ZH.md) · [Android SDK](https://github.com/deweyou/cubegin/blob/main/sdk/android/README_ZH.md) · [Web SDK](https://github.com/deweyou/cubegin/blob/main/sdk/web/README_ZH.md)
 
-[开发指南](https://github.com/deweyou/cubegin/blob/main/DEVELOPMENT_ZH.md) · [GPL-3.0-only](https://github.com/deweyou/cubegin/blob/main/LICENSE)
+[开发指南](https://github.com/deweyou/cubegin/blob/main/DEVELOPMENT.md) · [GPL-3.0-only](https://github.com/deweyou/cubegin/blob/main/LICENSE)

@@ -17,13 +17,13 @@
 
 ## 知识库
 
-每次迭代同步受影响的文档，移除过时说明，修复失效链接。历史证据在解释现行契约或来源时保留。内部规则和知识库用简体中文，命令、API 名称、路径和上游原文保留原样。公开能力变化同步中英文 README，开发接入变化同步中英文开发指南。
+每次迭代同步受影响的文档，移除过时说明，修复失效链接。历史证据在解释现行契约或来源时保留。内部规则和知识库用简体中文，命令、API 名称、路径和上游原文保留原样。公开能力变化同步中英文 README，开发接入变化同步相关开发指南。
 
 | 何时查阅 | 入口 |
 | --- | --- |
 | 新增或整理仓库文档 | [文档规范](docs/documentation.md) |
 | 理解模块边界或修改依赖 | [架构](docs/architecture.md)、[来源和归属](docs/provenance.md) |
-| 构建、接入或测试 | [开发指南](DEVELOPMENT_ZH.md)、[验证](docs/testing.md) |
+| 构建、接入或测试 | [开发指南](DEVELOPMENT.md)、[验证](docs/testing.md) |
 | 修改 CI 或跟进 PR | [CI 验收](docs/ci.md)、[PR 跟进](docs/pr-follow-up.md) |
 | 修改 SDK 接口、产物或发布流程 | [SDK 示例](docs/sdk.md)、[产物](docs/artifacts.md)、[发布流程](docs/releasing.md) |
 | 查看交付与验收状态 | [交付状态](docs/status.md) |

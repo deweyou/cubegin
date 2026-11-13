@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg">
-  <img src="../apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg" alt="Cubegin logo" width="260">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg">
+  <img src="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg" alt="Cubegin logo" width="260">
 </picture>
 
 # Cubegin
@@ -21,4 +21,4 @@ The Rust engine provides standard and training scrambles, full and auxiliary sol
 
 [Swift SDK](https://github.com/deweyou/cubegin/blob/main/sdk/swift/README.md) · [Android SDK](https://github.com/deweyou/cubegin/blob/main/sdk/android/README.md) · [Web SDK](https://github.com/deweyou/cubegin/blob/main/sdk/web/README.md)
 
-[Development guide](https://github.com/deweyou/cubegin/blob/main/DEVELOPMENT.md) · [GPL-3.0-only](https://github.com/deweyou/cubegin/blob/main/LICENSE)
+[Development guide (中文)](https://github.com/deweyou/cubegin/blob/main/DEVELOPMENT.md) · [GPL-3.0-only](https://github.com/deweyou/cubegin/blob/main/LICENSE)

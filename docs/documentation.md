@@ -12,7 +12,7 @@
 - 根 README 先介绍 Cubegin 和可用的 iOS App，再介绍 Rust 引擎和平台 SDK。中英文正文统一放在 [docs/README.md](README.md) 和 [docs/README_ZH.md](README_ZH.md)，根目录以软链作为入口。
 - 各 App、crate、绑定和 SDK 的 README 说明各自的职责、能力和边界。面向接入者时可列出平台支持与包名。构建命令和 CI 流程放在开发指南。
 - README 使用 `README.md` 和 `README_ZH.md`。两种语言都提供 **English / 中文** 切换按钮。从总览进入模块时，英文入口指向英文 README，中文入口指向中文版。
-- 根开发指南保留 [英文](../DEVELOPMENT.md)和[中文](../DEVELOPMENT_ZH.md)两版，并提供语言切换按钮。模块有独立的构建、调试或接入流程时可设 `DEVELOPMENT.md`。只有一条验证命令时，放在模块 `AGENTS.md` 即可。
+- 根[开发指南](../DEVELOPMENT.md)统一使用简体中文。模块有独立的构建、调试或接入流程时可设 `DEVELOPMENT.md`。只有一条验证命令时，放在模块 `AGENTS.md` 即可。
 
 ## AGENTS.md 和知识库
 
@@ -20,4 +20,4 @@
 - `AGENTS.md` 和内部知识库统一用简体中文。命令、API、路径和上游原文保留原样。
 - 根 `docs/` 管跨模块知识，模块文档管自身行为、接入和验收。版本号、产物路径、构建步骤和迁移 SHA 放在各自的开发、产物或[来源文档](provenance.md)中，规则文件只链接入口。
 - 每轮迭代对照实际代码和配置，更新受影响的知识页，移除过时说明并修复链接。仍用于解释现行契约、验证证据或第三方归属的历史记录继续保留，其余可从 Git 历史追溯。
-- 公开能力变化同步两种 README。开发或接入流程变化同步对应语言的开发指南。
+- 公开能力变化同步两种 README。开发或接入流程变化同步相关开发指南。
