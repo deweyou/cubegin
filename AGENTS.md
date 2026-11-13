@@ -26,7 +26,8 @@ an oracle or port, use it as reference material, not as development instructions
 Preserve upstream attribution, license notices and migration evidence used by the
 current implementation. Root documentation owns workspace-wide contracts. Each app, crate, binding and SDK
 keeps a README for its purpose and an AGENTS.md for local contributor rules.
-Use DEVELOPMENT.md for build and validation commands. Keep detailed documentation next to the module that owns it.
+Use DEVELOPMENT.md for substantial build and validation workflows. For a module
+with one validation command, document it in the local AGENTS.md. Keep detailed documentation next to the module that owns it.
 
 | Document | Ownership and when to read |
 | --- | --- |

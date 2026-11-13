@@ -1,21 +1,11 @@
-# cubegin
+# Cubegin for iPhone and iPad
 
-Native SwiftUI speedcubing timer for iPhone and iPad. Requires Xcode 26+ and iOS/iPadOS 26+. Uses Apple's Liquid Glass with system light/dark appearance.
+Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It supports system light and dark appearance and adapts to portrait, landscape and resizable iPad windows.
 
 ## Features
 
-Select an event from the compact native menu; the dumbbell icon on the right toggles Training. A new app process starts in Standard. Standard includes 16 events (FMC and multi-blind excluded); Training includes 94 types grouped in two menu levels. Each mode remembers its last event selection across launches. Training uses the installed SDK's generateTraining API with default options; case filtering is not yet exposed.
+- **Timing and training** — Time solves with touch or a hardware keyboard. Choose from 16 standard events and 94 training types, and see each scramble with its diagram.
+- **Results and statistics** — Organize solves into groups, apply +2 or DNF, and review individual attempts, rolling averages, trend charts and time distributions.
+- **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.
 
-Hold the screen or spacebar until the timer turns green, then release to start. Press again to stop. The start delay defaults to 0.2 seconds and can be adjusted in Settings. Time uses ContinuousClock; interruption cancels an active attempt without saving. Results retain date, event, group and scramble in Documents/solves.json, including the complete training type ID. Each event has a default group; Results supports creating, reordering and editing groups in a sheet. Editing includes the name and default setting. Deleting a non-default group also permanently deletes its results after confirmation. The event and Training controls are shared with Home. The group and view pickers share one row, with Results and Statistics views. Results defaults to Single, with rolling averages in the same type selector. Statistics shows the overview followed by chart controls and the chart. The chart uses icons to switch between solve trends and a time histogram for the current group. The trend shows single solves and all available rolling averages by default. The color legend identifies each series, and the Averages menu toggles individual lines. After stopping, use +2 to add two seconds, DNF to mark the result invalid, or the trash button to open a deletion confirmation. Tap an active penalty again to clear it. The original time is retained for penalized solves. The solve details screen supports changing or clearing +2/DNF, deleting a solve, moving it to another group in the same event, and viewing its scramble diagram. Inspection, sync and competition workflows are not yet implemented. iPad layout supports resizable windows through a centered adaptive width.
-
-In Settings → Import → Import from DCTimer, choose `spdcube.sqlite` from Files → On My iPhone → DCTimer². Review the results, uncheck any groups you want to skip, and choose whether to create groups from the original sessions or add results to each project's default group. Cubegin skips unmatched sessions, incompatible scrambles, and previously imported results. It removes legacy trailing Clock pin markers while keeping the results. Undo last import is available from Settings → Import until you undo it, delete all results from that import, or import another batch of new results. Settings → Results → Clear results lets you clear selected groups or all results after a five-second confirmation delay. Groups are kept.
-
-The timer shows the current group’s valid and total attempts, overall mean, best single, and current mo3, ao5 and ao12. In iPhone landscape, the scramble text and diagram stack on the left, with the timer and summary on the right. During a solve, the side tabs disappear and the timer slides to the center. With Reduce Motion enabled, the timer stays in the right column. In iPhone portrait and on iPad, the summary sits next to the scramble diagram in the footer.
-
-The Results type selector offers rolling mo3, ao5, ao12, ao50, ao100, ao500, ao1000 and ao10000 once the selected group has enough attempts. Tap an average to see its standard deviation (σ), fastest and worst singles, and open any solve in the window. Settings can exclude DNF from the worst-result highlight.
-
-The overview at the top of Statistics shows the selected group’s valid and total attempts, mean and single extremes, current and best rolling averages, and attempt counts for the latest eight active days.
-
-GPL-3.0-only. See LICENSE and NOTICE.
-
-[Development guide](DEVELOPMENT.md)
+[Development guide](DEVELOPMENT.md) · [GPL-3.0-only](LICENSE)

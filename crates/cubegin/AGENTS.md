@@ -1,4 +1,8 @@
 # Cubegin Rust facade contributor instructions
 
-Read [README.md](README.md) for module ownership and [DEVELOPMENT.md](DEVELOPMENT.md) for validation.
+Read [README.md](README.md) for module ownership.
 Keep domain behavior in Rust. Use independent fixtures, invariants or replay to validate changes.
+
+Run `cargo test -p cubegin --locked` from the repository root.
+
+See the [workspace architecture](../../docs/architecture.md) and [verification guide](../../docs/testing.md).
