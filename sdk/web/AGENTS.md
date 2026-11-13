@@ -1,5 +1,4 @@
-# Web SDK contributor instructions
+# Web SDK
 
-Read [DEVELOPMENT.md](DEVELOPMENT.md) for usage and validation.
-Keep cube semantics in Rust. Verify the WASM build, npm package consumer and
-browser tests using the root [verification guide](../../docs/testing.md).
+保持绑定与二进制来自同一次构建，用独立消费项目验证产物。
+参见[模块开发指南](DEVELOPMENT.md)和[仓库验证指南](../../docs/testing.md)。

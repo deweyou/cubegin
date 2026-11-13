@@ -24,6 +24,7 @@ on:
       - 'fixtures/states.json'
       - 'fixtures/events.json'
       - 'Package.swift'
+      - '.swiftlint.yml'
       - 'sdk/swift/**'
       - '!sdk/swift/**/*.md'
       - '!sdk/swift/**/docs/**'
@@ -60,6 +61,7 @@ on:
       - 'fixtures/states.json'
       - 'fixtures/events.json'
       - 'Package.swift'
+      - '.swiftlint.yml'
       - 'sdk/swift/**'
       - '!sdk/swift/**/*.md'
       - '!sdk/swift/**/docs/**'
@@ -110,6 +112,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Lint hand-written Swift
+        run: |
+          lint_dir="$(mktemp -d)"
+          curl --fail --location --retry 3 --output "$lint_dir/swiftlint.zip" \
+            https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip
+          echo "c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0  $lint_dir/swiftlint.zip" | shasum -a 256 -c
+          unzip -q "$lint_dir/swiftlint.zip" -d "$lint_dir"
+          "$lint_dir/swiftlint" lint --strict --quiet
       - name: Build XCFramework and generated bindings
         run: node scripts/build-ios.mjs --app-only
       - name: Generated Swift binding fixture and replay tests

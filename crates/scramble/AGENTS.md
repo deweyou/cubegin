@@ -1,8 +1,3 @@
-# Scramble generation contributor instructions
+# 打乱生成
 
-Read [README.md](README.md) for module ownership.
-Keep domain behavior in Rust. Use independent fixtures, invariants or replay to validate changes.
-
-Run `cargo test -p cubegin-scramble --locked` from the repository root.
-
-See the [workspace architecture](../../docs/architecture.md) and [verification guide](../../docs/testing.md).
+在仓库根目录运行 `cargo test -p cubegin-scramble --locked`。参见[验证指南](../../docs/testing.md)。

@@ -1,6 +1,6 @@
 import {writeArtifactManifest, writeArchiveChecksum} from './artifact-metadata.mjs';
 import {run} from './process.mjs';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';

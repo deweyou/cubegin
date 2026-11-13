@@ -1,8 +1,3 @@
-# Playback contributor instructions
+# 转动回放
 
-Read [README.md](README.md) for module ownership.
-Keep domain behavior in Rust. Use independent fixtures, invariants or replay to validate changes.
-
-Run `cargo test -p cubegin-playback --locked` from the repository root.
-
-See the [workspace architecture](../../docs/architecture.md) and [verification guide](../../docs/testing.md).
+在仓库根目录运行 `cargo test -p cubegin-playback --locked`。参见[验证指南](../../docs/testing.md)。

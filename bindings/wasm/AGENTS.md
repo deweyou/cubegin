@@ -1,8 +1,4 @@
-# WASM bindings contributor instructions
+# WASM 绑定
 
-Read [README.md](README.md) for module ownership.
-Keep adapters thin. Generate foreign-language bindings through the root build scripts.
-
-Run `cargo xtask verify-packages` from the repository root.
-
-See the [workspace architecture](../../docs/architecture.md) and [verification guide](../../docs/testing.md).
+保持适配层轻量，使用仓库脚本生成绑定。在根目录运行 `cargo xtask verify-packages`。
+参见[验证指南](../../docs/testing.md)。

@@ -12,6 +12,7 @@ cargo xtask check
 pnpm install --frozen-lockfile
 cargo install wasm-bindgen-cli --version 0.2.126 --locked
 cargo xtask build-sdk web
+pnpm lint
 pnpm check
 pnpm test
 pnpm exec playwright install chromium

@@ -8,14 +8,19 @@
   },
   "scripts": {
     "build": "node scripts/build-web.mjs",
+    "lint": "eslint --max-warnings 0 scripts sdk/web/src sdk/web/test examples/web tests/e2e playwright.config.ts eslint.config.mjs",
     "check": "tsc -p sdk/web/tsconfig.json --noEmit && tsc -p examples/web/tsconfig.json",
     "test": "node --test sdk/web/test/*.test.mjs",
     "test:e2e": "playwright test",
     "dev": "vite examples/web --host 127.0.0.1 --port 4488 --strictPort"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.4",
     "@playwright/test": "1.58.2",
+    "eslint": "9.39.4",
+    "globals": "16.5.0",
     "typescript": "~5.9.3",
+    "typescript-eslint": "8.72.2",
     "vite": "^7.3.1"
   }
 }

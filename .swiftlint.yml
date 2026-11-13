@@ -1,0 +1,15 @@
+included:
+  - apps/ios/Cubegin
+  - apps/ios/CubeginTests
+  - apps/ios/CubeginUITests
+  - sdk/swift/PackageTests
+  - sdk/swift/Tests
+only_rules:
+  - duplicate_imports
+  - force_cast
+  - force_try
+  - implicit_optional_initialization
+  - trailing_whitespace
+  - unused_closure_parameter
+  - unused_import
+  - vertical_whitespace
