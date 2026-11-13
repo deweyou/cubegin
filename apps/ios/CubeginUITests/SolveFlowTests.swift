@@ -22,7 +22,11 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         entry.tap()
         let cancel = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        // Cold Files launches can exceed 10 seconds on hosted simulators.
+        guard cancel.waitForExistence(timeout: 45) else {
+            XCTFail("The system file picker did not show its Cancel button")
+            return
+        }
         cancel.tap()
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
     }
