@@ -19,11 +19,19 @@ let expected=try evaluate(algorithm:"R U2 F'")
 try require(steps.last?.after==expected.facelets,"timeline mismatch")
 print("Swift native SDK: \(fixtures.count) shared fixtures, errors, scramble, solve and timeline passed")
 // Foundation JSON comparison avoids assuming all puzzles share one topology.
-let eventFixtures=try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:"fixtures/events.json"))) as! [[String:Any]]
+let eventsData = try Data(contentsOf: URL(fileURLWithPath: "fixtures/events.json"))
+guard let eventFixtures = try JSONSerialization.jsonObject(with: eventsData) as? [[String: Any]] else {
+    throw NSError(domain: "Invalid event fixture list", code: 1)
+}
 for fixture in eventFixtures {
- let snapshot=try evaluateEvent(event:fixture["eventId"] as! String,algorithm:fixture["algorithm"] as! String)
- let actual=try JSONSerialization.jsonObject(with:Data(snapshot.stateJson.utf8)) as! NSDictionary
- try require(actual.isEqual(to:fixture["state"] as! [AnyHashable:Any]),"event fixture mismatch")
+    guard let eventID = fixture["eventId"] as? String,
+          let algorithm = fixture["algorithm"] as? String,
+          let state = fixture["state"] as? [AnyHashable: Any] else {
+        throw NSError(domain: "Invalid event fixture", code: 1)
+    }
+    let snapshot = try evaluateEvent(event: eventID, algorithm: algorithm)
+    let actual = try JSONSerialization.jsonObject(with: Data(snapshot.stateJson.utf8)) as? NSDictionary
+    try require(actual?.isEqual(to: state) == true, "event fixture mismatch")
 }
 let training=try generateTraining(id:"333.pll",seed:42,optionsJson:"{}")
 try require(training.contains("333.pll"),"training result missing")

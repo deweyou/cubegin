@@ -1,0 +1,65 @@
+name: SDK version consistency
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
+      - 'tools/cli/Cargo.toml'
+      - 'xtask/Cargo.toml'
+      - 'sdk/web/package.json'
+      - 'sdk/android/library/build.gradle.kts'
+      - 'scripts/release.mjs'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
+      - 'tools/cli/Cargo.toml'
+      - 'xtask/Cargo.toml'
+      - 'sdk/web/package.json'
+      - 'sdk/android/library/build.gradle.kts'
+      - 'scripts/release.mjs'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  versions:
+    name: Verify package versions without publishing
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: |
+          version="$(node -p "require('./sdk/web/package.json').version")"
+          node scripts/release.mjs "$version"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: dist/release-plan.json
+          if-no-files-found: error
+          retention-days: 14

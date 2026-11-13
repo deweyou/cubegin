@@ -1,8 +1,3 @@
-# Cube diagrams contributor instructions
+# 魔方展开图
 
-Read [README.md](README.md) for module ownership.
-Keep domain behavior in Rust. Use independent fixtures, invariants or replay to validate changes.
-
-Run `cargo test -p cubegin-diagram --locked` from the repository root.
-
-See the [workspace architecture](../../docs/architecture.md) and [verification guide](../../docs/testing.md).
+在仓库根目录运行 `cargo test -p cubegin-diagram --locked`。参见[验证指南](../../docs/testing.md)。

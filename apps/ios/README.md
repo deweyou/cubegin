@@ -1,5 +1,7 @@
 # Cubegin for iPhone and iPad
 
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
+
 Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It supports system light and dark appearance and adapts to portrait, landscape and resizable iPad windows.
 
 ## Features

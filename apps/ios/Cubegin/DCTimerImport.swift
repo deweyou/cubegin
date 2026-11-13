@@ -17,7 +17,7 @@ struct DCTimerBackup: Sendable {
         let id: Int64
         let name: String
         let entries: [Entry]
-        var scrambleType: Int64? = nil
+        var scrambleType: Int64?
     }
 
     let sessions: [Session]

@@ -1,5 +1,7 @@
 # Player geometry
 
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
+
 `models.json` contains immutable geometry and primitive move permutations extracted
 from Cubegin `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`,
 `packages/player/src/puzzles`. It is declarative data, not a JavaScript runtime.

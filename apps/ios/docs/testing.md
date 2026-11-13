@@ -2,6 +2,9 @@
 
 ## 自动化测试与 CI
 
+单测使用固定输入、隔离存储和可控时间。UI 测试使用稳定的可访问性标识、条件等待
+和独立的成绩文件。涉及视觉或设备交互的改动，在 PR 中记录验证方式和结果。
+
 App 单测位于 `CubeginTests/`，通过正式工程的 `CubeginApp` scheme 执行。覆盖
 计时输入和中断、打乱预取、成绩迁移和读写、分组和罚时，以及从 mo3 到 ao10000
 的滚动统计。计时用例使用固定打乱、可控的单调时间和独立的临时存储。
@@ -33,7 +36,7 @@ swift test --package-path ../..
 名称可换成 `xcrun simctl list devices available` 列出的设备。只运行 UI 测试时，
 在上述 `xcodebuild test` 命令加上 `-only-testing:CubeginUITests`。
 
-[仓库 CI](../../../.github/workflows/check.yml) 在 PR、推送到 `main`、合并队列及手动触发时运行。
+[仓库 CI](../../../.github/workflows/apple.yml) 在 PR、推送到 `main`、合并队列及手动触发时运行。
 CI 使用 arm64 macOS 和 Xcode 26.2，从同一 checkout 构建 XCFramework，再并行执行无签名 iOS Release 构建、iPhone 17 Pro（iOS 26.2）App 单测和 XCUITest。测试结果
 `AppTests.xcresult` 生成后保留 14 天。设备构建用于验证编译和链接，安装及交互见下方。
 合入前应通过该检查。GitHub 将其设为必需状态检查需要单独配置仓库规则。

@@ -1,0 +1,210 @@
+name: Apple SDK and iOS checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - '!crates/**/docs/**'
+      - '!crates/*/tests/**'
+      - '!crates/*/examples/**'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'bindings/native/**'
+      - '!bindings/native/**/*.md'
+      - '!bindings/native/**/docs/**'
+      - 'scripts/build-native.mjs'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
+      - 'Package.swift'
+      - '.swiftlint.yml'
+      - 'sdk/swift/**'
+      - '!sdk/swift/**/*.md'
+      - '!sdk/swift/**/docs/**'
+      - 'apps/ios/**'
+      - '!apps/ios/**/*.md'
+      - '!apps/ios/**/docs/**'
+      - '!apps/ios/Design/**'
+      - '!apps/ios/scripts/**'
+      - '!apps/ios/.gitignore'
+      - '!apps/ios/CubeginPreview.xcodeproj/**'
+      - 'scripts/build-ios.mjs'
+      - 'scripts/package-ios.mjs'
+      - 'scripts/verify-swift-package.mjs'
+      - 'scripts/test-swift.mjs'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - '!crates/**/docs/**'
+      - '!crates/*/tests/**'
+      - '!crates/*/examples/**'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'bindings/native/**'
+      - '!bindings/native/**/*.md'
+      - '!bindings/native/**/docs/**'
+      - 'scripts/build-native.mjs'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
+      - 'Package.swift'
+      - '.swiftlint.yml'
+      - 'sdk/swift/**'
+      - '!sdk/swift/**/*.md'
+      - '!sdk/swift/**/docs/**'
+      - 'apps/ios/**'
+      - '!apps/ios/**/*.md'
+      - '!apps/ios/**/docs/**'
+      - '!apps/ios/Design/**'
+      - '!apps/ios/scripts/**'
+      - '!apps/ios/.gitignore'
+      - '!apps/ios/CubeginPreview.xcodeproj/**'
+      - 'scripts/build-ios.mjs'
+      - 'scripts/package-ios.mjs'
+      - 'scripts/verify-swift-package.mjs'
+      - 'scripts/test-swift.mjs'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  apple_build:
+    name: Apple SDK build
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Apple build environment
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          swift --version
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Lint hand-written Swift
+        run: |
+          lint_dir="$(mktemp -d)"
+          curl --fail --location --retry 3 --output "$lint_dir/swiftlint.zip" \
+            https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip
+          echo "c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0  $lint_dir/swiftlint.zip" | shasum -a 256 -c
+          unzip -q "$lint_dir/swiftlint.zip" -d "$lint_dir"
+          "$lint_dir/swiftlint" lint --strict --quiet
+      - name: Build XCFramework and generated bindings
+        run: node scripts/build-ios.mjs --app-only
+      - name: Generated Swift binding fixture and replay tests
+        run: node scripts/test-swift.mjs
+      - name: Verify committed Swift bindings match Rust
+        run: git diff --exit-code -- sdk/swift/Generated/
+      - name: Archive matching framework and bindings
+        run: tar -cf apple-build-input.tar dist/CubeginFFI.xcframework sdk/swift/Generated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apple-build-input
+          path: apple-build-input.tar
+          if-no-files-found: error
+          retention-days: 14
+
+  apple_package:
+    needs: apple_build
+    name: Apple SDK package and isolated consumers
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: apple-build-input
+      - run: tar -xf apple-build-input.tar
+      - run: node scripts/build-ios.mjs --package-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apple-candidate
+          path: |
+            dist/CubeginFFI.xcframework.zip
+            dist/CubeginFFI.xcframework.zip.sha256
+            dist/swift-verification.json
+            dist/xcframework-SDK.json
+            dist/CubeginSDK-*.zip
+            dist/CubeginSDK-*.zip.sha256
+            Package.swift
+            sdk/swift/Generated/
+            sdk/swift/PackageTests/
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    needs: apple_build
+    name: iOS App (${{ matrix.check }})
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [release, simulator-tests]
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apple-build-input
+      - run: tar -xf apple-build-input.tar
+      - name: Build Release app for iOS
+        if: matrix.check == 'release'
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
+            -destination 'generic/platform=iOS' -configuration Release \
+            -derivedDataPath DerivedData/release CODE_SIGNING_ALLOWED=NO build
+      - name: Run App unit and UI tests
+        if: matrix.check == 'simulator-tests'
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' \
+            -derivedDataPath DerivedData/app-tests \
+            -resultBundlePath DerivedData/AppTests.xcresult \
+            -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+      - name: Upload App test results
+        if: ${{ !cancelled() && matrix.check == 'simulator-tests' && hashFiles('apps/ios/DerivedData/AppTests.xcresult/Info.plist') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-test-results
+          path: apps/ios/DerivedData/AppTests.xcresult
+          retention-days: 14

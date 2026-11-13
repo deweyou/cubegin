@@ -271,7 +271,6 @@ struct AppTabsView: View {
         .glassEffect(.regular, in: .capsule)
     }
 
-
 }
 
 private struct InterfaceOrientationReader: UIViewRepresentable {

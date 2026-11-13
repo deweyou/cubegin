@@ -1,0 +1,134 @@
+name: Android SDK checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - '!crates/**/docs/**'
+      - '!crates/*/tests/**'
+      - '!crates/*/examples/**'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'xtask/**'
+      - '!xtask/**/*.md'
+      - '!xtask/**/docs/**'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'bindings/native/**'
+      - '!bindings/native/**/*.md'
+      - '!bindings/native/**/docs/**'
+      - 'scripts/build-native.mjs'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
+      - 'sdk/android/**'
+      - '!sdk/android/**/*.md'
+      - '!sdk/android/**/docs/**'
+      - '!sdk/android/smoke/**'
+      - 'examples/android/**'
+      - '!examples/android/**/*.md'
+      - '!examples/android/**/docs/**'
+      - 'scripts/build-android.mjs'
+      - 'scripts/verify-android-package.mjs'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - '!crates/**/docs/**'
+      - '!crates/*/tests/**'
+      - '!crates/*/examples/**'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'xtask/**'
+      - '!xtask/**/*.md'
+      - '!xtask/**/docs/**'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'bindings/native/**'
+      - '!bindings/native/**/*.md'
+      - '!bindings/native/**/docs/**'
+      - 'scripts/build-native.mjs'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
+      - 'sdk/android/**'
+      - '!sdk/android/**/*.md'
+      - '!sdk/android/**/docs/**'
+      - '!sdk/android/smoke/**'
+      - 'examples/android/**'
+      - '!examples/android/**/*.md'
+      - '!examples/android/**/docs/**'
+      - 'scripts/build-android.mjs'
+      - 'scripts/verify-android-package.mjs'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  android:
+    name: Kotlin tests and Android build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          # The retired SDK "tools" package is no longer available.
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+      - run: cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Build AAR, run Kotlin unit tests and verify isolated Maven consumer
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          cargo xtask build-sdk android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-candidate
+          path: |
+            dist/android/
+            dist/maven/
+            dist/android-verification.json
+            dist/android-SDK.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-test-failure
+          path: |
+            sdk/android/library/build/reports/tests/
+            sdk/android/library/build/test-results/
+            examples/android/build/reports/tests/
+            examples/android/build/test-results/
+          retention-days: 14
