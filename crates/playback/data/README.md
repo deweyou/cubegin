@@ -1,5 +1,7 @@
 # Player geometry
 
+[English](README.md) · [中文](README_ZH.md)
+
 `models.json` contains immutable geometry and primitive move permutations extracted
 from Cubegin `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`,
 `packages/player/src/puzzles`. It is declarative data, not a JavaScript runtime.

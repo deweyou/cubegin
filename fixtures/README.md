@@ -1,5 +1,7 @@
 # Shared migration fixtures
 
+[English](README.md) · [中文](README_ZH.md)
+
 These fixtures support the current Rust implementation and SDK verification. They
 reference legacy Cubegin commit `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97` as a
 behavior baseline; they do not establish the legacy implementation as ground truth.

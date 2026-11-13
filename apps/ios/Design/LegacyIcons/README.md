@@ -1,5 +1,7 @@
 # Cubegin icon sources
 
+[English](README.md) · [中文](README_ZH.md)
+
 Copied from `deweyou/cubegin` commit
 `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`, `packages/icons/src`.
 License: GPL-3.0-only; retain the repository LICENSE and NOTICE when distributing.

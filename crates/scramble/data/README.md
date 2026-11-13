@@ -1,5 +1,7 @@
 # Training tables
 
+[English](README.md) · [中文](README_ZH.md)
+
 `legacy-training.json` and `catalog.json` were extracted from Cubegin commit
 `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`,
 `packages/scramble-core/src/{catalog,generators/training-*}.ts`.

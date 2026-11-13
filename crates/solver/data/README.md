@@ -1,5 +1,7 @@
 # Auxiliary solver reference data
 
+[English](README.md) · [中文](README_ZH.md)
+
 Transition and pruning tables and stage masks generated from legacy `79a1e4c`.
 The source functions are `initializeCrossTables`, `initializeEOLineTables`,
 `getPetrusTables`, `initializeRouxTables`, plus the stage metadata in
