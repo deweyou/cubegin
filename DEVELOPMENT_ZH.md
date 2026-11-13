@@ -36,7 +36,7 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI 检查
 
-仅修改 Markdown 或 CI 分流规则时，执行轻量检查。修改随 npm 包发布的 README 时，还会验证 npm 打包和消费。
+仅修改 Markdown 或 CI 分流规则时，执行轻量检查。
 
 Core 或共享文件变更时，执行 Rust、Web、Swift、Android 检查，包括单测、浏览器
 E2E、产物构建与独立消费验证。仅修改

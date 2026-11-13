@@ -16,7 +16,7 @@ if (/^[0-9a-f]{40}$/.test(base ?? '') && !/^0+$/.test(base)) {
     const diff = execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', base, 'HEAD']);
     const paths = diff.toString().split('\0').filter(Boolean);
     if (paths.length > 0 && paths.every(path => /\.md$/i.test(path) || ruleFiles.has(path))) {
-      scope = paths.includes('sdk/web/README.md') ? 'docs-web' : 'docs';
+      scope = 'docs';
     } else if (paths.length > 0 && paths.every(path => path.startsWith('apps/ios/'))) {
       scope = 'ios';
     }

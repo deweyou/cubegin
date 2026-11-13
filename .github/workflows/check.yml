@@ -122,7 +122,7 @@ jobs:
 
   web:
     needs: scope
-    if: needs.scope.outputs.checks == 'full' || needs.scope.outputs.checks == 'docs-web'
+    if: needs.scope.outputs.checks == 'full'
     name: Web SDK build, unit and package tests
     # Keep Darwin screenshot baselines on macOS / arm64.
     runs-on: macos-15
@@ -144,7 +144,6 @@ jobs:
       - name: Build WASM and verify isolated npm consumer
         run: cargo xtask verify-packages
       - name: Type checks and actual WASM unit tests
-        if: needs.scope.outputs.checks == 'full'
         run: |
           pnpm check
           pnpm test
@@ -159,7 +158,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
-        if: needs.scope.outputs.checks == 'full'
         with:
           name: web-e2e-input
           path: |

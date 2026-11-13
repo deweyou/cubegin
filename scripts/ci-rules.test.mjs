@@ -50,8 +50,8 @@ test('selects a scope from the entire change range', t => {
 
   write('sdk/web/README.md', '# Web SDK');
   const web = commit('published README');
-  assert.equal(scope(rules), 'docs-web');
-  assert.equal(scope(base), 'docs-web');
+  assert.equal(scope(rules), 'docs');
+  assert.equal(scope(base), 'docs');
 
   write('apps/ios/Timer.swift', 'updated');
   const ios = commit('iOS');
@@ -71,7 +71,6 @@ const required = {
   full: ['RUST', 'RUST_PACKAGES', 'WEB', 'WEB_E2E', 'APPLE_BUILD', 'APPLE_PACKAGE', 'IOS', 'ANDROID'],
   ios: ['APPLE_BUILD', 'IOS'],
   docs: ['DOCS'],
-  'docs-web': ['DOCS', 'WEB'],
 };
 const results = new Set(['SCOPE', 'CI_RULES', ...Object.values(required).flat()]);
 
