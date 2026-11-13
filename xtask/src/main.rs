@@ -44,12 +44,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("build-sdk")=> {
             match args.get(1).map(String::as_str) {
-                Some("cli")=>command("node", &["scripts/build-cli.mjs"])?,
                 Some("web")=>command("node", &["scripts/build-web.mjs"])?,
                 Some("native")=>command("node", &["scripts/build-native.mjs"])?,
                 Some("ios")=>command("node", &["scripts/build-ios.mjs"])?,
                 Some("android")=>command("node", &["scripts/build-android.mjs"])?,
-                _=>return Err("specify a platform: web, native (host bindings), ios, android, or cli".into()),
+                _=>return Err("specify a platform: web, native (host bindings), ios, or android".into()),
             }
         }
         Some("verify-packages")=>command("node", &["scripts/verify-packages.mjs"])?,
@@ -59,7 +58,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if args.len()!=4 || args[1]!="--version" || args[3]!="--dry-run" { return Err("only release --version <version> --dry-run is supported; publication is not wired".into()); }
             command("node", &["scripts/release.mjs",&args[2]])?;
         }
-        _=>return Err("usage: cargo xtask check | build-sdk <web|native|ios|android|cli> | verify-packages | verify-rust-packages | release --version <version> --dry-run".into()),
+        _=>return Err("usage: cargo xtask check | build-sdk <web|native|ios|android> | verify-packages | verify-rust-packages | release --version <version> --dry-run".into()),
     }
     Ok(())
 }

@@ -19,4 +19,4 @@ Core Rust crate 和 Web、Swift、Android SDK 共用工作区版本。先按[开
 - Rust 发布顺序为 `cubegin-tnoodle` → puzzle → solver、diagram、playback → scramble → `cubegin`。逐个验证归档。绑定 crate 为 `publish=false`。
 - npm 使用可信发布和 OIDC。Android 在命名空间就绪后经 Maven Central Portal 发布已签名 AAR、POM 和源码包。分别记录 registry 状态，重试缺失产物时保留已有版本，完成远程消费验证后再确认发布完成。
 
-当前脚本只生成候选产物。签名、凭据、registry 发布、远程 SwiftPM 元数据生成和完整传递依赖归属仍待接入。打包和校验规则见[产物标识](artifacts.md)。CLI 通过 `cargo xtask build-sdk cli` 打包。
+当前脚本只生成候选产物。签名、凭据、registry 发布、远程 SwiftPM 元数据生成和完整传递依赖归属仍待接入。打包和校验规则见[产物标识](artifacts.md)。

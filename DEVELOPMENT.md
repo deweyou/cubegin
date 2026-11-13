@@ -22,10 +22,6 @@ Web 工作台地址：http://127.0.0.1:4488。首页直接提供全部标准项�
 辅助求解方法，以及共享的展开图、动画播放和进度拖动。
 
 ```sh
-cargo run -p cubegin-cli -- evaluate "R U R' U'"
-cargo run -p cubegin-cli -- event-scramble fto 42
-cargo run -p cubegin-cli -- training 333.pll 42
-cargo run -p cubegin-cli -- assist 333 cross "R U F"
 node scripts/verify-legacy.mjs # 可选：调用旧实现做独立语义校验
 cargo xtask build-sdk native
 node scripts/test-swift.mjs   # macOS：真实 Swift 绑定与原生动态库
@@ -156,9 +152,8 @@ SDK 中的生成、求解等计算是同步接口，原生产品负责移出 UI 
 ### 统一产物版本与来源信息
 
 所有 SDK/包构建流程共用版本、来源、打包时间和 SHA-256 清单。Web/npm、宿主原生、
-iOS、Android、Rust crate 与 CLI 的清单位置见[产物说明](docs/artifacts.md)。
-核心版本由 Cargo.toml 管理，App 版本独立。CLI 可通过
-`cargo xtask build-sdk cli` 安装到 `dist/cli/`。
+iOS、Android、Rust crate 的清单位置见[产物说明](docs/artifacts.md)。
+核心版本由 Cargo.toml 管理，App 版本独立。
 
 iOS 构建还生成 `dist/CubeginSDK-0.1.0/`、对应 `.zip` 和 `.sha256`。将完整包复制到
 产品的 `Vendor/CubeginSDK`，添加该目录为本地 Swift Package，链接 **Cubegin**。

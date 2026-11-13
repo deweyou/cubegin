@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "bindings/*", "tools/cli", "xtask"]
+members = ["crates/*", "bindings/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

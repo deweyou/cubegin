@@ -8,7 +8,7 @@ Rust 引擎已覆盖 18 类标准项目、94 类训练、20 种辅助求解、FM
 
 - [PR #50 的 GitHub Actions](https://github.com/deweyou/cubegin/actions/runs/43413040921) 验证了 Rust、Web、Apple SDK、iOS App 和 Android SDK。iOS 模拟器任务在可用 runner 上重试通过。该结果对应当时的 PR 提交。
 - 旧版独立样例验证覆盖 223 个项目状态、188 个训练样例和 200 条辅助解法。命令和范围见[验证](testing.md)。
-- 构建可暂存 npm、Swift ZIP、Android AAR/Maven、Rust crate 和 CLI 候选包。标识与消费方式见[产物文档](artifacts.md)。
+- 构建可暂存 npm、Swift ZIP、Android AAR/Maven 和 Rust crate 候选包。标识与消费方式见[产物文档](artifacts.md)。
 
 ## 待验收
 

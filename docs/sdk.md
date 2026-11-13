@@ -51,5 +51,3 @@ val frameSvg = playerSvg("sq1", "(1,0) /", 1u, 0.5)
 原生项目记录通过 `stateJson` 暴露状态，结构可变的训练、辅助求解和回放结果使用 JSON 字符串。Swift 和 Kotlin 名称由 UniFFI 生成。iOS App 使用根 Swift Package 的绑定，Kotlin 绑定随 AAR 交付。选项沿用 Web API 的 JSON 键名。`solveAssist` 接收方法名的 JSON 数组，错误通过绑定显式返回。
 
 二、三、四阶、Pyraminx、Skewb、Square-1 和 FTO 支持完整求解。Clock 使用逆公式。大阶和 Megaminx 支持状态、打乱和渲染，调用未支持的完整求解会报错。多盲用 `generateMultiBlind` 并显式传入个数。API 和种子输出稳定性以版本为准。
-
-CLI 提供 `events`、`types`、`cases`、`event-evaluate`、`event-scramble`、`event-solve`、`event-inverse`、`event-timeline`、`training`、`batch`、`multiblind`、`assist`、`player`、`player-svg`、`fmc` 及原三阶命令。`--help` 列出参数。公式需要用引号作为单个参数传入，`training` 和 `assist` 可传 JSON 选项。CLI 由 Cargo 构建。

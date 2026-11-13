@@ -23,10 +23,6 @@ on:
       - 'bindings/**'
       - '!bindings/**/*.md'
       - '!bindings/**/docs/**'
-      - 'tools/cli/**'
-      - '!tools/cli/**/*.md'
-      - '!tools/cli/**/docs/**'
-      - 'scripts/build-cli.mjs'
       - 'scripts/verify-rust-packages.mjs'
       - 'scripts/artifact-metadata.test.mjs'
   pull_request:
@@ -50,10 +46,6 @@ on:
       - 'bindings/**'
       - '!bindings/**/*.md'
       - '!bindings/**/docs/**'
-      - 'tools/cli/**'
-      - '!tools/cli/**/*.md'
-      - '!tools/cli/**/docs/**'
-      - 'scripts/build-cli.mjs'
       - 'scripts/verify-rust-packages.mjs'
       - 'scripts/artifact-metadata.test.mjs'
   merge_group:
@@ -90,7 +82,7 @@ jobs:
       - name: Full 4x4 and FTO solver replay
         run: cargo test --release -p cubegin-solver --locked -- --ignored
   rust_packages:
-    name: Rust packages and CLI
+    name: Rust packages
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -102,15 +94,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: CLI release build
-        run: cargo xtask build-sdk cli
       - name: Build and verify all Rust crate archives
         run: cargo xtask verify-rust-packages
       - uses: actions/upload-artifact@v4
         with:
           name: rust-candidate
-          path: |
-            dist/rust/
-            dist/cli/
+          path: dist/rust/
           if-no-files-found: error
           retention-days: 14

@@ -19,7 +19,6 @@ SDK 版本取自 `Cargo.toml` 的 `[workspace.package].version`。Web 和 Androi
 | `cargo xtask build-sdk ios` | `dist/CubeginSDK-<version>/SDK.json`，完整 Swift 包及 ZIP 校验文件，另有 `dist/xcframework-SDK.json` |
 | `cargo xtask build-sdk android` | `dist/android-SDK.json`，记录 AAR 和 Maven AAR/POM/源码清单，复制时保持相对 dist 的布局 |
 | `cargo xtask verify-rust-packages` | `dist/rust/SDK.json`，七个已验证的 crate 归档及校验文件 |
-| `cargo xtask build-sdk cli` | `dist/cli/SDK.json`，宿主 CLI 和归属 |
 
 直接运行 Cargo 构建单个目标不会生成这些打包清单。Android 清单随暂存 Maven 仓库交付，Rust 清单位于 crate 归档旁。分别记录宿主验证、消费验证、真机验收和远程发布状态。
 
