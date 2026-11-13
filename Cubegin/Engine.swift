@@ -30,6 +30,16 @@ enum Engine {
         }.value
     }
 
+    // Called from the import worker. The engine validates the scramble for its base puzzle.
+    static func acceptsImportedScramble(event: String, algorithm: String) throws -> Bool {
+#if canImport(Cubegin)
+        let baseEvent = String(event.split(separator: ".")[0])
+        return (try? evaluateEvent(event: baseEvent, algorithm: algorithm)) != nil
+#else
+        throw EngineError.sdkMissing
+#endif
+    }
+
     static func scramble(event: String) async throws -> Scramble {
         try await Task.detached(priority: .userInitiated) {
 #if canImport(Cubegin)

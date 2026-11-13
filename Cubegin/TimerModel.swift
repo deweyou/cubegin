@@ -51,6 +51,8 @@ struct SolveGroup: Codable, Identifiable {
 private struct ResultsStore: Codable {
     var solves: [Solve]
     var groups: [SolveGroup]
+    var lastImportedSolveIDs: Set<Solve.ID>?
+    var lastImportDate: Date?
 }
 
 enum TimerInput { case touch, keyboard }
@@ -83,6 +85,9 @@ enum TimerInput { case touch, keyboard }
     @ObservationIgnored private var readinessTask: Task<Void, Never>?
     private(set) var solves: [Solve] = []
     private(set) var groups: [SolveGroup] = []
+    private var lastImportedSolveIDs: Set<Solve.ID> = []
+    var lastImportCount: Int { lastImportedSolveIDs.count }
+    private(set) var lastImportDate: Date?
     private(set) var selectedGroupID: String?
     private var selectionEvent: String?
     var eventGroups: [SolveGroup] { groups.filter { $0.event == event } }
@@ -100,6 +105,7 @@ enum TimerInput { case touch, keyboard }
         guard let solve = solves.first, solve.id == lastSolveID else { return nil }
         return solve
     }
+    private var storageReadFailed = false
     private let storage: URL
     private let defaults: UserDefaults
     private let now: () -> ContinuousClock.Instant
@@ -132,11 +138,21 @@ enum TimerInput { case touch, keyboard }
             if let store = try? JSONDecoder().decode(ResultsStore.self, from: data) {
                 solves = store.solves
                 groups = store.groups
+                if let importedIDs = store.lastImportedSolveIDs {
+                    lastImportedSolveIDs = importedIDs.intersection(solves.map(\.id))
+                    if !lastImportedSolveIDs.isEmpty { lastImportDate = store.lastImportDate }
+                }
             } else {
                 solves = try JSONDecoder().decode([Solve].self, from: data)
             }
         }
-        catch { if FileManager.default.fileExists(atPath: storage.path) { self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription } }
+        catch {
+            let fileError = error as NSError
+            if fileError.domain != NSCocoaErrorDomain || fileError.code != NSFileReadNoSuchFileError {
+                storageReadFailed = true
+                self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription
+            }
+        }
 #if DEBUG
         if Self.isLongSolveUITest, solves.isEmpty {
             solves = (0..<12).reversed().map { index in
@@ -431,9 +447,82 @@ enum TimerInput { case touch, keyboard }
         return true
     }
 
-    private func save(_ results: [Solve], groups: [SolveGroup]? = nil) -> Bool {
+    var solveIDsByGroup: [String: Set<Solve.ID>] {
+        solves.reduce(into: [:]) { groups, solve in
+            groups[solve.groupID ?? SolveGroup.initialID(for: solve.event), default: []].insert(solve.id)
+        }
+    }
+
+    func importDCTimer(_ plan: DCTimerImportPlan, destination: DCTimerImportDestination,
+                      language: AppLanguage, importedAt: Date = Date(), excluding excludedSessions: Set<Int64> = []) throws -> Int {
+        guard started == nil else {
+            error = language.text("请先结束计时。", "Stop the timer before importing.")
+            throw CocoaError(.fileWriteUnknown)
+        }
+        guard !storageReadFailed else {
+            error = language.text("无法读取已有成绩。", "Existing results could not be read.")
+            throw CocoaError(.fileWriteUnknown)
+        }
+        var knownIDs = Set(solves.map(\.id))
+        var updatedGroups = groups
+        var imported: [Solve] = []
+
+        for session in plan.sessions where !excludedSessions.contains(session.id) {
+            guard let event = session.event else { continue }
+            let newSolves = session.solves.filter { knownIDs.insert($0.id).inserted }
+            guard !newSolves.isEmpty else { continue }
+
+            let groupID: String
+            switch destination {
+            case .defaultGroups:
+                groupID = updatedGroups.first { $0.event == event && $0.isDefault }?.id ?? SolveGroup.initialID(for: event)
+                if !updatedGroups.contains(where: { $0.id == groupID }) {
+                    updatedGroups.append(SolveGroup(id: groupID, event: event, name: "", isDefault: true))
+                }
+            case .originalSessions:
+                groupID = "dctimer:\(event):\(session.id):\(session.name)"
+                if !updatedGroups.contains(where: { $0.id == groupID }) {
+                    let sourceName = session.name.split(whereSeparator: \.isNewline).joined(separator: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let name = sourceName.isEmpty ? (session.id == 0 ? "DCTimer" : "DCTimer \(session.id)") : sourceName
+                    updatedGroups.append(SolveGroup(id: groupID, event: event,
+                                                    name: String(name.prefix(SolveGroup.maximumNameLength)), isDefault: false))
+                }
+            }
+            imported += newSolves.map {
+                var solve = $0
+                solve.groupID = groupID
+                return solve
+            }
+        }
+
+        guard !imported.isEmpty else { return 0 }
+        let updated = (solves + imported).sorted(by: Solve.newestFirst)
+        guard save(updated, groups: updatedGroups, importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        solves = updated
+        groups = updatedGroups
+        return imported.count
+    }
+
+    func undoLastImport() -> Int? {
+        let count = lastImportCount
+        guard deleteSolves(lastImportedSolveIDs) else { return nil }
+        return count
+    }
+
+    private func save(_ results: [Solve], groups: [SolveGroup]? = nil, importedIDs: Set<Solve.ID>? = nil,
+                      importedAt: Date? = nil) -> Bool {
+        let batch = importedIDs ?? lastImportedSolveIDs
+        let remaining = batch.isEmpty ? batch : batch.intersection(results.lazy.map(\.id))
+        let store = ResultsStore(solves: results, groups: groups ?? self.groups,
+                                 lastImportedSolveIDs: remaining.isEmpty ? nil : remaining,
+                                 lastImportDate: remaining.isEmpty ? nil : (importedAt ?? lastImportDate))
         do {
-            try JSONEncoder().encode(ResultsStore(solves: results, groups: groups ?? self.groups)).write(to: storage, options: .atomic)
+            try JSONEncoder().encode(store).write(to: storage, options: .atomic)
+            lastImportedSolveIDs = remaining
+            lastImportDate = store.lastImportDate
             return true
         } catch {
             self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription

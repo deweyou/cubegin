@@ -1,7 +1,222 @@
 import CoreGraphics
+import SQLite3
 import XCTest
 
 final class SolveFlowTests: XCTestCase {
+    @MainActor
+    func testDCTimerImportOpensFilesAndCanBeCancelled() {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let imports = app.descendants(matching: .any)["settings.results.import"].firstMatch
+        XCTAssertTrue(imports.waitForExistence(timeout: 5))
+        imports.tap()
+        XCTAssertTrue(app.navigationBars["Import"].waitForExistence(timeout: 5))
+        let entry = app.buttons["settings.results.importDCTimer"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        let cancel = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        cancel.tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDCTimerImportPreviewsAppendsAndCanBeUndoneAfterRelaunch() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_DCTIMER_BACKUP"] = try dctimerFixture()
+        app.launchArguments += ["-app.language", "en"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let imports = app.descendants(matching: .any)["settings.results.import"].firstMatch
+        XCTAssertTrue(imports.waitForExistence(timeout: 5))
+        imports.tap()
+        let entry = app.buttons["settings.results.importDCTimer"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+
+        let confirm = app.buttons["dctimer.confirmImport"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["2-7"].exists)
+        XCTAssertTrue(confirm.isEnabled)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Imported 1 result."].waitForExistence(timeout: 5))
+
+        entry.tap()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        XCTAssertFalse(confirm.isEnabled)
+        XCTAssertTrue(app.descendants(matching: .any)["dctimer.preview.duplicates"].firstMatch.exists)
+        app.terminate()
+        app.launch()
+
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        XCTAssertTrue(imports.waitForExistence(timeout: 5))
+        imports.tap()
+        let undo = app.buttons["settings.import.undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+        let alert = app.alerts["Undo last import?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts["This will remove 1 result from the last import."].exists)
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        alert.buttons["settings.import.confirmUndo"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Removed 1 result."].waitForExistence(timeout: 5))
+        XCTAssertFalse(undo.exists)
+
+        entry.tap()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        XCTAssertTrue(confirm.isEnabled)
+    }
+
+    @MainActor
+    func testClearingResultsRequiresCountdownAndResetsSettingsNavigation() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_DCTIMER_BACKUP"] = try dctimerFixture(includeSecondGroup: true)
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        app.descendants(matching: .any)["settings.results.import"].firstMatch.tap()
+        app.buttons["settings.results.importDCTimer"].tap()
+        let confirmImport = app.buttons["dctimer.confirmImport"]
+        XCTAssertTrue(confirmImport.waitForExistence(timeout: 10))
+        confirmImport.tap()
+        XCTAssertTrue(app.staticTexts["Imported 3 results."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["settings.import.lastImportDetails"].exists)
+
+        app.tabBars.buttons["Results"].tap()
+        settings.tap()
+        XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
+        let clearPage = app.descendants(matching: .any)["settings.results.clear"].firstMatch
+        clearPage.tap()
+        let clearAll = app.buttons["settings.results.clearAll"]
+        XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
+        clearAll.tap()
+
+        let confirm = app.buttons["settings.results.confirmClearAll"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled)
+        XCTAssertTrue(app.staticTexts["Clear all results?"].exists)
+        XCTAssertTrue(app.staticTexts["This will permanently delete 3 results."].exists)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(clearAll.isEnabled)
+
+        let group = app.buttons["settings.clear.group.dctimer:333:1:Practice"]
+        XCTAssertTrue(group.waitForExistence(timeout: 5))
+        group.tap()
+        XCTAssertFalse(clearAll.exists)
+        app.buttons["settings.results.clearSelected"].tap()
+        XCTAssertTrue(app.staticTexts["This will permanently delete 1 result."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Clear selected groups?"].exists)
+        XCTAssertTrue(confirm.wait(for: \.isEnabled, toEqual: true, timeout: 10))
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Deleted 1 result."].waitForExistence(timeout: 5))
+        XCTAssertTrue(clearAll.isEnabled)
+        XCTAssertTrue(app.buttons["settings.clear.group.dctimer:222:3:Keep"].exists)
+        XCTAssertFalse(group.exists)
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        XCTAssertTrue(clearPage.waitForExistence(timeout: 5))
+        clearPage.tap()
+        XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
+        XCTAssertTrue(clearAll.isEnabled)
+        XCTAssertTrue(app.buttons["settings.clear.group.dctimer:222:3:Keep"].exists)
+        XCTAssertFalse(group.exists)
+    }
+
+    @MainActor
+    func testDCTimerImportCanSkipGroups() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_DCTIMER_BACKUP"] = try dctimerFixture(includeSecondGroup: true)
+        app.launchArguments += ["-app.language", "en"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        app.descendants(matching: .any)["settings.results.import"].firstMatch.tap()
+        let entry = app.buttons["settings.results.importDCTimer"]
+        entry.tap()
+        let confirm = app.buttons["dctimer.confirmImport"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+
+        let groups = app.buttons
+        let keep = groups["dctimer.preview.group.1"].firstMatch
+        let skip = groups["dctimer.preview.group.3"].firstMatch
+        if !skip.isHittable { app.swipeUp() }
+        XCTAssertTrue(skip.isSelected)
+        skip.tap()
+        keep.tap()
+        XCTAssertFalse(confirm.isEnabled)
+        keep.tap()
+        XCTAssertTrue(confirm.isEnabled)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Imported 1 result."].waitForExistence(timeout: 5))
+
+        entry.tap()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        XCTAssertTrue(confirm.isEnabled)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Imported 2 results."].waitForExistence(timeout: 5))
+    }
+
+    private func dctimerFixture(includeSecondGroup: Bool = false) throws -> String {
+        let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        let openStatus = sqlite3_open(url.path, &db)
+        defer { sqlite3_close(db) }
+        guard openStatus == SQLITE_OK, sqlite3_exec(db, """
+            CREATE TABLE sessiontb (rowid integer, name text);
+            CREATE TABLE scrtypetb (sesid integer, type integer);
+            CREATE TABLE resulttb (id integer, sesid integer, rest integer, resp integer, scr text, date text);
+            INSERT INTO sessiontb VALUES (1, 'Practice'), (2, '2-7');
+            INSERT INTO scrtypetb VALUES (1, -32), (2, 32);
+            INSERT INTO resulttb VALUES
+                (1, 1, 12000, 0, 'R U', '2024-02-02 11:12:10'),
+                (2, 2, 12001, 0, 'U R', '2024-02-02 11:12:11');
+            """, nil, nil, nil) == SQLITE_OK else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        if includeSecondGroup {
+            guard sqlite3_exec(db, """
+                INSERT INTO sessiontb VALUES (3, 'Keep');
+                INSERT INTO scrtypetb VALUES (3, -29);
+                INSERT INTO resulttb VALUES
+                    (3, 3, 13000, 0, 'R U', '2024-02-02 11:12:12'),
+                    (4, 3, 14000, 0, 'U R', '2024-02-02 11:12:13');
+                """, nil, nil, nil) == SQLITE_OK else { throw CocoaError(.fileWriteUnknown) }
+        }
+        return try Data(contentsOf: url).base64EncodedString()
+    }
+
     @MainActor
     func testPortraitSolveListKeepsPickersFixedWhileScrolling() {
         continueAfterFailure = false
