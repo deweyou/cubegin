@@ -1,23 +1,32 @@
 # CI acceptance
 
-The contract is: unit tests pass, browser E2E passes, and distributable artifacts
-build and work in isolated consumers. The executable workflow is
-[check.yml](../.github/workflows/check.yml). Every main-branch push, pull request, merge-group
-check and manual run executes all four jobs. Feature-branch pushes rely on the PR
-run, avoiding duplicate full platform builds. There are no path-based skips or
-`continue-on-error` exceptions for these gates.
+The [repository workflow](../.github/workflows/check.yml) runs on pushes to main,
+pull requests, merge groups and manual dispatches.
+
+| Changed paths | Required jobs |
+| --- | --- |
+| Only `apps/ios/**` | Apple SDK build, iOS Release build, and iOS simulator unit and UI tests |
+| Core, shared files, or mixed changes | Rust, Web, Swift and Android, including all SDK package and consumer checks and iOS App tests |
+| Manual run or unavailable comparison | Full suite |
+
+Scope compares the event's base SHA to the checked-out commit. Renames count both
+paths. Empty or unavailable comparisons select the full suite.
 
 | Job | Required tests | Required builds and consumers |
 | --- | --- | --- |
-| Rust tests and builds | `cargo xtask check`: fixture/license consistency, formatting, Clippy and workspace unit tests; release 4x4/FTO replay | Release CLI with metadata; seven crate archives unpacked and compiled through a fresh temporary registry; package version consistency dry run |
-| Web unit tests, E2E and build | SDK/workbench type checks; actual WASM unit tests; all browser E2E and screenshot comparisons | WASM + JS/types bundled into npm tarball and installed in an isolated consumer |
-| Swift tests and iOS build | Generated Swift host tests with shared puzzle fixtures and expanded capabilities; SwiftPM tests; committed binding drift check | iOS/simulator/macOS XCFramework; ZIP extracted and consumed by an isolated SwiftPM project |
+| Rust lint, unit tests and solver replay | `cargo xtask check`: fixture/license consistency, formatting, Clippy and workspace unit tests; release 4x4/FTO replay | — |
+| Rust packages and CLI | — | Release CLI with metadata; seven crate archives unpacked and compiled through a fresh temporary registry; package version consistency dry run |
+| Web SDK build, unit and package tests | SDK/workbench type checks; actual WASM unit tests | WASM + JS/types bundled into npm tarball and installed in an isolated consumer |
+| Web browser E2E | Browser tests and screenshot comparisons | Reuses WASM and JS from the Web SDK job |
+| Apple SDK build | Generated Swift host tests and committed binding drift check on full runs | iOS/simulator/macOS XCFramework and matching Swift bindings |
+| Apple SDK package | SwiftPM and isolated consumer tests | Reuses the Apple SDK build to package the XCFramework ZIP and complete SDK ZIP |
+| iOS App Release and simulator tests | App unit and UI tests | Release and simulator jobs run in parallel against the same Apple SDK build |
 | Kotlin tests and Android build | Gradle host unit tests: shared 3x3/event fixtures, errors/replay, training, auxiliary, FMC and player calls | Three-ABI AAR, POM and sources; ELF architecture checks; isolated local-Maven consumer |
 
-`CI passed` always evaluates all four job results. Only four `success` results
-pass; failure, cancellation or a skipped job fails the summary. Set **CI passed**
-as a required check in the GitHub branch protection/ruleset after the workflow has
-run. Adding the YAML does not itself configure repository protection.
+`CI passed` requires a successful scope job and every selected job to succeed.
+For iOS-only runs, Rust, Web, Android and Apple SDK packaging are expected to be skipped. Any failure,
+cancellation or unexpected skip fails the gate. Set **CI passed** as the required
+check in GitHub branch rules.
 
 Rust uses 1.96.0; Node uses 24; pnpm comes from packageManager. The Web job pins
 wasm-bindgen CLI 0.2.126 and the lockfile pins Playwright/Chromium. Screenshot checks
@@ -70,4 +79,5 @@ is not configured by these files.
 Candidate uploads retain common manifests/checksums described in [artifacts.md](artifacts.md),
 including the complete versioned Apple SDK ZIP. The Rust check also runs metadata
 integrity/path tests. CLI uses the packaging entry point, not a bare cargo build.
-These changes do not relax any job or the four-success aggregate requirement.
+The iOS simulator job retains its result bundle for 14 days when available.
+The Apple SDK build retains the matching framework and bindings for 14 days.

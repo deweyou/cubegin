@@ -1,7 +1,8 @@
 # Cubegin Core
 
 Cubegin 的核心能力 SDK 仓库，以 Rust 实现，提供 Web/WASM、Swift 和 Kotlin 绑定。
-产品应用在独立仓库开发。许可证：GPL-3.0-only。
+原生 iOS App 位于 [apps/ios](apps/ios/README.md)。未来的 Android App 在
+`apps/android/` 开发。许可证：GPL-3.0-only。
 
 仓库名为 `cubegin-core`；SDK 包名及导入名继续使用 `cubegin`（Rust/Web）、
 `Cubegin`（Swift）和 `io.github.deweyou.cubegin`（Kotlin）。
@@ -20,6 +21,12 @@ Rust 引擎现已覆盖原仓库的能力目录：
 
 这是新 API，不直接兼容旧 TypeScript 包。原生视图组件由产品仓库提供，
 可消费 SVG 帧，或使用拼块几何自行绘制。打乱未作 WCA 比赛用途认证。
+
+## 仓库结构
+
+`crates/` 存放 Rust 核心能力，`bindings/` 存放原生和 WASM 绑定，
+`sdk/` 存放平台 SDK，`apps/` 存放产品。各模块的 README 和 AGENTS.md
+说明各自的职责、开发入口和验证方式。
 
 ## 开发
 
@@ -55,8 +62,9 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI 检查
 
-每次 PR 和主分支 push 都会执行 Rust、Web、Swift、Android 检查。单测、浏览器 E2E、
-产物构建与独立消费验证全部通过后，**CI passed** 才通过。Actions 保留候选产物和
+Core 或共享文件变更时，执行 Rust、Web、Swift、Android 检查，包括单测、浏览器
+E2E、产物构建与独立消费验证。仅修改
+`apps/ios/` 时，**CI passed** 要求 iOS App 构建及测试通过。Actions 保留候选产物和
 失败报告，不执行公开发布。矩阵、产物和分支保护设置见 [CI 验收约定](docs/ci.md)。
 
 ## 构建产物与产品接入
@@ -84,7 +92,9 @@ cargo xtask build-sdk ios
 构建包含 iOS arm64 真机、arm64／x86_64 模拟器及 macOS arm64，并运行 SwiftPM
 消费测试；不包含 Intel macOS。最低支持 iOS 15。
 
-在独立产品的 Xcode 工程中：
+仓库内的 [iOS App](apps/ios/README.md) 已引用根目录 Swift Package。
+构建 SDK 后，打开 App 工程并选择 **CubeginApp**。
+在外部 Xcode 工程中：
 
 1. 选择 **Add Package Dependencies → Add Local**，选中本仓库根目录。
 2. 给 App target 添加 **Cubegin** 产品。根目录的 [Package.swift](Package.swift)
@@ -120,7 +130,8 @@ cargo xtask build-sdk android
 AAR 包含 Kotlin 绑定及 `arm64-v8a`、`armeabi-v7a`、`x86_64` 原生库。
 最低支持 Android API 23。构建脚本还会验证独立 Maven 消费工程。
 
-假设产品仓库与 `cubegin-core` 为同级目录，在产品现有 `settings.gradle.kts` 的仓库配置中添加：
+未来位于 `apps/android/` 的 App 可通过 `../../dist/maven` 使用产物。
+对于外部项目，假设产品仓库与 `cubegin-core` 为同级目录，在产品现有 `settings.gradle.kts` 的仓库配置中添加：
 
 ```kotlin
 dependencyResolutionManagement {

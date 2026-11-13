@@ -16,7 +16,9 @@ platform builds. Bindings and their binary must come from the same build.
 1. Run `cargo xtask check`, build Web, run SDK and browser tests.
 2. Run `cargo xtask build-sdk native` and `node scripts/test-swift.mjs` on macOS.
 3. Build Apple XCFramework with `cargo xtask build-sdk ios`; it also extracts the zip
-   into an isolated SwiftPM consumer and tests that package.
+   into an isolated SwiftPM consumer and tests that package. The iOS app picks up
+   the resulting XCFramework through the root Swift Package. Run the
+   [iOS app build and tests](../apps/ios/docs/testing.md).
 4. On Android build hosts set JAVA_HOME (JDK 17 or 21), ANDROID_HOME and ANDROID_NDK_HOME
    (currently NDK 28.2.13676358), install `cargo-ndk` 4.1.2 and Rust targets `aarch64-linux-android`,
    `armv7-linux-androideabi`, `x86_64-linux-android`, then run

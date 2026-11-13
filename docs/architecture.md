@@ -27,7 +27,9 @@ flowchart BT
 
 The backend is a separately attributed workspace crate. Domain crates own semantics;
 bindings marshal public records and versioned JSON without reimplementing moves.
-Products, persistence, gestures and timers belong in other repositories.
+App UI, persistence, gestures and timers belong under `apps/`. The iOS app lives
+in `apps/ios/` and links the root Swift Package against the local XCFramework. The Android SDK stays in
+`sdk/android/`; a future Android app belongs in `apps/android/`.
 
 The original 3x3 outer-turn API stays available. The event API handles 18 legacy
 standard IDs, puzzle-specific notation, wide/slice turns and rotations. Event state

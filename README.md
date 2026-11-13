@@ -1,7 +1,8 @@
 # Cubegin Core
 
 Core capability SDKs for Cubegin, written in Rust with Web/WASM, Swift and Kotlin bindings.
-Product applications live in separate repositories. License: GPL-3.0-only.
+The native iOS app lives in [apps/ios](apps/ios/README.md). Future Android app
+development belongs in `apps/android/`. License: GPL-3.0-only.
 
 The repository is `cubegin-core`; SDK package and import names remain `cubegin`
 (Rust/Web), `Cubegin` (Swift), and `io.github.deweyou.cubegin` (Kotlin).
@@ -21,6 +22,12 @@ The Rust engine now covers the legacy capability catalog:
 This is a new API rather than a drop-in TypeScript package replacement. Native view
 widgets belong in product repositories; consume SVG frames or render the provided
 piece geometry. Scrambles are not certified for WCA competition use.
+
+## Repository layout
+
+`crates/` owns Rust capabilities, `bindings/` owns native and WASM adapters,
+`sdk/` owns platform packages, and `apps/` owns products. Each module has its own
+README and contributor instructions.
 
 ## Development
 
@@ -57,8 +64,9 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI checks
 
-Every PR and main-branch push runs Rust, Web, Swift and Android jobs. Unit tests, browser E2E and
-artifact builds with isolated consumer tests must all pass for **CI passed**.
+Core or shared changes run Rust, Web, Swift and Android, including isolated SDK
+consumer checks and the iOS App tests. Changes confined to `apps/ios/` require the
+iOS App build and tests for **CI passed**.
 Candidates and failure reports are retained in Actions; public publishing is disabled.
 See [CI acceptance](docs/ci.md) for the matrix, artifacts and branch-rule setup.
 
@@ -88,7 +96,9 @@ cargo xtask build-sdk ios
 The build includes iOS arm64, simulator arm64/x86_64 and macOS arm64 slices, then
 runs SwiftPM consumer tests. Intel macOS is not included. Minimum iOS version: 15.
 
-In the separate product's Xcode project:
+The [iOS app](apps/ios/README.md) already references the root Swift Package.
+After building the SDK, open its Xcode project and select **CubeginApp**.
+For an external Xcode project:
 
 1. Choose **Add Package Dependencies → Add Local** and select this repository root.
 2. Add the **Cubegin** product to the App target. The root [Package.swift](Package.swift)
@@ -126,7 +136,9 @@ cargo xtask build-sdk android
 The AAR includes Kotlin bindings and `arm64-v8a`, `armeabi-v7a`, `x86_64` native
 libraries. Minimum Android API: 23. The build also verifies a separate Maven consumer.
 
-Assuming the product repository and `cubegin-core` are sibling directories, add the
+For a future app at `apps/android/`, the Maven path from that app is
+`../../dist/maven`. For an external consumer, assuming the product repository and
+`cubegin-core` are sibling directories, add the
 repository to the product's existing `settings.gradle.kts` repositories:
 
 ```kotlin
