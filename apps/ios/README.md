@@ -1,0 +1,11 @@
+# Cubegin for iPhone and iPad
+
+Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It supports system light and dark appearance and adapts to portrait, landscape and resizable iPad windows.
+
+## Features
+
+- **Timing and training** — Time solves with touch or a hardware keyboard. Choose from 16 standard events and 94 training types, and see each scramble with its diagram.
+- **Results and statistics** — Organize solves into groups, apply +2 or DNF, and review individual attempts, rolling averages, trend charts and time distributions.
+- **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.
+
+[Development guide](DEVELOPMENT.md) · [GPL-3.0-only](LICENSE)

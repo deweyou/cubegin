@@ -3,10 +3,10 @@
 Core Rust crates and Web/Swift/Android SDKs share `0.1.0`. No package has been
 published by this rebuild. Registry ownership and final package names remain unverified.
 
-For executable local product setup, see the README sections for
-[iOS Swift Package](../README.md#ios-local-swift-package) and
-[Android Maven](../README.md#android-local-maven-repository), or the
-[Chinese instructions](../README_ZH.md#构建产物与产品接入).
+For executable local product setup, see the development guide sections for
+[iOS Swift Package](../DEVELOPMENT.md#ios-local-swift-package) and
+[Android Maven](../DEVELOPMENT.md#android-local-maven-repository), or the
+[Chinese instructions](../DEVELOPMENT_ZH.md#构建产物与产品接入).
 They cover prerequisites, artifact paths, dependency configuration and SDK calls.
 `build-sdk native` only builds host libraries/bindings; it does not replace the
 platform builds. Bindings and their binary must come from the same build.
@@ -16,7 +16,9 @@ platform builds. Bindings and their binary must come from the same build.
 1. Run `cargo xtask check`, build Web, run SDK and browser tests.
 2. Run `cargo xtask build-sdk native` and `node scripts/test-swift.mjs` on macOS.
 3. Build Apple XCFramework with `cargo xtask build-sdk ios`; it also extracts the zip
-   into an isolated SwiftPM consumer and tests that package.
+   into an isolated SwiftPM consumer and tests that package. The iOS app picks up
+   the resulting XCFramework through the root Swift Package. Run the
+   [iOS app build and tests](../apps/ios/docs/testing.md).
 4. On Android build hosts set JAVA_HOME (JDK 17 or 21), ANDROID_HOME and ANDROID_NDK_HOME
    (currently NDK 28.2.13676358), install `cargo-ndk` 4.1.2 and Rust targets `aarch64-linux-android`,
    `armv7-linux-androideabi`, `x86_64-linux-android`, then run

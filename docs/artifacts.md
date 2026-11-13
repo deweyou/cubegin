@@ -36,7 +36,10 @@ and registry coordinates remain unchanged. Android metadata accompanies the stag
 repository, rather than changing Maven's standard POM format. Rust metadata is a
 sidecar, rather than changing Cargo's crate format.
 
-## Apple product installation
+## Apple product integration
+
+The iOS app in this repository references the root Swift Package and consumes
+`dist/CubeginFFI.xcframework` directly. For an external product:
 
 Copy the complete extracted `CubeginSDK-<version>` directory into a product, e.g.
 `Vendor/CubeginSDK`, and add that directory as a local Swift Package using its

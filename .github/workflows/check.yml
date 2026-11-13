@@ -1,4 +1,4 @@
-name: Capability checks
+name: Cubegin checks
 
 on:
   push:
@@ -19,8 +19,30 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  scope:
+    name: Select checks
+    runs-on: ubuntu-24.04
+    outputs:
+      checks: ${{ steps.scope.outputs.checks }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          checks="$(node scripts/ci-scope.mjs "$BASE_SHA")"
+          echo "checks=$checks" >> "$GITHUB_OUTPUT"
+          echo "Selected checks: $checks"
+
   rust:
-    name: Rust tests and builds
+    needs: scope
+    if: needs.scope.outputs.checks == 'full'
+    name: Rust lint, unit tests and solver replay
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -37,6 +59,21 @@ jobs:
         run: cargo xtask check
       - name: Full 4x4 and FTO solver replay
         run: cargo test --release -p cubegin-solver --locked -- --ignored
+  rust_packages:
+    needs: scope
+    if: needs.scope.outputs.checks == 'full'
+    name: Rust packages and CLI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: CLI release build
         run: cargo xtask build-sdk cli
       - name: Build and verify all Rust crate archives
@@ -56,7 +93,9 @@ jobs:
           retention-days: 14
 
   web:
-    name: Web unit tests, E2E and build
+    needs: scope
+    if: needs.scope.outputs.checks == 'full'
+    name: Web SDK build, unit and package tests
     # Keep Darwin screenshot baselines on macOS / arm64.
     runs-on: macos-15
     timeout-minutes: 40
@@ -80,9 +119,6 @@ jobs:
         run: |
           pnpm check
           pnpm test
-      - run: pnpm exec playwright install chromium
-      - name: Browser E2E and screenshot comparisons
-        run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         with:
           name: web-candidate
@@ -94,6 +130,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e-input
+          path: |
+            sdk/web/wasm/
+            sdk/web/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  web_e2e:
+    needs: web
+    name: Web browser E2E
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-e2e-input
+          path: sdk/web
+      - run: pnpm exec playwright install chromium
+      - name: Browser E2E and screenshot comparisons
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: browser-failure
@@ -102,10 +167,11 @@ jobs:
             playwright-report/
           retention-days: 14
 
-  swift:
-    name: Swift tests and iOS build
+  apple_build:
+    needs: scope
+    name: Apple SDK build
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 35
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
@@ -123,12 +189,41 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Build XCFramework and verify isolated SwiftPM consumer
-        run: cargo xtask build-sdk ios
+      - name: Build XCFramework and generated bindings
+        run: node scripts/build-ios.mjs --app-only
       - name: Generated Swift binding fixture and replay tests
+        if: needs.scope.outputs.checks == 'full'
         run: node scripts/test-swift.mjs
       - name: Verify committed Swift bindings match Rust
+        if: needs.scope.outputs.checks == 'full'
         run: git diff --exit-code -- sdk/swift/Generated/
+      - name: Archive matching framework and bindings
+        run: tar -cf apple-build-input.tar dist/CubeginFFI.xcframework sdk/swift/Generated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apple-build-input
+          path: apple-build-input.tar
+          if-no-files-found: error
+          retention-days: 14
+
+  apple_package:
+    needs: [scope, apple_build]
+    if: needs.scope.outputs.checks == 'full'
+    name: Apple SDK package and isolated consumers
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: apple-build-input
+      - run: tar -xf apple-build-input.tar
+      - run: node scripts/build-ios.mjs --package-only
       - uses: actions/upload-artifact@v4
         with:
           name: apple-candidate
@@ -139,14 +234,56 @@ jobs:
             dist/xcframework-SDK.json
             dist/CubeginSDK-*.zip
             dist/CubeginSDK-*.zip.sha256
-            dist/native/
             Package.swift
             sdk/swift/Generated/
             sdk/swift/PackageTests/
           if-no-files-found: error
           retention-days: 14
 
+  ios:
+    needs: apple_build
+    name: iOS App (${{ matrix.check }})
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [release, simulator-tests]
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apple-build-input
+      - run: tar -xf apple-build-input.tar
+      - name: Build Release app for iOS
+        if: matrix.check == 'release'
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
+            -destination 'generic/platform=iOS' -configuration Release \
+            -derivedDataPath DerivedData/release CODE_SIGNING_ALLOWED=NO build
+      - name: Run App unit and UI tests
+        if: matrix.check == 'simulator-tests'
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' \
+            -derivedDataPath DerivedData/app-tests \
+            -resultBundlePath DerivedData/AppTests.xcresult \
+            -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+      - name: Upload App test results
+        if: ${{ !cancelled() && matrix.check == 'simulator-tests' && hashFiles('apps/ios/DerivedData/AppTests.xcresult/Info.plist') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-test-results
+          path: apps/ios/DerivedData/AppTests.xcresult
+          retention-days: 14
+
   android:
+    needs: scope
+    if: needs.scope.outputs.checks == 'full'
     name: Kotlin tests and Android build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -199,20 +336,21 @@ jobs:
   ci:
     name: CI passed
     if: always()
-    needs: [rust, web, swift, android]
+    needs: [scope, rust, rust_packages, web, web_e2e, apple_build, apple_package, ios, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
+      SCOPE_RESULT: ${{ needs.scope.result }}
+      CHECKS: ${{ needs.scope.outputs.checks }}
       RUST_RESULT: ${{ needs.rust.result }}
       WEB_RESULT: ${{ needs.web.result }}
-      SWIFT_RESULT: ${{ needs.swift.result }}
+      RUST_PACKAGES_RESULT: ${{ needs.rust_packages.result }}
+      WEB_E2E_RESULT: ${{ needs.web_e2e.result }}
+      APPLE_BUILD_RESULT: ${{ needs.apple_build.result }}
+      APPLE_PACKAGE_RESULT: ${{ needs.apple_package.result }}
+      IOS_RESULT: ${{ needs.ios.result }}
       ANDROID_RESULT: ${{ needs.android.result }}
     steps:
-      - name: Require every test and build job to succeed
-        run: |
-          for result in "$RUST_RESULT" "$WEB_RESULT" "$SWIFT_RESULT" "$ANDROID_RESULT"; do
-            if [ "$result" != success ]; then
-              echo "A required test/build job failed, was cancelled or was skipped."
-              exit 1
-            fi
-          done
+      - uses: actions/checkout@v4
+      - name: Require the selected jobs to succeed
+        run: bash scripts/ci-gate.sh
