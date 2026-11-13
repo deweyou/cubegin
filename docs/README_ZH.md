@@ -1,9 +1,9 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg">
-  <img src="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg" alt="Cubegin logo" width="260">
-</picture>
-
-# Cubegin
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg">
+    <img src="https://raw.githubusercontent.com/deweyou/cubegin/main/apps/ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg" alt="Cubegin logo" width="260">
+  </picture>
+</p>
 
 [![English](https://img.shields.io/badge/English-blue)](https://github.com/deweyou/cubegin/blob/main/docs/README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](https://github.com/deweyou/cubegin/blob/main/docs/README_ZH.md)
 
