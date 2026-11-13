@@ -1,19 +1,22 @@
 # CI acceptance
 
-The [repository workflow](../.github/workflows/check.yml) runs on pushes to main,
-pull requests, merge groups and manual dispatches.
+Each [workflow](../.github/workflows/) declares its inputs under `paths` for PRs
+and pushes to main. Matching workflows run independently. Product and version
+workflows also run on merge queue events. All workflows can run manually.
 
-| Changed paths | Required jobs |
+| Workflow | Inputs |
 | --- | --- |
-| Markdown and CI routing rules only | Local documentation links and assets |
-| Only `apps/ios/**` | Apple SDK build, iOS Release build, and iOS simulator unit and UI tests |
-| Core, shared files, or mixed changes | Rust, Web, Swift and Android, including all SDK package and consumer checks and iOS App tests |
-| Manual run or unavailable comparison | Full suite |
+| `rust.yml` | Cargo workspace sources and configuration, shared fixtures, CLI and Rust packaging scripts |
+| `web.yml` | Rust engine, WASM bindings, Web SDK, workbench, browser tests and Web build inputs |
+| `apple.yml` | Rust engine, native bindings, Swift SDK and the iOS app’s sources, resources and tests |
+| `android.yml` | Rust engine, native bindings, Android SDK and isolated Gradle consumer |
+| `versions.yml` | Cargo manifests, npm package metadata, Android Gradle version and release planning script |
+| `docs.yml` | Markdown, documentation assets and the README brand SVGs |
+| `ci-rules.yml` | Workflow YAML, checked with actionlint |
 
-Every run tests the three routing scopes and the aggregate gate, and validates the workflow with actionlint. The lightweight scope covers Markdown, the check workflow and its routing, gate and documentation check scripts. Shared build scripts and other workflows still select the full suite.
-
-Scope compares the event's base SHA to the checked-out commit. Renames count both
-paths. Empty or unavailable comparisons select the full suite.
+Pure README changes trigger documentation checks, including the Web SDK README.
+Check the actual path lists in each YAML. Shared product build inputs trigger
+each workflow that consumes them.
 
 | Job | Required tests | Required builds and consumers |
 | --- | --- | --- |
@@ -26,10 +29,11 @@ paths. Empty or unavailable comparisons select the full suite.
 | iOS App Release and simulator tests | App unit and UI tests | Release and simulator jobs run in parallel against the same Apple SDK build |
 | Kotlin tests and Android build | Gradle host unit tests: shared 3x3/event fixtures, errors/replay, training, auxiliary, FMC and player calls | Three-ABI AAR, POM and sources; ELF architecture checks; isolated local-Maven consumer |
 
-`CI passed` requires a successful scope job and every selected job to succeed.
-Jobs outside the selected scope must be skipped. Any failure,
-cancellation or unexpected skip fails the gate. Set **CI passed** as the required
-check in GitHub branch rules.
+Before merging, confirm the workflows triggered for the PR head have passed.
+The main ruleset currently has no required status checks. Path-filtered workflows
+may not start on unrelated changes, so requiring every workflow by name would
+block such PRs. GitHub’s path matching also has a 300-file comparison limit.
+Use manual runs for large changes if expected workflows are missing.
 
 Rust uses 1.96.0; Node uses 24; pnpm comes from packageManager. The Web job pins
 wasm-bindgen CLI 0.2.126 and the lockfile pins Playwright/Chromium. Screenshot checks
@@ -44,7 +48,8 @@ differences rather than regenerating baselines in CI.
 
 Successful jobs retain candidates for 14 days:
 
-- Rust: seven `.crate` archives and the version dry-run plan.
+- Rust: seven `.crate` archives and the CLI candidate.
+- SDK versions: the version dry-run plan.
 - Web: npm tarball and isolated-consumer verification metadata.
 - Apple: XCFramework ZIP, SHA-256 file, matching generated Swift sources,
   Package.swift, package tests and consumer verification metadata. To use the
@@ -73,7 +78,7 @@ The first run exposed setup-android's default request for the retired SDK `tools
 package; the workflow now requests `platform-tools` explicitly and installs the
 pinned platform/build-tools/NDK separately. Hosted Rust, Web, Swift and Android jobs
 have each completed successfully during that PR's iterations. Consult the latest
-PR commit's **CI passed** result for the combined acceptance status; individual
+PR commit's workflow results for acceptance; individual
 successes from different commits are not a substitute. Repository branch protection
 is not configured by these files.
 

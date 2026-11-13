@@ -3,8 +3,15 @@ import {existsSync, readFileSync, realpathSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 
 const base = process.argv[2];
-const files = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMRT', '-z', base, 'HEAD'])
-  .toString().split('\0').filter(path => /\.md$/i.test(path));
+const changed = /^[0-9a-f]{40}$/.test(base ?? '') && !/^0+$/.test(base)
+  ? execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', base, 'HEAD']).toString().split('\0').filter(Boolean)
+  : [];
+// Asset changes and deletions may break references in unchanged documents.
+const scanAll = changed.length === 0 || changed.some(path => !/\.md$/i.test(path) || !existsSync(path));
+const files = (scanAll ? execFileSync('git', ['ls-files', '-z']).toString().split('\0') : changed)
+  // The preserved design archive contains paths relative to the legacy checkout.
+  .filter(path => /\.md$/i.test(path) && existsSync(path)
+    && !path.startsWith('apps/ios/Design/LegacyIcons/reference/'));
 let failures = 0;
 
 for (const file of files) {

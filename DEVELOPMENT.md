@@ -37,13 +37,10 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI checks
 
-Markdown and CI routing rule changes run lightweight checks.
-
-Core or shared changes run Rust, Web, Swift and Android, including isolated SDK
-consumer checks and the iOS App tests. Changes confined to `apps/ios/` require the
-iOS App build and tests for **CI passed**.
-Candidates and failure reports are retained in Actions; public publishing is disabled.
-See [CI acceptance](docs/ci.md) for the matrix, artifacts and branch-rule setup.
+Each workflow declares its input paths. Rust engine changes trigger Rust, Web,
+Apple and Android checks. Markdown changes trigger documentation checks. Apple
+SDK packaging and iOS App tests share one XCFramework build. Check the results of
+the affected workflows before merging. See [CI acceptance](docs/ci.md).
 
 ## Build artifacts and consume them in products
 

@@ -1,0 +1,149 @@
+name: Web SDK checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'xtask/**'
+      - '!xtask/**/*.md'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'fixtures/**/*.json'
+      - 'bindings/wasm/**'
+      - '!bindings/wasm/**/*.md'
+      - 'sdk/web/**'
+      - '!sdk/web/**/*.md'
+      - 'examples/web/**'
+      - '!examples/web/**/*.md'
+      - 'tests/e2e/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'scripts/build-web.mjs'
+      - 'scripts/verify-packages.mjs'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'xtask/**'
+      - '!xtask/**/*.md'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'fixtures/**/*.json'
+      - 'bindings/wasm/**'
+      - '!bindings/wasm/**/*.md'
+      - 'sdk/web/**'
+      - '!sdk/web/**/*.md'
+      - 'examples/web/**'
+      - '!examples/web/**/*.md'
+      - 'tests/e2e/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'scripts/build-web.mjs'
+      - 'scripts/verify-packages.mjs'
+      - '.github/workflows/web.yml'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  web:
+    name: Web SDK build, unit and package tests
+    # Keep Darwin screenshot baselines on macOS / arm64.
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
+      - name: Build WASM and verify isolated npm consumer
+        run: cargo xtask verify-packages
+      - name: Type checks and actual WASM unit tests
+        run: |
+          pnpm check
+          pnpm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-candidate
+          path: |
+            dist/*.tgz
+            dist/npm-verification.json
+            dist/npm-SDK.json
+            dist/*.tgz.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e-input
+          path: |
+            sdk/web/wasm/
+            sdk/web/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  web_e2e:
+    needs: web
+    name: Web browser E2E
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-e2e-input
+          path: sdk/web
+      - run: pnpm exec playwright install chromium
+      - name: Browser E2E and screenshot comparisons
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14

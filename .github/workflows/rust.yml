@@ -1,0 +1,108 @@
+name: Rust checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'xtask/**'
+      - '!xtask/**/*.md'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'fixtures/**/*.json'
+      - 'bindings/**'
+      - '!bindings/**/*.md'
+      - 'tools/cli/**'
+      - '!tools/cli/**/*.md'
+      - 'scripts/build-cli.mjs'
+      - 'scripts/verify-rust-packages.mjs'
+      - 'scripts/artifact-metadata.test.mjs'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
+      - 'crates/**'
+      - '!crates/**/*.md'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'xtask/**'
+      - '!xtask/**/*.md'
+      - 'scripts/process.mjs'
+      - 'scripts/artifact-metadata.mjs'
+      - 'fixtures/**/*.json'
+      - 'bindings/**'
+      - '!bindings/**/*.md'
+      - 'tools/cli/**'
+      - '!tools/cli/**/*.md'
+      - 'scripts/build-cli.mjs'
+      - 'scripts/verify-rust-packages.mjs'
+      - 'scripts/artifact-metadata.test.mjs'
+      - '.github/workflows/rust.yml'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust lint, unit tests and solver replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Formatting, lint and workspace unit tests
+        run: cargo xtask check
+      - name: Full 4x4 and FTO solver replay
+        run: cargo test --release -p cubegin-solver --locked -- --ignored
+  rust_packages:
+    name: Rust packages and CLI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: CLI release build
+        run: cargo xtask build-sdk cli
+      - name: Build and verify all Rust crate archives
+        run: cargo xtask verify-rust-packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-candidate
+          path: |
+            dist/rust/
+            dist/cli/
+          if-no-files-found: error
+          retention-days: 14

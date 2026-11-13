@@ -36,12 +36,9 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI 检查
 
-仅修改 Markdown 或 CI 分流规则时，执行轻量检查。
-
-Core 或共享文件变更时，执行 Rust、Web、Swift、Android 检查，包括单测、浏览器
-E2E、产物构建与独立消费验证。仅修改
-`apps/ios/` 时，**CI passed** 要求 iOS App 构建及测试通过。Actions 保留候选产物和
-失败报告，不执行公开发布。矩阵、产物和分支保护设置见 [CI 验收约定](docs/ci.md)。
+各 workflow 根据自己声明的路径触发。Rust Core 改动会触发 Rust、Web、Apple 和
+Android 检查，纯 Markdown 改动走文档检查。Apple SDK 和 iOS App 共用一次
+XCFramework 构建。合入前确认受影响的检查已通过。参见 [CI 验收](docs/ci.md)。
 
 ## 构建产物与产品接入
 

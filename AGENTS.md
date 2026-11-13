@@ -82,12 +82,9 @@ with one validation command, document it in the local AGENTS.md. Keep detailed d
 
 ## CI acceptance
 
-- Keep unit tests, browser E2E, and artifact builds/isolated consumers as mandatory
-  checks for Core and shared changes. For iOS-only changes, require the Apple SDK build and both iOS App jobs.
-  For Markdown or CI routing rule changes, check documentation links and CI rules.
-  `CI passed` requires success from all selected jobs and a successful scope check.
-- Read [CI acceptance](docs/ci.md) before changing workflows. Keep it and the public
-  development guides aligned with the executable `.github/workflows/check.yml`.
-- Retain failure evidence and matching candidate binaries/bindings. CI builds local
-  candidates only; it does not publish packages. Workflow validation, local command
-  results, actual GitHub runs and required branch rules are separate evidence.
+- Each workflow declares its build inputs in `.github/workflows/`. Keep path lists
+  aligned with the actual dependency chain and the [CI guide](docs/ci.md).
+- Core changes must exercise the Rust, Web, Apple/iOS and Android checks. Pure
+  Markdown changes use documentation checks. Workflow YAML changes use actionlint.
+- Before merging, verify the affected workflows passed on the PR head. Retain
+  failure evidence and matching candidates. CI builds candidates without publishing.
