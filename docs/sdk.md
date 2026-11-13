@@ -3,8 +3,8 @@
 All event/type IDs are exposed by the catalog. State records retain puzzle-specific
 layouts. Only the original 3x3 API uses a single URFDLB facelet string.
 For artifact builds and local product dependencies, see the
-[README integration guide](../README.md#build-artifacts-and-consume-them-in-products)
-or [Chinese guide](../README_ZH.md#构建产物与产品接入).
+[development integration guide](../DEVELOPMENT.md#build-artifacts-and-consume-them-in-products)
+or [Chinese guide](../DEVELOPMENT_ZH.md#构建产物与产品接入).
 
 ```ts
 import {createWorkerClient} from 'cubegin/worker';

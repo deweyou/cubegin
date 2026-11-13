@@ -3,7 +3,7 @@
 本目录拥有原生 iPhone/iPad 魔方计时器产品。核心打乱、状态、SVG 和求解语义由
 cubegin-core 的 Rust SDK 实现；这里拥有 SwiftUI、手势、计时、成绩存储及后台调度。
 
-- 开发前读 README.md 和与任务相关的 docs/ 文档。以工程和源码为准，及时修正文档。
+- 开发前读 DEVELOPMENT.md 和与任务相关的 docs/ 文档。以工程和源码为准，及时修正文档。
 - 使用 Swift 6 / SwiftUI；部署下限 iOS/iPadOS 26。采用系统 Liquid Glass，保持系统外观和可访问性。
 - 正式工程是 Cubegin.xcodeproj，运行 scheme 为 CubeginApp。不要误选 SDK 的 Cubegin scheme。
 - App 链接仓库根目录 Swift Package 的 Cubegin 产品。在根目录运行 `node scripts/build-ios.mjs --app-only` 生成匹配的绑定和 XCFramework。
@@ -23,7 +23,7 @@ cubegin-core 的 Rust SDK 实现；这里拥有 SwiftUI、手势、计时、成�
 
 | 文档 | 何时阅读 |
 | --- | --- |
-| README.md | 运行入口、前提、SDK 升级与知识库索引 |
+| DEVELOPMENT.md | 运行入口、前提、SDK 接入与知识库索引 |
 | docs/architecture.md | 产品/core 边界、状态、计时与存储 |
 | docs/sdk.md | Core SDK 接入、版本、接口和后台调用 |
 | docs/testing.md | 构建、消费者、模拟器、真机与视觉验证 |

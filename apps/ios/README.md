@@ -2,33 +2,7 @@
 
 Native SwiftUI speedcubing timer for iPhone and iPad. Requires Xcode 26+ and iOS/iPadOS 26+. Uses Apple's Liquid Glass with system light/dark appearance.
 
-## Run
-
-From the repository root on Apple Silicon with Xcode, Node and the pinned Rust toolchain:
-
-```sh
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-node scripts/build-ios.mjs --app-only
-open apps/ios/Cubegin.xcodeproj
-```
-
-Select **CubeginApp** and an iPhone/iPad simulator. For a physical device, select a development team in Signing & Capabilities.
-The project links the **Cubegin** product from the root Swift Package, which uses
-the generated Swift bindings and `dist/CubeginFFI.xcframework`. Rerun the build
-command after Core changes. For SDK packaging and isolated consumer tests, run
-`cargo xtask build-sdk ios` from the root.
-
-Open `CubeginPreview.xcodeproj` for interface work without building the SDK. It reports an integration error where the real engine is required.
-
-## Tests and CI
-
-Run the **CubeginApp** scheme’s Test action on an iOS simulator to execute the unit
-and UI tests. Repository CI builds the App against the Core in the same checkout.
-See [testing](docs/testing.md) and the [CI rules](../../docs/ci.md).
-
-## Ownership and behavior
-
-`Engine.swift` is a thin background adapter for `generateEvent` and `evaluateEvent` (SVG net). Cube semantics stay in Rust. Swift owns timing, gestures, local JSON persistence, native layout and SVG display in a JavaScript-disabled WKWebView.
+## Features
 
 Select an event from the compact native menu; the dumbbell icon on the right toggles Training. A new app process starts in Standard. Standard includes 16 events (FMC and multi-blind excluded); Training includes 94 types grouped in two menu levels. Each mode remembers its last event selection across launches. Training uses the installed SDK's generateTraining API with default options; case filtering is not yet exposed.
 
@@ -42,17 +16,6 @@ The Results type selector offers rolling mo3, ao5, ao12, ao50, ao100, ao500, ao1
 
 The overview at the top of Statistics shows the selected group’s valid and total attempts, mean and single extremes, current and best rolling averages, and attempt counts for the latest eight active days.
 
-GPL-3.0-only; see LICENSE and NOTICE. Core provenance and bundled dependency notices must accompany distribution. Device rendering acceptance and distribution/signing remain separate verification steps.
+GPL-3.0-only. See LICENSE and NOTICE.
 
-## Verified locally (2026-11-03)
-
-Rust 1.96.0, Node 24.21.0, pnpm 10.33.0 and Xcode 27.2. `cargo xtask build-sdk ios` completed, including host SwiftPM tests and an isolated consumer extracted from the SDK ZIP (2 tests passed). The CubeginApp scheme built and launched on iPhone 18 Pro / iOS 27.2 Simulator; real Rust-generated 3×3 scramble and SVG net appeared. Physical-device acceptance and distribution are not verified.
-
-## 知识库
-
-- [代理与协作规则](AGENTS.md)
-- [架构与产品边界](docs/architecture.md)
-- [Core SDK 接入、版本和调用](docs/sdk.md)
-- [构建与验证](docs/testing.md)
-- [当前状态与待办](docs/status.md)
-- [打乱项目中英文名称对照](docs/scramble-names.md)
+[Development guide](DEVELOPMENT.md)

@@ -3,10 +3,10 @@
 Core Rust crates and Web/Swift/Android SDKs share `0.1.0`. No package has been
 published by this rebuild. Registry ownership and final package names remain unverified.
 
-For executable local product setup, see the README sections for
-[iOS Swift Package](../README.md#ios-local-swift-package) and
-[Android Maven](../README.md#android-local-maven-repository), or the
-[Chinese instructions](../README_ZH.md#构建产物与产品接入).
+For executable local product setup, see the development guide sections for
+[iOS Swift Package](../DEVELOPMENT.md#ios-local-swift-package) and
+[Android Maven](../DEVELOPMENT.md#android-local-maven-repository), or the
+[Chinese instructions](../DEVELOPMENT_ZH.md#构建产物与产品接入).
 They cover prerequisites, artifact paths, dependency configuration and SDK calls.
 `build-sdk native` only builds host libraries/bindings; it does not replace the
 platform builds. Bindings and their binary must come from the same build.

@@ -12,7 +12,7 @@ The iOS app lives in `apps/ios/`; use `apps/android/` when Android app developme
 - Verify packaged SDKs as consumers, not only workspace source imports.
 - Read docs/architecture.md and docs/provenance.md before changing boundaries or dependencies.
 - Preserve GPL-3.0-only licensing and third-party attribution. Translation does not remove provenance.
-- Update both README.md and README_ZH.md when changing public setup or capabilities.
+- Update both READMEs for public capabilities and both development guides for setup changes.
 - Do not publish, push, or commit without explicit delivery intent.
 
 ## Knowledge base
@@ -25,12 +25,13 @@ history. Do not restore them as current guidance. When extracting legacy source 
 an oracle or port, use it as reference material, not as development instructions.
 Preserve upstream attribution, license notices and migration evidence used by the
 current implementation. Root documentation owns workspace-wide contracts. Each app, crate, binding and SDK
-keeps a README for its purpose and validation commands and an AGENTS.md for local
-contributor rules. Keep detailed documentation next to the module that owns it.
+keeps a README for its purpose and an AGENTS.md for local contributor rules.
+Use DEVELOPMENT.md for build and validation commands. Keep detailed documentation next to the module that owns it.
 
 | Document | Ownership and when to read |
 | --- | --- |
-| [README.md](README.md) / [README_ZH.md](README_ZH.md) | Public capabilities, build prerequisites, artifact paths, local iOS/Android product integration |
+| [README.md](README.md) / [README_ZH.md](README_ZH.md) | Product introduction, public capabilities and technology stack |
+| [DEVELOPMENT.md](DEVELOPMENT.md) / [DEVELOPMENT_ZH.md](DEVELOPMENT_ZH.md) | Build prerequisites, CI, artifacts and iOS/Android integration |
 | [Artifact identity](docs/artifacts.md) | Common version/source/checksum manifests and copied SDK installation |
 | [Architecture](docs/architecture.md) | Rust crate boundaries, platform adapters, state and animation contracts |
 | [SDK examples](docs/sdk.md) | Web/Swift/Kotlin calls, JSON options, playback positions and solver coverage |
@@ -42,7 +43,7 @@ contributor rules. Keep detailed documentation next to the module that owns it.
 
 ## SDK build and integration contract
 
-- Read the README mobile integration sections, SDK examples and release instructions
+- Read the DEVELOPMENT.md mobile integration sections, SDK examples and release instructions
   before changing packaging or consumer setup. Verify current values against
   [Package.swift](Package.swift), [Android library configuration](sdk/android/library/build.gradle.kts)
   and `scripts/build-{ios,android,native}.mjs`; these are the executable configuration.
@@ -72,7 +73,7 @@ contributor rules. Keep detailed documentation next to the module that owns it.
   Git URL or registry integration as available until publication and consumer
   readback are verified.
 - Changes to versions, supported targets, artifact locations or dependency metadata
-  must update both READMEs and the affected knowledge documents. Validate packaged
+  must update both development guides and the affected knowledge documents. Validate packaged
   consumers with `scripts/verify-swift-package.mjs` and
   `scripts/verify-android-package.mjs` after rebuilding mobile artifacts; record
   host tests, binary architecture checks, device acceptance and remote publication
@@ -84,7 +85,7 @@ contributor rules. Keep detailed documentation next to the module that owns it.
   checks for Core and shared changes. For iOS-only changes, require the Apple SDK build and both iOS App jobs.
   `CI passed` requires success from all selected jobs and a successful scope check.
 - Read [CI acceptance](docs/ci.md) before changing workflows. Keep it and the public
-  READMEs aligned with the executable `.github/workflows/check.yml`.
+  development guides aligned with the executable `.github/workflows/check.yml`.
 - Retain failure evidence and matching candidate binaries/bindings. CI builds local
   candidates only; it does not publish packages. Workflow validation, local command
   results, actual GitHub runs and required branch rules are separate evidence.

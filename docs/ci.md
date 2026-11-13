@@ -55,7 +55,7 @@ retain Gradle XML/results and reports. Unit/build logs remain in the workflow ru
 Native tests use the host library. Cross-compilation, archive checks and host tests
 are required here; native GPU rendering, physical-device execution and registry
 publication are separate acceptance layers. See [verification](testing.md),
-[local SDK integration](../README.md#build-artifacts-and-consume-them-in-products)
+[local SDK integration](../DEVELOPMENT.md#build-artifacts-and-consume-them-in-products)
 and [releasing](releasing.md).
 
 ## Validation status
