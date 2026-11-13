@@ -162,6 +162,12 @@ struct AppTabsView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.interrupt() }
         }
+        .onChange(of: scenePhase == .active && model.started != nil, initial: true) { _, isSolving in
+            UIApplication.shared.isIdleTimerDisabled = isSolving
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
         .alert(language.text("提示", "Notice"), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button(language.text("好", "OK")) { model.error = nil }
         } message: {

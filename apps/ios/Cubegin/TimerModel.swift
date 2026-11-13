@@ -514,6 +514,13 @@ enum TimerInput { case touch, keyboard }
 
     private func save(_ results: [Solve], groups: [SolveGroup]? = nil, importedIDs: Set<Solve.ID>? = nil,
                       importedAt: Date? = nil) -> Bool {
+        guard !storageReadFailed else {
+            error = AppLanguage.saved.text(
+                "无法读取已有成绩。请恢复成绩文件后重新打开 Cubegin。",
+                "Existing results could not be read. Restore the results file and reopen Cubegin."
+            )
+            return false
+        }
         let batch = importedIDs ?? lastImportedSolveIDs
         let remaining = batch.isEmpty ? batch : batch.intersection(results.lazy.map(\.id))
         let store = ResultsStore(solves: results, groups: groups ?? self.groups,

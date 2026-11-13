@@ -392,6 +392,20 @@ struct TimerModelTests {
         }
     }
 
+    @Test func GroupSavePreservesUnreadableResults() async throws {
+        try await withFixture { fixture in
+            let bytes = Data("unreadable".utf8)
+            try bytes.write(to: fixture.storage)
+            let model = fixture.model()
+            model.error = nil
+
+            #expect(!model.saveGroup(name: "Practice", isDefault: false))
+            #expect(model.error != nil)
+            #expect(!model.eventGroups.contains { $0.name == "Practice" })
+            #expect(try Data(contentsOf: fixture.storage) == bytes)
+        }
+    }
+
     @Test func DCTimerImportPreservesUnreadableCubeginStorage() async throws {
         try await withFixture { fixture in
             let backup = try dctimerImportFixture(in: fixture.directory)
