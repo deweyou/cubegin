@@ -37,6 +37,8 @@ cargo xtask release --version 0.1.0 --dry-run
 
 ## CI checks
 
+Markdown-only changes run documentation checks. The npm README also triggers package verification.
+
 Core or shared changes run Rust, Web, Swift and Android, including isolated SDK
 consumer checks and the iOS App tests. Changes confined to `apps/ios/` require the
 iOS App build and tests for **CI passed**.

@@ -7,7 +7,9 @@ if (/^[0-9a-f]{40}$/.test(base ?? '') && !/^0+$/.test(base)) {
     // A rename out of or into the app must still count as touching both paths.
     const diff = execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', base, 'HEAD']);
     const paths = diff.toString().split('\0').filter(Boolean);
-    if (paths.length > 0 && paths.every(path => path.startsWith('apps/ios/'))) {
+    if (paths.length > 0 && paths.every(path => /\.md$/i.test(path))) {
+      scope = paths.includes('sdk/web/README.md') ? 'docs-web' : 'docs';
+    } else if (paths.length > 0 && paths.every(path => path.startsWith('apps/ios/'))) {
       scope = 'ios';
     }
   } catch {

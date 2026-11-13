@@ -39,6 +39,22 @@ jobs:
           echo "checks=$checks" >> "$GITHUB_OUTPUT"
           echo "Selected checks: $checks"
 
+  docs:
+    needs: scope
+    if: startsWith(needs.scope.outputs.checks, 'docs')
+    name: Documentation links
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: node scripts/ci-docs.mjs "$BASE_SHA"
+
   rust:
     needs: scope
     if: needs.scope.outputs.checks == 'full'
@@ -94,7 +110,7 @@ jobs:
 
   web:
     needs: scope
-    if: needs.scope.outputs.checks == 'full'
+    if: needs.scope.outputs.checks == 'full' || needs.scope.outputs.checks == 'docs-web'
     name: Web SDK build, unit and package tests
     # Keep Darwin screenshot baselines on macOS / arm64.
     runs-on: macos-15
@@ -116,6 +132,7 @@ jobs:
       - name: Build WASM and verify isolated npm consumer
         run: cargo xtask verify-packages
       - name: Type checks and actual WASM unit tests
+        if: needs.scope.outputs.checks == 'full'
         run: |
           pnpm check
           pnpm test
@@ -130,6 +147,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        if: needs.scope.outputs.checks == 'full'
         with:
           name: web-e2e-input
           path: |
@@ -139,7 +157,8 @@ jobs:
           retention-days: 1
 
   web_e2e:
-    needs: web
+    needs: [scope, web]
+    if: needs.scope.outputs.checks == 'full'
     name: Web browser E2E
     runs-on: macos-15
     timeout-minutes: 20
@@ -169,6 +188,7 @@ jobs:
 
   apple_build:
     needs: scope
+    if: needs.scope.outputs.checks == 'full' || needs.scope.outputs.checks == 'ios'
     name: Apple SDK build
     runs-on: macos-15
     timeout-minutes: 35
@@ -336,12 +356,13 @@ jobs:
   ci:
     name: CI passed
     if: always()
-    needs: [scope, rust, rust_packages, web, web_e2e, apple_build, apple_package, ios, android]
+    needs: [scope, docs, rust, rust_packages, web, web_e2e, apple_build, apple_package, ios, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       SCOPE_RESULT: ${{ needs.scope.result }}
       CHECKS: ${{ needs.scope.outputs.checks }}
+      DOCS_RESULT: ${{ needs.docs.result }}
       RUST_RESULT: ${{ needs.rust.result }}
       WEB_RESULT: ${{ needs.web.result }}
       RUST_PACKAGES_RESULT: ${{ needs.rust_packages.result }}

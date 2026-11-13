@@ -5,6 +5,7 @@ pull requests, merge groups and manual dispatches.
 
 | Changed paths | Required jobs |
 | --- | --- |
+| Markdown only | Local documentation links and assets, plus npm packaging and isolated consumer verification when `sdk/web/README.md` changes |
 | Only `apps/ios/**` | Apple SDK build, iOS Release build, and iOS simulator unit and UI tests |
 | Core, shared files, or mixed changes | Rust, Web, Swift and Android, including all SDK package and consumer checks and iOS App tests |
 | Manual run or unavailable comparison | Full suite |
@@ -24,7 +25,7 @@ paths. Empty or unavailable comparisons select the full suite.
 | Kotlin tests and Android build | Gradle host unit tests: shared 3x3/event fixtures, errors/replay, training, auxiliary, FMC and player calls | Three-ABI AAR, POM and sources; ELF architecture checks; isolated local-Maven consumer |
 
 `CI passed` requires a successful scope job and every selected job to succeed.
-For iOS-only runs, Rust, Web, Android and Apple SDK packaging are expected to be skipped. Any failure,
+Jobs outside the selected scope must be skipped. Any failure,
 cancellation or unexpected skip fails the gate. Set **CI passed** as the required
 check in GitHub branch rules.
 
