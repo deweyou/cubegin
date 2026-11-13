@@ -5,7 +5,7 @@
 ## 开发与 PR
 
 - 新需求先更新 `origin/main`，从最新提交创建 `codex/` 开发分支。需要沿用未发布的工作时，先将该分支 rebase 到 `origin/main`。续做已有 PR 时沿用原分支，用户指定分支或基线时按指定执行。保护本地改动和共享分支历史。
-- 创建 PR 或向已有 PR 推送后，安排子代理跟进最新提交的 CI 和审查讨论，主代理继续开发。交付或合入前核对结果。加载项目级 [cubegin-pr-follow-up](.agents/skills/cubegin-pr-follow-up/SKILL.md)。
+- 创建 PR 或向已有 PR 推送后，安排子代理跟进最新提交的 CI 和审查讨论，主代理继续开发。交付或合入前核对结果。加载项目级 [pr-follow-up](.agents/skills/pr-follow-up/SKILL.md)。
 - 遵循模块约定和[代码规范](docs/code-standards.md)。提交、推送和发布需有明确交付意图。
 
 ## 工程规则
