@@ -12,7 +12,7 @@
 | 包 | 七个 Rust crate、独立 npm 安装、解压 XCFramework 的 SwiftPM 消费、Maven AAR 消费及三种 ELF 架构 |
 | E2E | Chromium 测试和截图基线，覆盖展开图、回放、目录、训练案例与朝向、辅助求解、错误恢复和窄屏 |
 
-运行 `cargo xtask check` 后，按[开发指南](../DEVELOPMENT_ZH.md)构建 SDK 并验证。`cargo test --release -p cubegin-solver -- --ignored` 单独执行 4×4/FTO 冷启动求解回放。`cargo xtask verify-rust-packages` 使用全新的临时 registry 验证归档，避免同版本 Cargo 源缓存复用。触发规则见 [CI 验收](ci.md)。
+运行 `cargo xtask check` 后，按[开发指南](../DEVELOPMENT.md)构建 SDK 并验证。`cargo test --release -p cubegin-solver -- --ignored` 单独执行 4×4/FTO 冷启动求解回放。`cargo xtask verify-rust-packages` 使用全新的临时 registry 验证归档，避免同版本 Cargo 源缓存复用。触发规则见 [CI 验收](ci.md)。
 
 `node scripts/verify-legacy.mjs` 将[旧版实现](provenance.md)提取到临时目录，独立验证状态和求解目标并输出数量，结束时删除临时文件。该步骤需要旧提交及 Web 构建依赖。Rust 测试重新生成结果并与样例比较，Web 还检查实际绑定和回放。
 

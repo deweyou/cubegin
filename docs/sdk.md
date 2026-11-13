@@ -1,6 +1,6 @@
 # SDK 示例
 
-目录接口暴露所有项目和训练类型 ID。状态保留各魔方的布局，仅原三阶 API 使用单个 URFDLB 面片字符串。构建和接入参见[开发指南](../DEVELOPMENT_ZH.md#构建产物与产品接入)。
+目录接口暴露所有项目和训练类型 ID。状态保留各魔方的布局，仅原三阶 API 使用单个 URFDLB 面片字符串。构建和接入参见[开发指南](../DEVELOPMENT.md#构建产物与产品接入)。
 
 ```ts
 import {createWorkerClient} from 'cubegin/worker';
