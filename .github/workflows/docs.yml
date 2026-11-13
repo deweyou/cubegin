@@ -8,14 +8,12 @@ on:
       - '**/docs/**'
       - 'apps/ios/Design/LegacyIcons/brand/svg/**'
       - 'scripts/ci-docs.mjs'
-      - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - '**/*.md'
       - '**/docs/**'
       - 'apps/ios/Design/LegacyIcons/brand/svg/**'
       - 'scripts/ci-docs.mjs'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:

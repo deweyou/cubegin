@@ -17,8 +17,15 @@ workflows also run on merge queue events. All workflows can run manually.
 Markdown and documentation directories in modules trigger documentation checks,
 including the Web SDK README. Product workflows exclude those paths while
 retaining inputs such as Xcode assets and shared test fixtures.
-Check the actual path lists in each YAML. Shared product build inputs trigger
-each workflow that consumes them.
+Workflow YAML changes trigger the syntax check. To exercise a changed build
+command or runner configuration, run the affected workflow manually.
+
+Platform workflows exclude Rust crate tests and diagnostic examples. The Rust
+workflow still checks them. Shared platform tests consume `fixtures/states.json`
+and `fixtures/events.json`. The iOS build uses the checked-in assets, so design
+references, the asset generator and the preview project are outside its scope.
+The Android workflow uses Gradle tests and the isolated consumer, while
+`sdk/android/smoke/` belongs to the separate local Kotlin smoke test.
 
 | Job | Required tests | Required builds and consumers |
 | --- | --- | --- |

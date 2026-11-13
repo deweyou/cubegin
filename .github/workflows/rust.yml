@@ -18,7 +18,8 @@ on:
       - '!xtask/**/docs/**'
       - 'scripts/process.mjs'
       - 'scripts/artifact-metadata.mjs'
-      - 'fixtures/**/*.json'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
       - 'bindings/**'
       - '!bindings/**/*.md'
       - '!bindings/**/docs/**'
@@ -28,7 +29,6 @@ on:
       - 'scripts/build-cli.mjs'
       - 'scripts/verify-rust-packages.mjs'
       - 'scripts/artifact-metadata.test.mjs'
-      - '.github/workflows/rust.yml'
   pull_request:
     paths:
       - 'Cargo.toml'
@@ -45,7 +45,8 @@ on:
       - '!xtask/**/docs/**'
       - 'scripts/process.mjs'
       - 'scripts/artifact-metadata.mjs'
-      - 'fixtures/**/*.json'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
       - 'bindings/**'
       - '!bindings/**/*.md'
       - '!bindings/**/docs/**'
@@ -55,7 +56,6 @@ on:
       - 'scripts/build-cli.mjs'
       - 'scripts/verify-rust-packages.mjs'
       - 'scripts/artifact-metadata.test.mjs'
-      - '.github/workflows/rust.yml'
   merge_group:
   workflow_dispatch:
 

@@ -15,7 +15,6 @@ on:
       - 'sdk/web/package.json'
       - 'sdk/android/library/build.gradle.kts'
       - 'scripts/release.mjs'
-      - '.github/workflows/versions.yml'
   pull_request:
     paths:
       - 'Cargo.toml'
@@ -29,7 +28,6 @@ on:
       - 'sdk/web/package.json'
       - 'sdk/android/library/build.gradle.kts'
       - 'scripts/release.mjs'
-      - '.github/workflows/versions.yml'
   merge_group:
   workflow_dispatch:
 

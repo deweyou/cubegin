@@ -11,6 +11,8 @@ on:
       - 'crates/**'
       - '!crates/**/*.md'
       - '!crates/**/docs/**'
+      - '!crates/*/tests/**'
+      - '!crates/*/examples/**'
       - 'LICENSE'
       - 'NOTICE'
       - 'xtask/**'
@@ -18,7 +20,8 @@ on:
       - '!xtask/**/docs/**'
       - 'scripts/process.mjs'
       - 'scripts/artifact-metadata.mjs'
-      - 'fixtures/**/*.json'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
       - 'bindings/wasm/**'
       - '!bindings/wasm/**/*.md'
       - '!bindings/wasm/**/docs/**'
@@ -37,7 +40,6 @@ on:
       - 'pnpm-workspace.yaml'
       - 'scripts/build-web.mjs'
       - 'scripts/verify-packages.mjs'
-      - '.github/workflows/web.yml'
   pull_request:
     paths:
       - 'Cargo.toml'
@@ -47,6 +49,8 @@ on:
       - 'crates/**'
       - '!crates/**/*.md'
       - '!crates/**/docs/**'
+      - '!crates/*/tests/**'
+      - '!crates/*/examples/**'
       - 'LICENSE'
       - 'NOTICE'
       - 'xtask/**'
@@ -54,7 +58,8 @@ on:
       - '!xtask/**/docs/**'
       - 'scripts/process.mjs'
       - 'scripts/artifact-metadata.mjs'
-      - 'fixtures/**/*.json'
+      - 'fixtures/states.json'
+      - 'fixtures/events.json'
       - 'bindings/wasm/**'
       - '!bindings/wasm/**/*.md'
       - '!bindings/wasm/**/docs/**'
@@ -73,7 +78,6 @@ on:
       - 'pnpm-workspace.yaml'
       - 'scripts/build-web.mjs'
       - 'scripts/verify-packages.mjs'
-      - '.github/workflows/web.yml'
   merge_group:
   workflow_dispatch:
 
