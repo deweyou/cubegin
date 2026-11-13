@@ -334,14 +334,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cubegin-cli"
-version = "0.1.0"
-dependencies = [
- "cubegin",
- "serde_json",
-]
-
-[[package]]
 name = "cubegin-diagram"
 version = "0.1.0"
 dependencies = [
