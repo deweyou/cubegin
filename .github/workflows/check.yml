@@ -39,6 +39,18 @@ jobs:
           echo "checks=$checks" >> "$GITHUB_OUTPUT"
           echo "Selected checks: $checks"
 
+  ci_rules:
+    name: CI rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test scripts/ci-rules.test.mjs
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/check.yml
+
   docs:
     needs: scope
     if: startsWith(needs.scope.outputs.checks, 'docs')
@@ -356,12 +368,13 @@ jobs:
   ci:
     name: CI passed
     if: always()
-    needs: [scope, docs, rust, rust_packages, web, web_e2e, apple_build, apple_package, ios, android]
+    needs: [scope, ci_rules, docs, rust, rust_packages, web, web_e2e, apple_build, apple_package, ios, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       SCOPE_RESULT: ${{ needs.scope.result }}
       CHECKS: ${{ needs.scope.outputs.checks }}
+      CI_RULES_RESULT: ${{ needs.ci_rules.result }}
       DOCS_RESULT: ${{ needs.docs.result }}
       RUST_RESULT: ${{ needs.rust.result }}
       WEB_RESULT: ${{ needs.web.result }}

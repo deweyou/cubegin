@@ -84,7 +84,7 @@ with one validation command, document it in the local AGENTS.md. Keep detailed d
 
 - Keep unit tests, browser E2E, and artifact builds/isolated consumers as mandatory
   checks for Core and shared changes. For iOS-only changes, require the Apple SDK build and both iOS App jobs.
-  For Markdown-only changes, check documentation links and verify the npm package
+  For Markdown or CI routing rule changes, check documentation links and verify the npm package
   when its shipped README changes.
   `CI passed` requires success from all selected jobs and a successful scope check.
 - Read [CI acceptance](docs/ci.md) before changing workflows. Keep it and the public

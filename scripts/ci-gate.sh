@@ -9,6 +9,7 @@ require_result() {
 }
 
 require_result scope "$SCOPE_RESULT" success
+require_result ci_rules "$CI_RULES_RESULT" success
 
 core=skipped
 web=skipped

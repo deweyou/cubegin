@@ -5,10 +5,12 @@ pull requests, merge groups and manual dispatches.
 
 | Changed paths | Required jobs |
 | --- | --- |
-| Markdown only | Local documentation links and assets, plus npm packaging and isolated consumer verification when `sdk/web/README.md` changes |
+| Markdown and CI routing rules only | Local documentation links and assets, plus npm packaging and isolated consumer verification when `sdk/web/README.md` changes |
 | Only `apps/ios/**` | Apple SDK build, iOS Release build, and iOS simulator unit and UI tests |
 | Core, shared files, or mixed changes | Rust, Web, Swift and Android, including all SDK package and consumer checks and iOS App tests |
 | Manual run or unavailable comparison | Full suite |
+
+Every run tests the four routing scopes and the aggregate gate, and validates the workflow with actionlint. The lightweight scope covers Markdown, the check workflow and its routing, gate and documentation check scripts. Shared build scripts and other workflows still select the full suite.
 
 Scope compares the event's base SHA to the checked-out commit. Renames count both
 paths. Empty or unavailable comparisons select the full suite.
