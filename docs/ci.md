@@ -14,7 +14,9 @@ workflows also run on merge queue events. All workflows can run manually.
 | `docs.yml` | Markdown, documentation assets and the README brand SVGs |
 | `ci-rules.yml` | Workflow YAML, checked with actionlint |
 
-Pure README changes trigger documentation checks, including the Web SDK README.
+Markdown and documentation directories in modules trigger documentation checks,
+including the Web SDK README. Product workflows exclude those paths while
+retaining inputs such as Xcode assets and shared test fixtures.
 Check the actual path lists in each YAML. Shared product build inputs trigger
 each workflow that consumes them.
 

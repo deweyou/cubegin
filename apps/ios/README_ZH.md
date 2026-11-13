@@ -1,6 +1,6 @@
 # Cubegin iPhone 和 iPad App
 
-[English](README.md) · [中文](README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 Cubegin 是原生 SwiftUI 魔方速拧计时器，支持 iOS 和 iPadOS 26 及以上版本。界面跟随系统浅色和深色外观，适配横竖屏及可调整大小的 iPad 窗口。
 

@@ -1,6 +1,6 @@
 # Cubegin 图标素材
 
-[English](README.md) · [中文](README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 来自 `deweyou/cubegin` 提交 `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97` 的 `packages/icons/src`。许可证为 GPL-3.0-only，分发时须保留 LICENSE 和 NOTICE。
 

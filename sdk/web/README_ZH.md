@@ -1,6 +1,6 @@
 # Cubegin Web SDK
 
-[English](https://github.com/deweyou/cubegin/blob/main/sdk/web/README.md) · [中文](https://github.com/deweyou/cubegin/blob/main/sdk/web/README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](https://github.com/deweyou/cubegin/blob/main/sdk/web/README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](https://github.com/deweyou/cubegin/blob/main/sdk/web/README_ZH.md)
 
 Web/WASM 包名为 `cubegin`，提供 18 类标准项目、94 类训练、完整求解、20 种辅助求解、最少步校验、SVG 展开图以及 3D 几何和 SVG 回放帧。许可证为 GPL-3.0-only。新版 API 与旧 TypeScript 包不兼容。
 

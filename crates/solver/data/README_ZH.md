@@ -1,6 +1,6 @@
 # 辅助求解参考数据
 
-[English](README.md) · [中文](README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 转移表、剪枝表和阶段掩码生成自旧版 `79a1e4c`。来源包括 `initializeCrossTables`、`initializeEOLineTables`、`getPetrusTables`、`initializeRouxTables`，以及 `packages/solver/src/assist/three-by-three/` 的阶段元数据。数值为小端有符号 i32，`assist-tables.json` 记录维度和元素偏移。搜索与验证由 Rust 实现。
 

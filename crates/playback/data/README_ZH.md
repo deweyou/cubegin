@@ -1,6 +1,6 @@
 # 回放几何数据
 
-[English](README.md) · [中文](README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 `models.json` 保存固定几何和基本转动置换，提取自 Cubegin 提交 `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97` 的 `packages/player/src/puzzles`，属于声明式数据。
 

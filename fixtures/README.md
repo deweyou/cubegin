@@ -1,6 +1,6 @@
 # Shared migration fixtures
 
-[English](README.md) · [中文](README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 These fixtures support the current Rust implementation and SDK verification. They
 reference legacy Cubegin commit `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97` as a

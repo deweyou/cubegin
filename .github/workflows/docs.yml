@@ -5,14 +5,14 @@ on:
     branches: [main]
     paths:
       - '**/*.md'
-      - 'docs/**'
+      - '**/docs/**'
       - 'apps/ios/Design/LegacyIcons/brand/svg/**'
       - 'scripts/ci-docs.mjs'
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - '**/*.md'
-      - 'docs/**'
+      - '**/docs/**'
       - 'apps/ios/Design/LegacyIcons/brand/svg/**'
       - 'scripts/ci-docs.mjs'
       - '.github/workflows/docs.yml'

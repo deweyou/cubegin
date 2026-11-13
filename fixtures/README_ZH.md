@@ -1,6 +1,6 @@
 # 共享迁移样例
 
-[English](README.md) · [中文](README_ZH.md)
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 这些样例用于验证 Rust 实现和各平台 SDK。旧版 Cubegin 提交 `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97` 提供行为参照。
 
