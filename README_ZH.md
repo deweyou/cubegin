@@ -1,10 +1,12 @@
-# Cubegin Core
+# Cubegin
+
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 Cubegin 的核心能力 SDK 仓库，以 Rust 实现，提供 Web/WASM、Swift 和 Kotlin 绑定。
 原生 iOS App 位于 [apps/ios](apps/ios/README.md)。未来的 Android App 在
 `apps/android/` 开发。许可证：GPL-3.0-only。
 
-仓库名为 `cubegin-core`；SDK 包名及导入名继续使用 `cubegin`（Rust/Web）、
+仓库名为 `cubegin`；SDK 包名及导入名继续使用 `cubegin`（Rust/Web）、
 `Cubegin`（Swift）和 `io.github.deweyou.cubegin`（Kotlin）。
 
 Rust 引擎现已覆盖原仓库的能力目录：

@@ -1,5 +1,7 @@
 # Cubegin development
 
+[![English](https://img.shields.io/badge/English-blue)](DEVELOPMENT.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](DEVELOPMENT_ZH.md)
+
 ## Development
 
 Rust 1.96.0, Node >=22.12 and pnpm 10 are required. Cargo orchestrates Rust builds;
@@ -109,7 +111,7 @@ libraries. Minimum Android API: 23. The build also verifies a separate Maven con
 
 For a future app at `apps/android/`, the Maven path from that app is
 `../../dist/maven`. For an external consumer, assuming the product repository and
-`cubegin-core` are sibling directories, add the
+`cubegin` are sibling directories, add the
 repository to the product's existing `settings.gradle.kts` repositories:
 
 ```kotlin
@@ -117,7 +119,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("../cubegin-core/dist/maven") }
+        maven { url = uri("../cubegin/dist/maven") }
     }
 }
 ```

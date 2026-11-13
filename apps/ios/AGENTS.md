@@ -1,7 +1,7 @@
 # Cubegin Swift App workspace
 
 本目录拥有原生 iPhone/iPad 魔方计时器产品。核心打乱、状态、SVG 和求解语义由
-cubegin-core 的 Rust SDK 实现；这里拥有 SwiftUI、手势、计时、成绩存储及后台调度。
+本仓库的 Rust SDK 实现；这里拥有 SwiftUI、手势、计时、成绩存储及后台调度。
 
 - 开发前读 DEVELOPMENT.md 和与任务相关的 docs/ 文档。以工程和源码为准，及时修正文档。
 - 使用 Swift 6 / SwiftUI；部署下限 iOS/iPadOS 26。采用系统 Liquid Glass，保持系统外观和可访问性。

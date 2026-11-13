@@ -1,11 +1,11 @@
 # Architecture
 
-`cubegin-core` owns Cubegin’s reusable engine and platform SDKs. The repository
+`cubegin` owns Cubegin’s reusable engine and platform SDKs. The repository
 name is distinct from consumer identifiers: the Rust facade and npm package remain
 `cubegin`, Swift uses `Cubegin` / `CubeginFFI`, and Android uses
 `io.github.deweyou:cubegin` with namespace `io.github.deweyou.cubegin`. Crate names,
 CLI commands, native symbols and artifact filenames retain these identifiers.
-Repository links and local checkout examples use `cubegin-core`.
+Repository links and local checkout examples use `cubegin`.
 
 ```mermaid
 flowchart BT

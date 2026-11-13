@@ -1,10 +1,12 @@
-# Cubegin Core
+# Cubegin
+
+[![English](https://img.shields.io/badge/English-blue)](README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](README_ZH.md)
 
 Core capability SDKs for Cubegin, written in Rust with Web/WASM, Swift and Kotlin bindings.
 The native iOS app lives in [apps/ios](apps/ios/README.md). Future Android app
 development belongs in `apps/android/`. License: GPL-3.0-only.
 
-The repository is `cubegin-core`; SDK package and import names remain `cubegin`
+The repository is `cubegin`; SDK package and import names remain `cubegin`
 (Rust/Web), `Cubegin` (Swift), and `io.github.deweyou.cubegin` (Kotlin).
 
 The Rust engine now covers the legacy capability catalog:

@@ -65,7 +65,7 @@ was exercised against success/failure/cancelled/skipped results. Underlying unit
 E2E and package-consumer commands have local evidence in [status.md](status.md).
 `CI=true` browser tests were also exercised on a separate local port.
 
-Hosted runners were first exercised in [PR #46](https://github.com/deweyou/cubegin-core/pull/46).
+Hosted runners were first exercised in [PR #46](https://github.com/deweyou/cubegin/pull/46).
 The first run exposed setup-android's default request for the retired SDK `tools`
 package; the workflow now requests `platform-tools` explicitly and installs the
 pinned platform/build-tools/NDK separately. Hosted Rust, Web, Swift and Android jobs

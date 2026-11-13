@@ -62,6 +62,6 @@ enum Engine {
     }
     enum EngineError: LocalizedError {
         case sdkMissing
-        var errorDescription: String? { "尚未链接 Cubegin SDK。请构建 cubegin-core 的 iOS XCFramework，然后打开 Cubegin.xcodeproj 使用 CubeginApp scheme。" }
+        var errorDescription: String? { "尚未链接 Cubegin SDK。请构建 本仓库的 iOS XCFramework，然后打开 Cubegin.xcodeproj 使用 CubeginApp scheme。" }
     }
 }

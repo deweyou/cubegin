@@ -1,5 +1,7 @@
 # Cubegin 开发指南
 
+[![English](https://img.shields.io/badge/English-blue)](DEVELOPMENT.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-blue)](DEVELOPMENT_ZH.md)
+
 ## 开发
 
 需要 Rust 1.96.0、Node >=22.12 和 pnpm 10。Rust 构建由 Cargo 编排，
@@ -103,14 +105,14 @@ AAR 包含 Kotlin 绑定及 `arm64-v8a`、`armeabi-v7a`、`x86_64` 原生库。
 最低支持 Android API 23。构建脚本还会验证独立 Maven 消费工程。
 
 未来位于 `apps/android/` 的 App 可通过 `../../dist/maven` 使用产物。
-对于外部项目，假设产品仓库与 `cubegin-core` 为同级目录，在产品现有 `settings.gradle.kts` 的仓库配置中添加：
+对于外部项目，假设产品仓库与 `cubegin` 为同级目录，在产品现有 `settings.gradle.kts` 的仓库配置中添加：
 
 ```kotlin
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("../cubegin-core/dist/maven") }
+        maven { url = uri("../cubegin/dist/maven") }
     }
 }
 ```
