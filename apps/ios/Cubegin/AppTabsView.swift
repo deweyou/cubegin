@@ -86,7 +86,6 @@ struct AppTabsView: View {
     @State private var isDuoOuterDisplay = false
     @State private var isDuoInnerDisplay = false
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let sideNavigationWidth: CGFloat = 52
     // Measured from the portrait tab capsule to the display edge on iPhone 17 Pro.
     private let sideNavigationEdgeGap: CGFloat = 21
@@ -200,6 +199,7 @@ struct AppTabsView: View {
                     navigationInset: sideNavigationInset ?? 0,
                     navigationOnLeft: railOnLeft,
                     isDuoInnerDisplay: isDuoInnerDisplay,
+                    isDuoOuterDisplay: isDuoOuterDisplay,
                     landscapeContentInsets: contentInsets,
                     isInTimerCancelZone: $isInTimerCancelZone
                 )
@@ -233,10 +233,8 @@ struct AppTabsView: View {
                         .padding(railOnLeft ? .leading : .trailing, sideNavigationInset)
                         .padding(.bottom, ContentView.landscapeBottomInset + (alignsSideNavigationWithCoverCamera ? 44 : 0))
                         .offset(x: alignsSideNavigationWithCoverCamera || alignsSideNavigationWithStatusIndicators ? 10 : 0)
-                        .transition(.opacity)
                 }
             }
-            .animation(reduceMotion ? nil : ContentView.landscapeTimingAnimation, value: showsTimingLayout)
             .allowsHitTesting(!showsTimingLayout)
             .accessibilityHidden(showsTimingLayout)
         }

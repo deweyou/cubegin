@@ -9,11 +9,11 @@ struct ContentView: View {
     var navigationInset: CGFloat = 0
     var navigationOnLeft = false
     var isDuoInnerDisplay = false
+    var isDuoOuterDisplay = false
     var landscapeContentInsets: LandscapeContentInsets?
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @FocusState private var hasTimerKeyboardFocus: Bool
     @State private var idlePageFrame: CGRect?
-    @State private var centersLandscapeReadout = false
     private var isTiming: Bool { model.started != nil }
     @Binding var isInTimerCancelZone: Bool
     private static let cancelZoneHeight: CGFloat = 88
@@ -28,10 +28,8 @@ struct ContentView: View {
     private let controlRowHeight: CGFloat = 44
     private let compactControlSize: CGFloat = 32
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
-    static let landscapeTimingAnimation = Animation.easeInOut(duration: 0.2)
     static let landscapeBottomInset: CGFloat = 8
 
     // The native iPad TabView uses the top bar in regular-width layouts.
@@ -69,24 +67,7 @@ struct ContentView: View {
                 page
             }
         }
-        .overlay(alignment: .top) {
-            if model.isTouchReady || isInTimerCancelZone {
-                Text(language.text("上滑到这里取消", "Slide here to cancel"))
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 12)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Self.cancelZoneHeight, alignment: .top)
-                    .background(alignment: .top) {
-                        LinearGradient(
-                            colors: [Color.primary.opacity(0.07), .clear],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                        .ignoresSafeArea(edges: .top)
-                    }
-                .allowsHitTesting(false)
-            }
-        }
+        .appBackground()
         .focusable(isTimerActive)
         .focusEffectDisabled()
         .focused($hasTimerKeyboardFocus)
@@ -143,6 +124,23 @@ struct ContentView: View {
         }
 #endif
     }
+    private func cancelHint(atLowerDisplay: Bool) -> some View {
+        Text(language.text("上滑到这里取消", "Slide here to cancel"))
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.top, isDuoOuterDisplay ? 24 : 12)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.cancelZoneHeight, alignment: .top)
+            .background {
+                LinearGradient(
+                    colors: [Color.primary.opacity(0.07), .clear],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: atLowerDisplay ? .horizontal : [.top, .horizontal])
+            }
+            .allowsHitTesting(false)
+    }
+
     private var page: some View {
         GeometryReader { geometry in
             let insets = geometry.safeAreaInsets
@@ -160,10 +158,11 @@ struct ContentView: View {
             } else {
                 frame
             }
+            let fold = isDuoInnerDisplay && !isLandscape ? horizontalFold(in: geometry) : nil
             let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
             Group {
-                if isDuoInnerDisplay, !isLandscape, let fold = horizontalFold(in: geometry) {
-                    foldedPortraitPage(size: geometry.size, fold: fold)
+                if let fold {
+                    foldedPortraitPage(size: geometry.size, fold: fold, cancelZoneTop: frame.minY + fold.maxY)
                 } else if usesDuoWideLayout {
                     page(frame: frame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
                          timerFrame: timerFrame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
@@ -177,6 +176,12 @@ struct ContentView: View {
                     landscapePage(frame: frame, timerFrame: timerFrame, screenCenter: screenCenter)
                 } else {
                     page(frame: frame, timerFrame: timerFrame, diagramBottomPadding: diagramBottomPadding)
+                }
+            }
+            .overlay(alignment: .top) {
+                if model.isTouchReady || isInTimerCancelZone {
+                    cancelHint(atLowerDisplay: fold != nil)
+                        .offset(y: fold?.maxY ?? 0)
                 }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { measuredFrame in
@@ -197,7 +202,7 @@ struct ContentView: View {
         return nil
     }
 
-    private func foldedPortraitPage(size: CGSize, fold: CGRect) -> some View {
+    private func foldedPortraitPage(size: CGSize, fold: CGRect, cancelZoneTop: CGFloat) -> some View {
         let padding: CGFloat = 16
         let foldClearance: CGFloat = 8
         let width = max(1, size.width - 2 * padding)
@@ -237,7 +242,7 @@ struct ContentView: View {
                     .allowsHitTesting(!showsTimingLayout)
                     .accessibilityHidden(showsTimingLayout)
                 ZStack {
-                    timerTouchSurface
+                    timerTouchSurface(cancelZoneTop: cancelZoneTop)
                     timerDisplay(fontSize: timerFontSize, numberHeight: timerFontSize * 1.2)
                 }
                 .frame(height: timerAreaHeight)
@@ -245,7 +250,6 @@ struct ContentView: View {
             .frame(width: width, height: lowerHeight)
         }
         .frame(width: size.width, height: size.height, alignment: .top)
-        .appBackground()
     }
 
     private func landscapePage(frame: CGRect, timerFrame: CGRect, screenCenter: CGPoint) -> some View {
@@ -272,21 +276,18 @@ struct ContentView: View {
         let belowReadoutHeight = summaryHeight + compactControlSize + 2 * rowSpacing
         let numberHeight = max(1, min(132, columnsHeight - belowReadoutHeight))
         let summaryOffset = max(0, columnsHeight - numberHeight - belowReadoutHeight) / 2
-        let touchTop = showsTimingLayout ? 0 : controlsHeight
-        let touchOverhang = showsTimingLayout ? max(0, -navigationInset) : 0
+        let touchOverhang = max(0, -navigationInset)
         let columnCenterX = timerFrame.midX + (scrambleWidth + columnSpacing) / 2 - columnShift
         let idleReadoutCenterY = timerFrame.minY + columnsTop + (columnsHeight - belowReadoutHeight) / 2
-        let readoutShift = centersLandscapeReadout && !reduceMotion
+        let readoutShift = showsTimingLayout
             ? CGSize(width: screenCenter.x - columnCenterX, height: screenCenter.y - idleReadoutCenterY)
             : .zero
-        let animation = reduceMotion ? nil : Self.landscapeTimingAnimation
 
         return ZStack(alignment: .top) {
-            timerTouchSurface
+            timerTouchSurface()
                 .frame(width: frame.width + touchOverhang,
-                       height: max(0, frame.height - touchTop))
+                       height: frame.height)
                 .frame(width: frame.width, alignment: navigationOnLeft ? .trailing : .leading)
-                .padding(.top, touchTop)
 
             if !showsTimingLayout {
                 phoneControls
@@ -299,7 +300,6 @@ struct ContentView: View {
                 LandscapeScrambleLayout {
                     if !showsTimingLayout {
                         currentScramble(width: scrambleWidth, fontScale: 1.1)
-                            .transition(.opacity)
                     }
                     scrambleDiagram(alignment: .center)
                         .frame(width: diagramWidth, height: diagramHeight)
@@ -308,7 +308,6 @@ struct ContentView: View {
                         .accessibilityHidden(showsTimingLayout)
                 }
                 .frame(width: scrambleWidth, height: columnsHeight)
-                .animation(animation, value: showsTimingLayout)
                 .allowsHitTesting(!showsTimingLayout)
                 .accessibilityHidden(showsTimingLayout)
 
@@ -324,12 +323,10 @@ struct ContentView: View {
                         if !showsTimingLayout {
                             TimerSummary(model: model, height: summaryHeight, twoColumns: true)
                                 .frame(maxWidth: 220)
-                                .transition(.opacity)
                         }
                     }
                     .frame(height: summaryHeight)
                     .offset(y: summaryOffset)
-                    .animation(animation, value: showsTimingLayout)
                     .allowsHitTesting(false)
                     .accessibilityHidden(showsTimingLayout)
                 }
@@ -341,10 +338,6 @@ struct ContentView: View {
                     y: timerFrame.minY - frame.minY)
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
-        .onChange(of: showsTimingLayout, initial: true) { _, timing in
-            withAnimation(animation) { centersLandscapeReadout = timing }
-        }
-        .appBackground()
     }
 
     private func page(frame: CGRect, timerFrame: CGRect, diagramBottomPadding: CGFloat,
@@ -407,7 +400,7 @@ struct ContentView: View {
             && height / 2 - recentHalfHeight >= diagramHeight + diagramBottomPadding
 
         return ZStack {
-            timerTouchSurface
+            timerTouchSurface()
                 .frame(width: width, height: max(0, height - timerTouchTop))
                 .frame(width: contentWidth, height: height, alignment: .bottom)
 
@@ -462,7 +455,6 @@ struct ContentView: View {
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: maximumWidth)
         .frame(maxWidth: .infinity)
-        .appBackground()
     }
 
     @ViewBuilder
@@ -521,7 +513,7 @@ struct ContentView: View {
         }
     }
 
-    private var timerTouchSurface: some View {
+    private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
             onDown: {
                 guard isTimerActive, !showsProjectList, solveToDelete == nil else { return }
@@ -542,6 +534,7 @@ struct ContentView: View {
             },
             isReady: model.isTouchReady,
             cancelZoneHeight: Self.cancelZoneHeight,
+            cancelZoneTop: cancelZoneTop,
             onCancelZoneChange: { isInTimerCancelZone = $0 }
         )
         .allowsHitTesting(isTimerActive && !showsProjectList && solveToDelete == nil)
@@ -617,12 +610,12 @@ struct ContentView: View {
                 Text(isInTimerCancelZone
                      ? language.text("松开取消", "Release to cancel")
                      : language.text("松开开启", "Release to start"))
-                    .font(.system(size: fontSize * 0.45, weight: isInTimerCancelZone ? .bold : .regular, design: .rounded))
+                    .font(.system(size: fontSize * 0.45, weight: .regular, design: .rounded))
                     .foregroundStyle(isInTimerCancelZone ? Color.red : Color.green)
                     .lineLimit(1)
                     .minimumScaleFactor(minimumScale)
                     .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: 0.45,
-                                                       weight: isInTimerCancelZone ? .bold : .regular))
+                                                       weight: .regular))
                     .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity)
                     .frame(height: height)
@@ -871,6 +864,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
     var onCancel: () -> Void
     var isReady: Bool
     var cancelZoneHeight: CGFloat
+    var cancelZoneTop: CGFloat?
     var onCancelZoneChange: (Bool) -> Void
 
     func makeCoordinator() -> PressRecognizer { PressRecognizer() }
@@ -906,8 +900,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
             let dy = point.y - initialPoint.y
             if let callbacks, callbacks.isReady, isDraggingUp || -dy > abs(dx) {
                 isDraggingUp = true
-                let safeTop = view?.window?.safeAreaInsets.top ?? 0
-                callbacks.onCancelZoneChange(point.y <= safeTop + callbacks.cancelZoneHeight)
+                updateCancelZone(at: point, callbacks: callbacks)
             } else if hypot(dx, dy) > 10 {
                 state = .failed
             }
@@ -916,12 +909,17 @@ private struct TimerTouchSurface: UIViewRepresentable {
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
             guard initialPoint != nil else { return }
             if isDraggingUp, let callbacks, let touch = touches.first {
-                let safeTop = view?.window?.safeAreaInsets.top ?? 0
-                callbacks.onCancelZoneChange(touch.location(in: view?.window).y <= safeTop + callbacks.cancelZoneHeight)
+                updateCancelZone(at: touch.location(in: view?.window), callbacks: callbacks)
             }
             initialPoint = nil
             state = .recognized
             callbacks?.onUp()
+        }
+
+        private func updateCancelZone(at point: CGPoint, callbacks: TimerTouchSurface) {
+            let top = callbacks.cancelZoneTop ?? view?.window?.safeAreaInsets.top ?? 0
+            let withinUpperBoundary = callbacks.cancelZoneTop == nil || point.y >= top
+            callbacks.onCancelZoneChange(withinUpperBoundary && point.y <= top + callbacks.cancelZoneHeight)
         }
 
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {

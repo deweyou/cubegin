@@ -669,7 +669,7 @@ final class SolveFlowTests: XCTestCase {
 
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2", "-timer.wcaInspection", "NO"]
         app.launch()
 
         let scramble = app.descendants(matching: .any)["timer.scramble"]
@@ -740,7 +740,10 @@ final class SolveFlowTests: XCTestCase {
 
         let left = app.coordinate(withNormalizedOffset: .zero).withOffset(
             CGVector(dx: rendered.diagram.midX - appFrame.minX, dy: rendered.diagram.midY - appFrame.minY))
-        timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.5)
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: idleTimer.midX - appFrame.minX, dy: idleTimer.midY - appFrame.minY))
+        start.press(forDuration: 0.5)
+        XCTAssertTrue(timer.waitForExistence(timeout: 5))
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         XCTAssertEqual(timer.frame.midX, app.frame.midX, accuracy: 2)
         XCTAssertEqual(timer.frame.midY, app.frame.midY, accuracy: 2)
@@ -758,7 +761,8 @@ final class SolveFlowTests: XCTestCase {
 
         let formerRail = app.coordinate(withNormalizedOffset: .zero).withOffset(
             CGVector(dx: results.frame.midX - app.frame.minX, dy: results.frame.midY - app.frame.minY))
-        timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.5)
+        start.press(forDuration: 0.5)
+        XCTAssertTrue(timer.waitForExistence(timeout: 5))
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         formerRail.tap()
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
