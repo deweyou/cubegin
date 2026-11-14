@@ -13,6 +13,13 @@ struct CubeginApp: App {
                 .environment(\.locale, AppLanguage.resolve(languageOverride).locale)
                 .preferredColorScheme(theme.colorScheme)
                 .scrollIndicators(.hidden)
+                .task { SettingsSync.refresh() }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    SettingsSync.refresh()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)) {
+                    SettingsSync.receive($0)
+                }
                 .background {
                     if UIDevice.current.userInterfaceIdiom == .pad {
                         MinimumWindowHeight()
@@ -101,6 +108,63 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .system: language.text("跟随系统", "System")
         case .light: language.text("浅色", "Light")
         case .dark: language.text("深色", "Dark")
+        }
+    }
+}
+
+@MainActor
+enum SettingsSync {
+    private static let keys = [
+        AppLanguage.preferenceKey, AppTheme.preferenceKey, TimerModel.startDelayKey,
+        TimerModel.keepTimerScreenOnKey, TimerModel.inspectionKey, TimerModel.trainingInspectionKey,
+        TimerModel.inspectionVoiceKey, ResultExtremes.includeDNFPreferenceKey
+    ]
+
+    private static var isEnabled: Bool {
+#if targetEnvironment(simulator)
+        false
+#else
+        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin"
+#endif
+    }
+
+    static func binding<Value: Equatable>(_ local: Binding<Value>, key: String, encode: @escaping (Value) -> Any) -> Binding<Value> {
+        Binding {
+            local.wrappedValue
+        } set: { value in
+            guard local.wrappedValue != value else { return }
+            local.wrappedValue = value
+            guard isEnabled else { return }
+            NSUbiquitousKeyValueStore.default.set(encode(value), forKey: key)
+        }
+    }
+
+    static func refresh() {
+        guard isEnabled, NSUbiquitousKeyValueStore.default.synchronize() else { return }
+        apply(keys)
+    }
+
+    static func receive(_ notification: Notification) {
+        guard isEnabled,
+              let reason = notification.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int else { return }
+        switch reason {
+        case NSUbiquitousKeyValueStoreInitialSyncChange, NSUbiquitousKeyValueStoreAccountChange:
+            apply(keys)
+        case NSUbiquitousKeyValueStoreServerChange:
+            let changed = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? keys
+            apply(keys.filter { changed.contains($0) })
+        default:
+            break
+        }
+    }
+
+    private static func apply(_ keys: [String]) {
+        let cloud = NSUbiquitousKeyValueStore.default
+        let defaults = UserDefaults.standard
+        for key in keys {
+            if let value = cloud.object(forKey: key) {
+                defaults.set(value, forKey: key)
+            }
         }
     }
 }

@@ -18,6 +18,11 @@ command after Core changes. For SDK packaging and isolated consumer tests, run
 
 Open `CubeginPreview.xcodeproj` for interface work without building the SDK. It reports an integration error where the real engine is required.
 
+For iCloud settings verification, use a signing profile for the Cubegin App ID with
+the iCloud key-value storage capability. Sign into the same iCloud account on two
+devices, change a setting on either one, and verify that it reaches the other.
+The simulator and preview project use local preferences.
+
 ## Tests and CI
 
 Run the **CubeginApp** scheme’s Test action on an iOS simulator to execute the unit

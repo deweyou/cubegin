@@ -1873,6 +1873,14 @@ private struct SettingsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
 
+    private var syncedLanguage: Binding<String> {
+        SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }
+    }
+
+    private var syncedStartDelay: Binding<Int> {
+        SettingsSync.binding($startDelayTenths, key: TimerModel.startDelayKey) { $0 }
+    }
+
     private func settingsLinkLabel(_ title: String) -> some View {
         HStack {
             Text(title)
@@ -1888,7 +1896,7 @@ private struct SettingsView: View {
         NavigationStack(path: $path) {
             Form {
                 CardSection(language.text("通用", "General")) {
-                    Picker(language.text("主题", "Theme"), selection: $theme) {
+                    Picker(language.text("主题", "Theme"), selection: SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }) {
                         ForEach(AppTheme.allCases) { option in
                             Text(option.title(in: language)).tag(option)
                         }
@@ -1896,7 +1904,7 @@ private struct SettingsView: View {
                     .accessibilityIdentifier("settings.theme")
                     Picker(language.text("语言", "Language"), selection: Binding(
                         get: { AppLanguage.resolve(languageOverride) },
-                        set: { languageOverride = $0.rawValue }
+                        set: { syncedLanguage.wrappedValue = $0.rawValue }
                     )) {
                         ForEach(AppLanguage.allCases) { option in
                             Text(option.name).tag(option)
@@ -1904,7 +1912,7 @@ private struct SettingsView: View {
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {
-                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: $keepsTimerScreenOn)
+                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
                         .accessibilityIdentifier("settings.timer.keepScreenOn")
                     HStack(spacing: 8) {
                         let title = language.text("启动延迟", "Start delay")
@@ -1919,7 +1927,7 @@ private struct SettingsView: View {
                             .accessibilityHidden(true)
                         Slider(value: Binding(
                             get: { Double(startDelayTenths) },
-                            set: { startDelayTenths = Int($0.rounded()) }
+                            set: { syncedStartDelay.wrappedValue = Int($0.rounded()) }
                         ), in: 0...20) {
                             Text(title)
                         }
@@ -1929,18 +1937,18 @@ private struct SettingsView: View {
                         .accessibilityValue(value)
                         .accessibilityAdjustableAction { direction in
                             switch direction {
-                            case .increment: startDelayTenths = min(20, startDelayTenths + 1)
-                            case .decrement: startDelayTenths = max(0, startDelayTenths - 1)
+                            case .increment: syncedStartDelay.wrappedValue = min(20, startDelayTenths + 1)
+                            case .decrement: syncedStartDelay.wrappedValue = max(0, startDelayTenths - 1)
                             @unknown default: break
                             }
                         }
                         .accessibilityIdentifier("settings.startDelay")
                     }
-                    Toggle(language.text("WCA 观察", "WCA inspection"), isOn: $usesInspection)
+                    Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
                         .accessibilityIdentifier("settings.inspection.enabled")
                     if usesInspection {
-                        Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: $usesTrainingInspection)
-                        Picker(language.text("观察报时", "Inspection voice"), selection: $inspectionVoice) {
+                        Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 })
+                        Picker(language.text("观察报时", "Inspection voice"), selection: SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }) {
                             ForEach(InspectionVoice.allCases, id: \.self) { voice in
                                 Text(voice.title(in: language)).tag(voice)
                             }
@@ -1948,7 +1956,7 @@ private struct SettingsView: View {
                     }
                 }
                 CardSection(language.text("成绩", "Results")) {
-                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: $includesDNFInWorst)
+                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                     cardRowButton {
                         path.append(.imports)
