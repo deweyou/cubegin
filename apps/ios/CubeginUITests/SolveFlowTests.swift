@@ -598,8 +598,13 @@ final class SolveFlowTests: XCTestCase {
 
             settings.tap()
             XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
-            XCTAssertTrue(app.switches["settings.results.includeDNFInWorst"].exists)
+            XCTAssertTrue(app.switches["settings.timer.keepScreenOn"].exists)
             captureLandscapePage("Settings", cutout: cutout)
+            let includeDNF = app.switches["settings.results.includeDNFInWorst"]
+            for _ in 0..<3 where !includeDNF.isHittable {
+                app.swipeUp()
+            }
+            XCTAssertTrue(includeDNF.isHittable)
             app.terminate()
         }
     }

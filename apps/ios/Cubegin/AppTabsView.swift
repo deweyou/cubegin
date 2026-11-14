@@ -72,7 +72,12 @@ struct AppTabsView: View {
         return URL.documentsDirectory.appending(path: "solves.json")
     }
 
+    @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
     @State private var isInTimerCancelZone = false
+    private var shouldKeepScreenOn: Bool {
+        isActive && scenePhase == .active && selection == .home
+            && (keepsTimerScreenOn || model.started != nil || model.inspectionStarted != nil)
+    }
     private var showsTimingLayout: Bool { model.started != nil || model.inspectionStarted != nil || model.isReady || isInTimerCancelZone }
     @State private var selection = Destination.home
     @State private var resultsPage = ResultsPage.solves
@@ -164,8 +169,8 @@ struct AppTabsView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.interrupt() }
         }
-        .onChange(of: scenePhase == .active && model.started != nil, initial: true) { _, isSolving in
-            UIApplication.shared.isIdleTimerDisabled = isSolving
+        .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
+            UIApplication.shared.isIdleTimerDisabled = keepScreenOn
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
@@ -1859,6 +1864,7 @@ private struct SettingsView: View {
     @State private var path: [Page] = []
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
+    @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
     @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
     @AppStorage(TimerModel.trainingInspectionKey) private var usesTrainingInspection = false
     @AppStorage(TimerModel.inspectionVoiceKey) private var inspectionVoice = InspectionVoice.off
@@ -1898,6 +1904,8 @@ private struct SettingsView: View {
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {
+                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: $keepsTimerScreenOn)
+                        .accessibilityIdentifier("settings.timer.keepScreenOn")
                     HStack(spacing: 8) {
                         let title = language.text("启动延迟", "Start delay")
                         let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"

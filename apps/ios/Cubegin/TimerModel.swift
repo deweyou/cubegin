@@ -73,6 +73,7 @@ enum InspectionVoice: String, CaseIterable {
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
     static let defaultStartDelayTenths = 2
+    static let keepTimerScreenOnKey = "timer.keepScreenOn"
     static let inspectionKey = "timer.wcaInspection"
     static let trainingInspectionKey = "timer.trainingInspection"
     static let inspectionVoiceKey = "timer.inspectionVoice"
