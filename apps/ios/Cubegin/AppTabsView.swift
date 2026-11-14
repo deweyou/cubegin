@@ -1948,7 +1948,7 @@ private struct SettingsView: View {
                     }
                 }
                 CardSection(language.text("成绩", "Results")) {
-                    Toggle(language.text("DNF 可标为最差", "Allow DNF as worst"), isOn: $includesDNFInWorst)
+                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: $includesDNFInWorst)
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                     cardRowButton {
                         path.append(.imports)
