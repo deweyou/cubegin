@@ -12,3 +12,7 @@ Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It
 - **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.
 
 [Development guide](DEVELOPMENT.md) · [GPL-3.0-only](LICENSE)
+
+Optional WCA inspection includes 8- and 12-second voice calls and automatic inspection penalties.
+
+App settings sync across devices signed into the same iCloud account when the app is signed with the iCloud key-value storage capability.

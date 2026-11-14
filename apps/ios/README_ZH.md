@@ -12,3 +12,7 @@ Cubegin 是原生 SwiftUI 魔方速拧计时器，支持 iOS 和 iPadOS 26 及�
 - **DCTimer 导入**：打开 **设置 → 导入 → 从 DCTimer 导入**，在文件中选择 `spdcube.sqlite`。可以预览成绩、选择导入的分组，也可以撤销最近一次导入。
 
 [开发指南](DEVELOPMENT.md) · [GPL-3.0-only](LICENSE)
+
+可选的 WCA 观察支持 8 秒和 12 秒语音报时，并自动记录观察超时判罚。
+
+使用支持 iCloud 键值存储的签名时，应用设置会在登录同一 iCloud 账号的设备之间同步。

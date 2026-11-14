@@ -72,6 +72,13 @@ struct AppTabsView: View {
         return URL.documentsDirectory.appending(path: "solves.json")
     }
 
+    @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
+    @State private var isInTimerCancelZone = false
+    private var shouldKeepScreenOn: Bool {
+        isActive && scenePhase == .active && selection == .home
+            && (keepsTimerScreenOn || model.started != nil || model.inspectionStarted != nil)
+    }
+    private var showsTimingLayout: Bool { model.started != nil || model.inspectionStarted != nil || model.isReady || isInTimerCancelZone }
     @State private var selection = Destination.home
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false
@@ -79,7 +86,6 @@ struct AppTabsView: View {
     @State private var isDuoOuterDisplay = false
     @State private var isDuoInnerDisplay = false
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let sideNavigationWidth: CGFloat = 52
     // Measured from the portrait tab capsule to the display edge on iPhone 17 Pro.
     private let sideNavigationEdgeGap: CGFloat = 21
@@ -162,8 +168,8 @@ struct AppTabsView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.interrupt() }
         }
-        .onChange(of: scenePhase == .active && model.started != nil, initial: true) { _, isSolving in
-            UIApplication.shared.isIdleTimerDisabled = isSolving
+        .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
+            UIApplication.shared.isIdleTimerDisabled = keepScreenOn
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
@@ -193,10 +199,12 @@ struct AppTabsView: View {
                     navigationInset: sideNavigationInset ?? 0,
                     navigationOnLeft: railOnLeft,
                     isDuoInnerDisplay: isDuoInnerDisplay,
-                    landscapeContentInsets: contentInsets
+                    isDuoOuterDisplay: isDuoOuterDisplay,
+                    landscapeContentInsets: contentInsets,
+                    isInTimerCancelZone: $isInTimerCancelZone
                 )
                     .labelStyle(.titleAndIcon)
-                    .toolbar(usesSideNavigation || model.started != nil ? .hidden : .automatic, for: .tabBar)
+                    .toolbar(usesSideNavigation || showsTimingLayout ? .hidden : .automatic, for: .tabBar)
             } label: {
                 tabLabel(.home)
             }
@@ -220,17 +228,15 @@ struct AppTabsView: View {
         .labelStyle(.iconOnly)
         .overlay(alignment: railOnLeft ? .bottomLeading : .bottomTrailing) {
             ZStack {
-                if let sideNavigationInset, model.started == nil, !(selection == .results && isSelectingResults) {
+                if let sideNavigationInset, !showsTimingLayout, !(selection == .results && isSelectingResults) {
                     sideNavigation
                         .padding(railOnLeft ? .leading : .trailing, sideNavigationInset)
                         .padding(.bottom, ContentView.landscapeBottomInset + (alignsSideNavigationWithCoverCamera ? 44 : 0))
                         .offset(x: alignsSideNavigationWithCoverCamera || alignsSideNavigationWithStatusIndicators ? 10 : 0)
-                        .transition(.opacity)
                 }
             }
-            .animation(reduceMotion ? nil : ContentView.landscapeTimingAnimation, value: model.started != nil)
-            .allowsHitTesting(model.started == nil)
-            .accessibilityHidden(model.started != nil)
+            .allowsHitTesting(!showsTimingLayout)
+            .accessibilityHidden(showsTimingLayout)
         }
     }
 
@@ -1856,10 +1862,22 @@ private struct SettingsView: View {
     @State private var path: [Page] = []
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
+    @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
+    @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
+    @AppStorage(TimerModel.trainingInspectionKey) private var usesTrainingInspection = false
+    @AppStorage(TimerModel.inspectionVoiceKey) private var inspectionVoice = InspectionVoice.off
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
+
+    private var syncedLanguage: Binding<String> {
+        SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }
+    }
+
+    private var syncedStartDelay: Binding<Int> {
+        SettingsSync.binding($startDelayTenths, key: TimerModel.startDelayKey) { $0 }
+    }
 
     private func settingsLinkLabel(_ title: String) -> some View {
         HStack {
@@ -1876,7 +1894,7 @@ private struct SettingsView: View {
         NavigationStack(path: $path) {
             Form {
                 CardSection(language.text("通用", "General")) {
-                    Picker(language.text("主题", "Theme"), selection: $theme) {
+                    Picker(language.text("主题", "Theme"), selection: SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }) {
                         ForEach(AppTheme.allCases) { option in
                             Text(option.title(in: language)).tag(option)
                         }
@@ -1884,12 +1902,16 @@ private struct SettingsView: View {
                     .accessibilityIdentifier("settings.theme")
                     Picker(language.text("语言", "Language"), selection: Binding(
                         get: { AppLanguage.resolve(languageOverride) },
-                        set: { languageOverride = $0.rawValue }
+                        set: { syncedLanguage.wrappedValue = $0.rawValue }
                     )) {
                         ForEach(AppLanguage.allCases) { option in
                             Text(option.name).tag(option)
                         }
                     }
+                }
+                CardSection(language.text("计时", "Timer")) {
+                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
+                        .accessibilityIdentifier("settings.timer.keepScreenOn")
                     HStack(spacing: 8) {
                         let title = language.text("启动延迟", "Start delay")
                         let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"
@@ -1903,7 +1925,7 @@ private struct SettingsView: View {
                             .accessibilityHidden(true)
                         Slider(value: Binding(
                             get: { Double(startDelayTenths) },
-                            set: { startDelayTenths = Int($0.rounded()) }
+                            set: { syncedStartDelay.wrappedValue = Int($0.rounded()) }
                         ), in: 0...20) {
                             Text(title)
                         }
@@ -1913,16 +1935,26 @@ private struct SettingsView: View {
                         .accessibilityValue(value)
                         .accessibilityAdjustableAction { direction in
                             switch direction {
-                            case .increment: startDelayTenths = min(20, startDelayTenths + 1)
-                            case .decrement: startDelayTenths = max(0, startDelayTenths - 1)
+                            case .increment: syncedStartDelay.wrappedValue = min(20, startDelayTenths + 1)
+                            case .decrement: syncedStartDelay.wrappedValue = max(0, startDelayTenths - 1)
                             @unknown default: break
                             }
                         }
                         .accessibilityIdentifier("settings.startDelay")
                     }
+                    Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
+                        .accessibilityIdentifier("settings.inspection.enabled")
+                    if usesInspection {
+                        Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 })
+                        Picker(language.text("观察报时", "Inspection voice"), selection: SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }) {
+                            ForEach(InspectionVoice.allCases, id: \.self) { voice in
+                                Text(voice.title(in: language)).tag(voice)
+                            }
+                        }
+                    }
                 }
                 CardSection(language.text("成绩", "Results")) {
-                    Toggle(language.text("DNF 可标为最差", "Allow DNF as worst"), isOn: $includesDNFInWorst)
+                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                     cardRowButton {
                         path.append(.imports)

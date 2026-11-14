@@ -5,6 +5,68 @@ import Testing
 
 @MainActor
 struct TimerModelTests {
+    @Test(arguments: [14_999, 15_000, 16_999, 17_000])
+    func inspectionUsesReleaseTimeAndPersistsPenalty(milliseconds: Int) async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            var now = ContinuousClock.now
+            let model = fixture.model(now: { now })
+            model.refresh()
+            try await waitForGeneration(model)
+
+            model.press(.touch, delayTenths: 20)
+            #expect(model.isReady)
+            #expect(model.inspectionStarted == nil)
+            model.release(.touch)
+            let inspectionStart = try #require(model.inspectionStarted)
+            #expect(inspectionStart == now)
+            #expect(model.started == nil)
+
+            model.press(.touch, delayTenths: 0)
+            model.cancelPress(.touch)
+            model.release(.touch)
+            #expect(model.inspectionStarted == inspectionStart)
+
+            now += .milliseconds(milliseconds - 200)
+            model.press(.touch, delayTenths: 2)
+            now += .milliseconds(200)
+            model.release(.touch)
+            #expect(model.started == now)
+            #expect(model.inspectionStarted == nil)
+
+            now += .seconds(3)
+            model.press(.touch, delayTenths: 2)
+            let solve = try #require(model.lastSolve)
+            let expected: SolvePenalty? = switch milliseconds {
+            case 15_000, 16_999: .plusTwo
+            case 17_000: .dnf
+            default: nil
+            }
+            #expect(solve.seconds == 3)
+            #expect(solve.penalty == expected)
+            #expect(fixture.model().solves == [solve])
+        }
+    }
+
+    @Test func inspectionRequiresOptInForTrainingAndExcludesBlindfoldedEvents() async throws {
+        try await withFixture { fixture in
+            let model = fixture.model()
+            #expect(!model.usesInspection)
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            #expect(model.usesInspection)
+
+            for event in ["333bld", "444bld", "555bld"] {
+                model.standardEvent = event
+                #expect(!model.usesInspection)
+            }
+
+            model.mode = .training
+            #expect(!model.usesInspection)
+            fixture.defaults.set(true, forKey: TimerModel.trainingInspectionKey)
+            #expect(model.usesInspection)
+        }
+    }
+
     @Test func holdReleaseAndStopPersistTheOriginalScrambleAndExactTime() async throws {
         try await withFixture { fixture in
             var now = ContinuousClock.now
