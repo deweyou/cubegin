@@ -227,7 +227,7 @@ struct ResultsImportView: View {
     var body: some View {
         Form {
             CardSection {
-                Button {
+                cardRowButton {
                     chooseBackup()
                 } label: {
                     HStack {
@@ -235,7 +235,6 @@ struct ResultsImportView: View {
                         Spacer()
                         if isReading { ProgressView() }
                     }
-                    .contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("settings.results.importDCTimer")
                 .disabled(isReading || model.started != nil)
@@ -245,8 +244,10 @@ struct ResultsImportView: View {
             }
             if model.lastImportCount > 0 {
                 CardSection {
-                    Button(language.text("撤回上次导入", "Undo last import"), role: .destructive) {
+                    cardRowButton(role: .destructive) {
                         confirmUndo = true
+                    } label: {
+                        Text(language.text("撤回上次导入", "Undo last import"))
                     }
                     .accessibilityIdentifier("settings.import.undo")
                     .disabled(isReading || model.started != nil)
@@ -450,7 +451,7 @@ private struct DCTimerImportPreview: View {
                     CardSection(language.text("选择要导入的分组", "Select groups to import")) {
                         ForEach(newSessions) { session in
                             let selected = !excludedSessions.contains(session.id)
-                            Button {
+                            cardRowButton {
                                 if selected { excludedSessions.insert(session.id) }
                                 else { excludedSessions.remove(session.id) }
                             } label: {
@@ -470,7 +471,6 @@ private struct DCTimerImportPreview: View {
                                     }
                                     Spacer()
                                 }
-                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(selected ? .isSelected : [])

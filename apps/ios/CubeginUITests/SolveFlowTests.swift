@@ -16,11 +16,11 @@ final class SolveFlowTests: XCTestCase {
         settings.tap()
         let imports = app.descendants(matching: .any)["settings.results.import"].firstMatch
         XCTAssertTrue(imports.waitForExistence(timeout: 5))
-        imports.tap()
+        tapCardRowEdge(imports)
         XCTAssertTrue(app.navigationBars["Import"].waitForExistence(timeout: 5))
         let entry = app.buttons["settings.results.importDCTimer"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
-        entry.tap()
+        tapCardRowEdge(entry)
         let cancel = app.buttons["Cancel"].firstMatch
         // Cold Files launches can exceed 10 seconds on hosted simulators.
         guard cancel.waitForExistence(timeout: 45) else {
@@ -113,7 +113,7 @@ final class SolveFlowTests: XCTestCase {
         settings.tap()
         XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
         let clearPage = app.descendants(matching: .any)["settings.results.clear"].firstMatch
-        clearPage.tap()
+        tapCardRowEdge(clearPage)
         let clearAll = app.buttons["settings.results.clearAll"]
         XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
         clearAll.tap()
@@ -128,7 +128,7 @@ final class SolveFlowTests: XCTestCase {
 
         let group = app.buttons["settings.clear.group.dctimer:333:1:Practice"]
         XCTAssertTrue(group.waitForExistence(timeout: 5))
-        group.tap()
+        tapCardRowEdge(group)
         XCTAssertFalse(clearAll.exists)
         app.buttons["settings.results.clearSelected"].tap()
         XCTAssertTrue(app.staticTexts["This will permanently delete 1 result."].waitForExistence(timeout: 5))
@@ -145,7 +145,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
         XCTAssertTrue(clearPage.waitForExistence(timeout: 5))
-        clearPage.tap()
+        tapCardRowEdge(clearPage)
         XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
         XCTAssertTrue(clearAll.isEnabled)
         XCTAssertTrue(app.buttons["settings.clear.group.dctimer:222:3:Keep"].exists)
@@ -176,7 +176,7 @@ final class SolveFlowTests: XCTestCase {
         let skip = groups["dctimer.preview.group.3"].firstMatch
         if !skip.isHittable { app.swipeUp() }
         XCTAssertTrue(skip.isSelected)
-        skip.tap()
+        tapCardRowEdge(skip)
         keep.tap()
         XCTAssertFalse(confirm.isEnabled)
         keep.tap()
@@ -189,6 +189,12 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(confirm.isEnabled)
         confirm.tap()
         XCTAssertTrue(app.staticTexts["Imported 2 results."].waitForExistence(timeout: 5))
+    }
+
+    private func tapCardRowEdge(_ button: XCUIElement) {
+        // Accessibility frames may be rounded to device pixels.
+        XCTAssertGreaterThanOrEqual(button.frame.height, 47.5)
+        button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
     }
 
     private func dctimerFixture(includeSecondGroup: Bool = false) throws -> String {

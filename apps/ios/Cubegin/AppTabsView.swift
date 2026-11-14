@@ -1772,6 +1772,29 @@ func cardSurface<S: Shape>(_ shape: S) -> some View {
         .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
 }
 
+extension ContainerValues {
+    @Entry fileprivate var hasCardRowLayout = false
+}
+
+extension View {
+    fileprivate func cardRowLayout() -> some View {
+        frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(.horizontal, 20)
+    }
+}
+
+@MainActor
+func cardRowButton<Label: View>(
+    role: ButtonRole? = nil, action: @escaping () -> Void, @ViewBuilder label: () -> Label
+) -> some View {
+    Button(role: role, action: action) {
+        label()
+            .cardRowLayout()
+            .contentShape(Rectangle())
+    }
+    .containerValue(\.hasCardRowLayout, true)
+}
+
 struct CardSection<Content: View, Header: View, Footer: View>: View {
     @ViewBuilder var content: Content
     @ViewBuilder var header: Header
@@ -1782,9 +1805,11 @@ struct CardSection<Content: View, Header: View, Footer: View>: View {
             Group(subviews: content) { rows in
                 VStack(spacing: 0) {
                     ForEach(rows) { row in
-                        row
-                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                            .padding(.horizontal, 20)
+                        if row.containerValues.hasCardRowLayout {
+                            row
+                        } else {
+                            row.cardRowLayout()
+                        }
                         if row.id != rows.last?.id {
                             Divider().padding(.horizontal, 20)
                         }
@@ -1845,7 +1870,6 @@ private struct SettingsView: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
         }
-        .contentShape(Rectangle())
     }
 
     var body: some View {
@@ -1900,14 +1924,14 @@ private struct SettingsView: View {
                 CardSection(language.text("成绩", "Results")) {
                     Toggle(language.text("DNF 可标为最差", "Allow DNF as worst"), isOn: $includesDNFInWorst)
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
-                    Button {
+                    cardRowButton {
                         path.append(.imports)
                     } label: {
                         settingsLinkLabel(language.text("导入", "Import"))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.import")
-                    Button {
+                    cardRowButton {
                         path.append(.clearResults)
                     } label: {
                         settingsLinkLabel(language.text("清空成绩", "Clear results"))
@@ -1977,7 +2001,7 @@ private struct ClearResultsView: View {
             } else {
                 CardSection(language.text("选择分组", "Select groups")) {
                     ForEach(groups) { group in
-                        Button {
+                        cardRowButton {
                             if !selection.insert(group.id).inserted { selection.remove(group.id) }
                         } label: {
                             HStack {
@@ -1995,7 +2019,6 @@ private struct ClearResultsView: View {
                                     .foregroundStyle(.secondary)
                                     .monospacedDigit()
                             }
-                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(selection.contains(group.id) ? .isSelected : [])
@@ -2005,7 +2028,7 @@ private struct ClearResultsView: View {
             }
             if !selection.isEmpty {
                 CardSection {
-                    Button(role: .destructive) {
+                    cardRowButton(role: .destructive) {
                         guard request == nil, !selectedIDs.isEmpty else { return }
                         request = Request(solveIDs: selectedIDs,
                                           title: language.text("清空所选分组？", "Clear selected groups?"))
@@ -2017,10 +2040,12 @@ private struct ClearResultsView: View {
                 }
             } else {
                 CardSection {
-                    Button(language.text("清空所有成绩", "Clear all results"), role: .destructive) {
+                    cardRowButton(role: .destructive) {
                         guard request == nil, selection.isEmpty else { return }
                         request = Request(solveIDs: Set(model.solves.map(\.id)),
                                           title: language.text("清空所有成绩？", "Clear all results?"))
+                    } label: {
+                        Text(language.text("清空所有成绩", "Clear all results"))
                     }
                     .disabled(model.solves.isEmpty || model.started != nil)
                     .accessibilityIdentifier("settings.results.clearAll")
