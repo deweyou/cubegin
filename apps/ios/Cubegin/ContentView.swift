@@ -15,6 +15,9 @@ struct ContentView: View {
     @State private var idlePageFrame: CGRect?
     @State private var centersLandscapeReadout = false
     private var isTiming: Bool { model.started != nil }
+    @Binding var isInTimerCancelZone: Bool
+    private static let cancelZoneHeight: CGFloat = 88
+    private var showsTimingLayout: Bool { isTiming || model.isReady || isInTimerCancelZone }
     @State private var showsProjectList = false
     @State private var timerTouchResumesAt: ContinuousClock.Instant?
     @State private var solveToDelete: Solve?
@@ -41,7 +44,7 @@ struct ContentView: View {
                 NavigationStack {
                     page
                         .navigationBarTitleDisplayMode(.inline)
-                        .toolbar(isTiming ? .hidden : .visible, for: .navigationBar)
+                        .toolbar(showsTimingLayout ? .hidden : .visible, for: .navigationBar)
                         .toolbar {
                             if !usesTopNavigation {
                                 ToolbarItem(placement: .topBarLeading) {
@@ -66,6 +69,24 @@ struct ContentView: View {
                 page
             }
         }
+        .overlay(alignment: .top) {
+            if model.isTouchReady || isInTimerCancelZone {
+                Text(language.text("上滑到这里取消", "Slide here to cancel"))
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Self.cancelZoneHeight, alignment: .top)
+                    .background(alignment: .top) {
+                        LinearGradient(
+                            colors: [Color.primary.opacity(0.07), .clear],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .ignoresSafeArea(edges: .top)
+                    }
+                .allowsHitTesting(false)
+            }
+        }
         .focusable(isTimerActive)
         .focusEffectDisabled()
         .focused($hasTimerKeyboardFocus)
@@ -80,7 +101,10 @@ struct ContentView: View {
         }
         .onChange(of: isTimerActive, initial: true) { _, active in
             hasTimerKeyboardFocus = active
-            if !active { model.cancelPress() }
+            if !active {
+                model.cancelPress()
+                isInTimerCancelZone = false
+            }
         }
         .onChange(of: showsProjectList) { _, isShowing in
             model.cancelPress()
@@ -129,7 +153,7 @@ struct ContentView: View {
             let frame = geometry.frame(in: .global)
             let isPhone = UIDevice.current.userInterfaceIdiom == .phone
             let isLandscape = frame.width > frame.height
-            let timerFrame = if isTiming, let idlePageFrame,
+            let timerFrame = if showsTimingLayout, let idlePageFrame,
                                 !isPhone || (idlePageFrame.width > idlePageFrame.height) == isLandscape {
                 idlePageFrame
             } else {
@@ -155,7 +179,7 @@ struct ContentView: View {
                 }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { measuredFrame in
-                if !isTiming { idlePageFrame = measuredFrame }
+                if !showsTimingLayout { idlePageFrame = measuredFrame }
             }
         }
     }
@@ -199,8 +223,8 @@ struct ContentView: View {
                 .frame(height: footerHeight, alignment: .bottom)
             }
             .frame(width: width, height: upperHeight)
-            .opacity(isTiming ? 0 : 1)
-            .accessibilityHidden(isTiming)
+            .opacity(showsTimingLayout ? 0 : 1)
+            .accessibilityHidden(showsTimingLayout)
             .padding(.top, foldClearance)
 
             Color.clear.frame(height: fold.height + 2 * foldClearance)
@@ -208,8 +232,9 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 phoneControls
-                    .opacity(isTiming ? 0 : 1)
-                    .accessibilityHidden(isTiming)
+                    .opacity(showsTimingLayout ? 0 : 1)
+                    .allowsHitTesting(!showsTimingLayout)
+                    .accessibilityHidden(showsTimingLayout)
                 ZStack {
                     timerTouchSurface
                     timerDisplay(fontSize: timerFontSize, numberHeight: timerFontSize * 1.2)
@@ -246,8 +271,8 @@ struct ContentView: View {
         let belowReadoutHeight = summaryHeight + compactControlSize + 2 * rowSpacing
         let numberHeight = max(1, min(132, columnsHeight - belowReadoutHeight))
         let summaryOffset = max(0, columnsHeight - numberHeight - belowReadoutHeight) / 2
-        let touchTop = isTiming ? 0 : controlsHeight
-        let touchOverhang = isTiming ? max(0, -navigationInset) : 0
+        let touchTop = showsTimingLayout ? 0 : controlsHeight
+        let touchOverhang = showsTimingLayout ? max(0, -navigationInset) : 0
         let columnCenterX = timerFrame.midX + (scrambleWidth + columnSpacing) / 2 - columnShift
         let idleReadoutCenterY = timerFrame.minY + columnsTop + (columnsHeight - belowReadoutHeight) / 2
         let readoutShift = centersLandscapeReadout && !reduceMotion
@@ -262,7 +287,7 @@ struct ContentView: View {
                 .frame(width: frame.width, alignment: navigationOnLeft ? .trailing : .leading)
                 .padding(.top, touchTop)
 
-            if !isTiming {
+            if !showsTimingLayout {
                 phoneControls
                     .padding(.top, headerTop)
                     .frame(width: frame.width - headerLeadingInset - headerTrailingInset)
@@ -271,20 +296,20 @@ struct ContentView: View {
 
             HStack(spacing: columnSpacing) {
                 LandscapeScrambleLayout {
-                    if !isTiming {
+                    if !showsTimingLayout {
                         currentScramble(width: scrambleWidth, fontScale: 1.1)
                             .transition(.opacity)
                     }
                     scrambleDiagram(alignment: .center)
                         .frame(width: diagramWidth, height: diagramHeight)
-                        .opacity(isTiming ? 0 : 1)
+                        .opacity(showsTimingLayout ? 0 : 1)
                         .allowsHitTesting(false)
-                        .accessibilityHidden(isTiming)
+                        .accessibilityHidden(showsTimingLayout)
                 }
                 .frame(width: scrambleWidth, height: columnsHeight)
-                .animation(animation, value: isTiming)
-                .allowsHitTesting(!isTiming)
-                .accessibilityHidden(isTiming)
+                .animation(animation, value: showsTimingLayout)
+                .allowsHitTesting(!showsTimingLayout)
+                .accessibilityHidden(showsTimingLayout)
 
                 VStack(spacing: rowSpacing) {
                     timerNumber(fontSize: numberHeight / 1.2, height: numberHeight, minimumScale: 0.35)
@@ -295,7 +320,7 @@ struct ContentView: View {
                         // Reserve the summary's height while timing.
                         Color.clear
                             .accessibilityHidden(true)
-                        if !isTiming {
+                        if !showsTimingLayout {
                             TimerSummary(model: model, height: summaryHeight, twoColumns: true)
                                 .frame(maxWidth: 220)
                                 .transition(.opacity)
@@ -303,9 +328,9 @@ struct ContentView: View {
                     }
                     .frame(height: summaryHeight)
                     .offset(y: summaryOffset)
-                    .animation(animation, value: isTiming)
+                    .animation(animation, value: showsTimingLayout)
                     .allowsHitTesting(false)
-                    .accessibilityHidden(isTiming)
+                    .accessibilityHidden(showsTimingLayout)
                 }
                 .frame(width: timerWidth, height: columnsHeight)
                 .zIndex(1)
@@ -315,7 +340,7 @@ struct ContentView: View {
                     y: timerFrame.minY - frame.minY)
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
-        .onChange(of: isTiming, initial: true) { _, timing in
+        .onChange(of: showsTimingLayout, initial: true) { _, timing in
             withAnimation(animation) { centersLandscapeReadout = timing }
         }
         .appBackground()
@@ -343,7 +368,7 @@ struct ContentView: View {
         let controlsHeight = showsControlsInPage ? controlRowHeight : 0
         let topClearance: CGFloat = 8
         let controlSpacing: CGFloat = showsControlsInPage ? 8 : 0
-        let timerTouchTop = isTiming ? 0 : topClearance + controlsHeight + controlSpacing
+        let timerTouchTop = showsTimingLayout ? 0 : topClearance + controlsHeight + controlSpacing
         let recentRowHeight: CGFloat = 26
         let recentHalfHeight = 3 * recentRowHeight
         let formulaClearance = usesDuoWideLayout ? max(timerNumberHeight / 2, recentHalfHeight) : timerNumberHeight / 2
@@ -385,7 +410,7 @@ struct ContentView: View {
                 .frame(width: width, height: max(0, height - timerTouchTop))
                 .frame(width: contentWidth, height: height, alignment: .bottom)
 
-            if !isTiming {
+            if !showsTimingLayout {
                 VStack(spacing: 0) {
                     if usesTopNavigation {
                         projectMenu
@@ -404,7 +429,7 @@ struct ContentView: View {
             }
 
             HStack(alignment: .bottom, spacing: footerSpacing) {
-                if !isTiming && summaryHeight > 0 {
+                if !showsTimingLayout && summaryHeight > 0 {
                     Color.clear
                         .frame(width: summaryWidth, height: summaryHeight)
                         .overlay(alignment: .bottomLeading) {
@@ -418,18 +443,18 @@ struct ContentView: View {
             }
             .padding(.bottom, diagramBottomPadding)
             .frame(height: height, alignment: .bottom)
-            .opacity(isTiming || diagramHeight == 0 ? 0 : 1)
+            .opacity(showsTimingLayout || diagramHeight == 0 ? 0 : 1)
             .allowsHitTesting(false)
-            .accessibilityHidden(isTiming || diagramHeight == 0)
+            .accessibilityHidden(showsTimingLayout || diagramHeight == 0)
 
-            if fitsRecentResults && !isTiming {
+            if fitsRecentResults && !showsTimingLayout {
                 recentResults(columnWidth: recentColumnWidth, rowHeight: recentRowHeight, valueFont: recentValueStyle)
                     .frame(width: contentWidth)
                     .allowsHitTesting(false)
             }
 
             timerDisplay(fontSize: timerFontSize, numberHeight: timerNumberHeight)
-                .frame(width: fitsRecentResults && !isTiming ? timerWidth - sideWidth : timerWidth)
+                .frame(width: fitsRecentResults && !showsTimingLayout ? timerWidth - sideWidth : timerWidth)
                 .offset(x: timerFrame.midX - frame.midX, y: timerFrame.midY - frame.midY)
         }
         .frame(height: height)
@@ -502,8 +527,21 @@ struct ContentView: View {
                 if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
                 model.press(.touch, delayTenths: startDelayTenths)
             },
-            onUp: { model.release(.touch) },
-            onCancel: { model.cancelPress(.touch) }
+            onUp: {
+                if isInTimerCancelZone {
+                    model.cancelPress(.touch)
+                } else {
+                    model.release(.touch)
+                }
+                isInTimerCancelZone = false
+            },
+            onCancel: {
+                model.cancelPress(.touch)
+                isInTimerCancelZone = false
+            },
+            isReady: model.isTouchReady,
+            cancelZoneHeight: Self.cancelZoneHeight,
+            onCancelZoneChange: { isInTimerCancelZone = $0 }
         )
         .allowsHitTesting(isTimerActive && !showsProjectList && solveToDelete == nil)
         .accessibilityHidden(true)
@@ -541,6 +579,27 @@ struct ContentView: View {
     }
 
     private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5) -> some View {
+        Group {
+            if model.isReady || isInTimerCancelZone {
+                Text(isInTimerCancelZone
+                     ? language.text("松开取消", "Release to cancel")
+                     : language.text("松开开启", "Release to start"))
+                    .font(.system(size: fontSize * 0.45, weight: .bold, design: .rounded))
+                    .foregroundStyle(isInTimerCancelZone ? Color.red : Color.green)
+                    .lineLimit(1)
+                    .minimumScaleFactor(minimumScale)
+                    .padding(.horizontal, 12)
+                .frame(height: height)
+                .transition(.identity)
+                .accessibilityIdentifier("timer.start-prompt")
+            } else {
+                timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func timerReadoutView(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat) -> some View {
         TimelineView(.animation(minimumInterval: 0.03, paused: !isTiming)) { _ in
             let duration = model.started.map { $0.duration(to: .now) }
             let solve = model.lastSolve
@@ -551,7 +610,6 @@ struct ContentView: View {
                                showsPlus: UIDevice.current.userInterfaceIdiom == .pad && solve?.penalty == .plusTwo)
             Text(readout)
                 .contentTransition(.identity)
-                .foregroundStyle(model.isReady ? Color.green : Color.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(minimumScale)
                 .padding(.horizontal, 12)
@@ -567,7 +625,7 @@ struct ContentView: View {
 
     private var postSolveControls: some View {
         Group {
-            if !isTiming, let solve = model.lastSolve {
+            if !showsTimingLayout, let solve = model.lastSolve {
                 HStack(spacing: 10) {
                     penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, selected: solve.penalty)
                     penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, selected: solve.penalty)
@@ -763,6 +821,9 @@ private struct TimerTouchSurface: UIViewRepresentable {
     var onDown: () -> Void
     var onUp: () -> Void
     var onCancel: () -> Void
+    var isReady: Bool
+    var cancelZoneHeight: CGFloat
+    var onCancelZoneChange: (Bool) -> Void
 
     func makeCoordinator() -> PressRecognizer { PressRecognizer() }
 
@@ -779,25 +840,37 @@ private struct TimerTouchSurface: UIViewRepresentable {
     final class PressRecognizer: UIGestureRecognizer {
         var callbacks: TimerTouchSurface?
         private var initialPoint: CGPoint?
+        private var isDraggingUp = false
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
             guard initialPoint == nil, touches.count == 1, let touch = touches.first else {
                 state = .failed
                 return
             }
-            initialPoint = touch.location(in: view)
+            initialPoint = touch.location(in: view?.window)
             callbacks?.onDown()
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard let initialPoint, let point = touches.first?.location(in: view) else { return }
-            if hypot(point.x - initialPoint.x, point.y - initialPoint.y) > 10 {
+            guard let initialPoint,
+                  let point = touches.first?.location(in: view?.window) else { return }
+            let dx = point.x - initialPoint.x
+            let dy = point.y - initialPoint.y
+            if let callbacks, callbacks.isReady, isDraggingUp || -dy > abs(dx) {
+                isDraggingUp = true
+                let safeTop = view?.window?.safeAreaInsets.top ?? 0
+                callbacks.onCancelZoneChange(point.y <= safeTop + callbacks.cancelZoneHeight)
+            } else if hypot(dx, dy) > 10 {
                 state = .failed
             }
         }
 
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
             guard initialPoint != nil else { return }
+            if isDraggingUp, let callbacks, let touch = touches.first {
+                let safeTop = view?.window?.safeAreaInsets.top ?? 0
+                callbacks.onCancelZoneChange(touch.location(in: view?.window).y <= safeTop + callbacks.cancelZoneHeight)
+            }
             initialPoint = nil
             state = .recognized
             callbacks?.onUp()
@@ -810,6 +883,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
         override func reset() {
             if initialPoint != nil { callbacks?.onCancel() }
             initialPoint = nil
+            isDraggingUp = false
             super.reset()
         }
     }

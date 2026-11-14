@@ -81,6 +81,7 @@ enum TimerInput { case touch, keyboard }
     private(set) var started: ContinuousClock.Instant?
     private(set) var isReady = false
     @ObservationIgnored private var heldInput: TimerInput?
+    var isTouchReady: Bool { isReady && heldInput == .touch }
     @ObservationIgnored private var readyAt: ContinuousClock.Instant?
     @ObservationIgnored private var readinessTask: Task<Void, Never>?
     private(set) var solves: [Solve] = []

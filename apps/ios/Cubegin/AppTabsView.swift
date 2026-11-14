@@ -72,6 +72,8 @@ struct AppTabsView: View {
         return URL.documentsDirectory.appending(path: "solves.json")
     }
 
+    @State private var isInTimerCancelZone = false
+    private var showsTimingLayout: Bool { model.started != nil || model.isReady || isInTimerCancelZone }
     @State private var selection = Destination.home
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false
@@ -193,10 +195,11 @@ struct AppTabsView: View {
                     navigationInset: sideNavigationInset ?? 0,
                     navigationOnLeft: railOnLeft,
                     isDuoInnerDisplay: isDuoInnerDisplay,
-                    landscapeContentInsets: contentInsets
+                    landscapeContentInsets: contentInsets,
+                    isInTimerCancelZone: $isInTimerCancelZone
                 )
                     .labelStyle(.titleAndIcon)
-                    .toolbar(usesSideNavigation || model.started != nil ? .hidden : .automatic, for: .tabBar)
+                    .toolbar(usesSideNavigation || showsTimingLayout ? .hidden : .automatic, for: .tabBar)
             } label: {
                 tabLabel(.home)
             }
@@ -220,7 +223,7 @@ struct AppTabsView: View {
         .labelStyle(.iconOnly)
         .overlay(alignment: railOnLeft ? .bottomLeading : .bottomTrailing) {
             ZStack {
-                if let sideNavigationInset, model.started == nil, !(selection == .results && isSelectingResults) {
+                if let sideNavigationInset, !showsTimingLayout, !(selection == .results && isSelectingResults) {
                     sideNavigation
                         .padding(railOnLeft ? .leading : .trailing, sideNavigationInset)
                         .padding(.bottom, ContentView.landscapeBottomInset + (alignsSideNavigationWithCoverCamera ? 44 : 0))
@@ -228,9 +231,9 @@ struct AppTabsView: View {
                         .transition(.opacity)
                 }
             }
-            .animation(reduceMotion ? nil : ContentView.landscapeTimingAnimation, value: model.started != nil)
-            .allowsHitTesting(model.started == nil)
-            .accessibilityHidden(model.started != nil)
+            .animation(reduceMotion ? nil : ContentView.landscapeTimingAnimation, value: showsTimingLayout)
+            .allowsHitTesting(!showsTimingLayout)
+            .accessibilityHidden(showsTimingLayout)
         }
     }
 
