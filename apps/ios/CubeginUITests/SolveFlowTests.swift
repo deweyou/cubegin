@@ -867,6 +867,11 @@ final class SolveFlowTests: XCTestCase {
         let timer = app.descendants(matching: .any)["timer.readout"]
         XCTAssertTrue(timer.waitForExistence(timeout: 5))
         let center = timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 0.5, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)),
+                     withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertEqual(scramble.label, originalScramble)
+
         center.press(forDuration: 0.5)
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         center.tap()
