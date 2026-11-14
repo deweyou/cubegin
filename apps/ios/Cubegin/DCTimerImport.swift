@@ -226,7 +226,7 @@ struct ResultsImportView: View {
 
     var body: some View {
         Form {
-            Section {
+            CardSection {
                 Button {
                     chooseBackup()
                 } label: {
@@ -244,7 +244,7 @@ struct ResultsImportView: View {
                                    "Choose: On My iPhone → DCTimer² → spdcube.sqlite"))
             }
             if model.lastImportCount > 0 {
-                Section {
+                CardSection {
                     Button(language.text("撤回上次导入", "Undo last import"), role: .destructive) {
                         confirmUndo = true
                     }
@@ -394,7 +394,7 @@ private struct DCTimerImportPreview: View {
 
         NavigationStack {
             Form {
-                Section {
+                CardSection {
                     LabeledContent(language.text("可导入", "Ready to import")) {
                         Text(importCount.formatted())
                             .fontWeight(.semibold)
@@ -424,7 +424,7 @@ private struct DCTimerImportPreview: View {
                                            "Updated \(converted.formatted()) Clock scrambles for import."))
                     }
                 }
-                Section {
+                CardSection {
                     Picker(language.text("分组", "Groups"), selection: $destination) {
                         ForEach(DCTimerImportDestination.allCases, id: \.self) { option in
                             Text(option.title(in: language)).tag(option)
@@ -440,14 +440,14 @@ private struct DCTimerImportPreview: View {
                     }
                 }
                 if !unmatched.isEmpty {
-                    Section(language.text("无法匹配的分组", "Skipped sessions")) {
+                    CardSection(language.text("无法匹配的分组", "Skipped sessions")) {
                         ForEach(unmatched) { session in
                             LabeledContent(name(for: session), value: session.skipped.formatted())
                         }
                     }
                 }
                 if !newSessions.isEmpty {
-                    Section(language.text("选择要导入的分组", "Select groups to import")) {
+                    CardSection(language.text("选择要导入的分组", "Select groups to import")) {
                         ForEach(newSessions) { session in
                             let selected = !excludedSessions.contains(session.id)
                             Button {

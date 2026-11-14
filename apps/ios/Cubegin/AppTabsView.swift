@@ -1763,49 +1763,159 @@ private struct GroupEditor: View {
     }
 }
 
+// Leave room inside grouped list rows for the card shadow.
+let cardShadowInset: CGFloat = 4
+
+func cardSurface<S: Shape>(_ shape: S) -> some View {
+    shape
+        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
+}
+
+struct CardSection<Content: View, Header: View, Footer: View>: View {
+    @ViewBuilder var content: Content
+    @ViewBuilder var header: Header
+    @ViewBuilder var footer: Footer
+
+    var body: some View {
+        Section {
+            Group(subviews: content) { rows in
+                VStack(spacing: 0) {
+                    ForEach(rows) { row in
+                        row
+                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                            .padding(.horizontal, 20)
+                        if row.id != rows.last?.id {
+                            Divider().padding(.horizontal, 20)
+                        }
+                    }
+                }
+                .buttonStyle(.borderless)
+                .background { cardSurface(RoundedRectangle(cornerRadius: 24)) }
+                .padding(cardShadowInset)
+            }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        } header: {
+            header
+        } footer: {
+            footer
+        }
+    }
+}
+
+extension CardSection where Header == EmptyView, Footer == EmptyView {
+    init(@ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { EmptyView() }, footer: { EmptyView() })
+    }
+}
+
+extension CardSection where Header == Text, Footer == EmptyView {
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { Text(title) }, footer: { EmptyView() })
+    }
+}
+
+extension CardSection where Header == EmptyView {
+    init(@ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) {
+        self.init(content: content, header: { EmptyView() }, footer: footer)
+    }
+}
+
 private struct SettingsView: View {
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
     private enum Page: Hashable { case imports, clearResults }
     @State private var path: [Page] = []
-    @AppStorage(AppLanguage.preferenceKey) private var selectedLanguage = AppLanguage.chinese
+    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
+    @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
 
+    private func settingsLinkLabel(_ title: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Image(systemName: "chevron.forward")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             Form {
-                Picker(language.text("语言", "Language"), selection: $selectedLanguage) {
-                    ForEach(AppLanguage.allCases) { option in
-                        Text(option.name).tag(option)
+                CardSection(language.text("通用", "General")) {
+                    Picker(language.text("主题", "Theme"), selection: $theme) {
+                        ForEach(AppTheme.allCases) { option in
+                            Text(option.title(in: language)).tag(option)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.theme")
+                    Picker(language.text("语言", "Language"), selection: Binding(
+                        get: { AppLanguage.resolve(languageOverride) },
+                        set: { languageOverride = $0.rawValue }
+                    )) {
+                        ForEach(AppLanguage.allCases) { option in
+                            Text(option.name).tag(option)
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        let title = language.text("启动延迟", "Start delay")
+                        let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"
+                        Text(title)
+                            .accessibilityHidden(true)
+                        Spacer(minLength: 0)
+                        Text(value)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .fixedSize()
+                            .accessibilityHidden(true)
+                        Slider(value: Binding(
+                            get: { Double(startDelayTenths) },
+                            set: { startDelayTenths = Int($0.rounded()) }
+                        ), in: 0...20) {
+                            Text(title)
+                        }
+                        .labelsHidden()
+                        .frame(idealWidth: 112, maxWidth: 112)
+                        .accessibilityLabel(title)
+                        .accessibilityValue(value)
+                        .accessibilityAdjustableAction { direction in
+                            switch direction {
+                            case .increment: startDelayTenths = min(20, startDelayTenths + 1)
+                            case .decrement: startDelayTenths = max(0, startDelayTenths - 1)
+                            @unknown default: break
+                            }
+                        }
+                        .accessibilityIdentifier("settings.startDelay")
                     }
                 }
-                Section(language.text("计时", "Timer")) {
-                    Stepper(value: $startDelayTenths, in: 0...20) {
-                        LabeledContent(language.text("启动延迟", "Start delay"),
-                                       value: (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s")
-                    }
-                }
-                Section(language.text("成绩", "Results")) {
+                CardSection(language.text("成绩", "Results")) {
                     Toggle(language.text("DNF 可标为最差", "Allow DNF as worst"), isOn: $includesDNFInWorst)
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
-                    NavigationLink(value: Page.imports) {
-                        Text(language.text("导入", "Import"))
+                    Button {
+                        path.append(.imports)
+                    } label: {
+                        settingsLinkLabel(language.text("导入", "Import"))
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.import")
-                    NavigationLink(value: Page.clearResults) {
-                        Text(language.text("清空成绩", "Clear results"))
+                    Button {
+                        path.append(.clearResults)
+                    } label: {
+                        settingsLinkLabel(language.text("清空成绩", "Clear results"))
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
                 }
-                Section(language.text("外观", "Appearance")) {
-                    LabeledContent(language.text("主题", "Theme"), value: language.text("跟随系统", "System"))
-                }
-                Section(language.text("关于", "About")) {
-                    LabeledContent(language.text("应用", "App"), value: "cubegin")
+                CardSection(language.text("关于", "About")) {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
                 }
             }
@@ -1860,10 +1970,12 @@ private struct ClearResultsView: View {
 
         Form {
             if model.solves.isEmpty {
-                Text(language.text("暂无成绩", "No results yet"))
-                    .foregroundStyle(.secondary)
+                CardSection {
+                    Text(language.text("暂无成绩", "No results yet"))
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                Section(language.text("选择分组", "Select groups")) {
+                CardSection(language.text("选择分组", "Select groups")) {
                     ForEach(groups) { group in
                         Button {
                             if !selection.insert(group.id).inserted { selection.remove(group.id) }
@@ -1892,7 +2004,7 @@ private struct ClearResultsView: View {
                 }
             }
             if !selection.isEmpty {
-                Section {
+                CardSection {
                     Button(role: .destructive) {
                         guard request == nil, !selectedIDs.isEmpty else { return }
                         request = Request(solveIDs: selectedIDs,
@@ -1904,7 +2016,7 @@ private struct ClearResultsView: View {
                     .accessibilityIdentifier("settings.results.clearSelected")
                 }
             } else {
-                Section {
+                CardSection {
                     Button(language.text("清空所有成绩", "Clear all results"), role: .destructive) {
                         guard request == nil, selection.isEmpty else { return }
                         request = Request(solveIDs: Set(model.solves.map(\.id)),
