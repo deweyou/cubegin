@@ -191,6 +191,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Imported 2 results."].waitForExistence(timeout: 5))
     }
 
+    @MainActor
     private func tapCardRowEdge(_ button: XCUIElement) {
         // Accessibility frames may be rounded to device pixels.
         XCTAssertGreaterThanOrEqual(button.frame.height, 47.5)
