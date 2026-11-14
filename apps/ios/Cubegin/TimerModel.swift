@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 enum SolvePenalty: String, Codable, Sendable { case plusTwo, dnf }
@@ -57,9 +58,65 @@ private struct ResultsStore: Codable {
 
 enum TimerInput { case touch, keyboard }
 
+enum InspectionVoice: String, CaseIterable {
+    case off, male, female
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .off: language.text("关闭", "Off")
+        case .male: language.text("男声", "Male")
+        case .female: language.text("女声", "Female")
+        }
+    }
+}
+
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
     static let defaultStartDelayTenths = 2
+    static let inspectionKey = "timer.wcaInspection"
+    static let trainingInspectionKey = "timer.trainingInspection"
+    static let inspectionVoiceKey = "timer.inspectionVoice"
+
+    var usesInspection: Bool {
+        defaults.bool(forKey: Self.inspectionKey)
+            && (mode == .standard || defaults.bool(forKey: Self.trainingInspectionKey))
+            && !["333bld", "444bld", "555bld"].contains(event)
+    }
+
+    private(set) var inspectionStarted: ContinuousClock.Instant?
+    private var inspectionPenalty: SolvePenalty?
+    @ObservationIgnored private var inspectionPlayers: [AVAudioPlayer] = []
+
+    static func penalty(forInspection duration: Duration) -> SolvePenalty? {
+        if duration >= .seconds(17) { return .dnf }
+        if duration >= .seconds(15) { return .plusTwo }
+        return nil
+    }
+
+    private func beginInspection(at instant: ContinuousClock.Instant) {
+        inspectionStarted = instant
+        let voice = InspectionVoice(rawValue: defaults.string(forKey: Self.inspectionVoiceKey) ?? "") ?? .off
+        guard voice != .off else { return }
+        let language = AppLanguage.saved == .english ? "en" : "zh"
+        for seconds in [8, 12] {
+            let name = "\(language)-\(voice.rawValue)-\(seconds)"
+            guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio"),
+                  let player = try? AVAudioPlayer(contentsOf: url), player.prepareToPlay() else { continue }
+            let remaining = now().duration(to: instant.advanced(by: .seconds(seconds))).components
+            let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+            let session = AVAudioSession.sharedInstance()
+            // Account for the small preroll left in the clips and the current audio route.
+            let lead = 0.03 + session.outputLatency + session.ioBufferDuration
+            player.play(atTime: player.deviceCurrentTime + max(0, delay - lead))
+            inspectionPlayers.append(player)
+        }
+    }
+
+    func endInspection() {
+        inspectionStarted = nil
+        for player in inspectionPlayers { player.stop() }
+        inspectionPlayers.removeAll()
+    }
     var mode = ScrambleMode.standard
     var standardEvent: String {
         didSet { defaults.set(standardEvent, forKey: "scramble.standard") }
@@ -278,6 +335,7 @@ enum TimerInput { case touch, keyboard }
             lastSolveID = nil
         }
         cancelPress()
+        endInspection()
         generationTask?.cancel()
         let prefetched = advance ? prefetchTask : nil
         if !advance { prefetchTask?.cancel() }
@@ -317,6 +375,8 @@ enum TimerInput { case touch, keyboard }
 
     private func start(at instant: ContinuousClock.Instant) {
         lastSolveID = nil
+        inspectionPenalty = inspectionStarted.map { Self.penalty(forInspection: $0.duration(to: instant)) } ?? nil
+        endInspection()
 #if DEBUG
         started = Self.isLongSolveUITest ? instant.advanced(by: .seconds(-36_000)) : instant
 #else
@@ -341,7 +401,8 @@ enum TimerInput { case touch, keyboard }
         }
         guard heldInput == nil, scramble != nil, !busy else { return }
         heldInput = input
-        let delay = Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let beginsInspection = usesInspection && inspectionStarted == nil
+        let delay = beginsInspection ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
         let deadline = now().advanced(by: delay)
         readyAt = deadline
         if delay == .zero {
@@ -357,11 +418,16 @@ enum TimerInput { case touch, keyboard }
     }
 
     func release(_ input: TimerInput) {
-        guard heldInput == input, let readyAt else { return }
-        let now = now()
+        guard heldInput == input else { return }
+        let deadline = readyAt
+        let instant = now()
         cancelPress()
-        if now >= readyAt, scramble != nil, !busy {
-            start(at: now)
+        guard scramble != nil, !busy else { return }
+        guard let deadline, instant >= deadline else { return }
+        if usesInspection, inspectionStarted == nil {
+            beginInspection(at: instant)
+        } else {
+            start(at: instant)
         }
     }
 
@@ -376,6 +442,7 @@ enum TimerInput { case touch, keyboard }
 
     func interrupt() {
         cancelPress()
+        endInspection()
         guard started != nil else { return }
         started = nil
         prefetchTask?.cancel()
@@ -389,7 +456,12 @@ enum TimerInput { case touch, keyboard }
             stop()
         } else if scramble != nil, !busy {
             cancelPress()
-            start(at: now())
+            let instant = now()
+            if usesInspection, inspectionStarted == nil {
+                beginInspection(at: instant)
+            } else {
+                start(at: instant)
+            }
         }
     }
 
@@ -397,7 +469,8 @@ enum TimerInput { case touch, keyboard }
         guard let start = started else { return }
         let duration = start.duration(to: now())
         let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
-        let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "", groupID: currentGroup?.id)
+        let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
+                          penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
         lastSolveID = solve.id
         solves.insert(solve, at: 0)

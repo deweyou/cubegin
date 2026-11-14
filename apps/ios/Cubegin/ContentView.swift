@@ -17,7 +17,7 @@ struct ContentView: View {
     private var isTiming: Bool { model.started != nil }
     @Binding var isInTimerCancelZone: Bool
     private static let cancelZoneHeight: CGFloat = 88
-    private var showsTimingLayout: Bool { isTiming || model.isReady || isInTimerCancelZone }
+    private var showsTimingLayout: Bool { isTiming || model.inspectionStarted != nil || model.isReady || isInTimerCancelZone }
     @State private var showsProjectList = false
     @State private var timerTouchResumesAt: ContinuousClock.Instant?
     @State private var solveToDelete: Solve?
@@ -103,6 +103,7 @@ struct ContentView: View {
             hasTimerKeyboardFocus = active
             if !active {
                 model.cancelPress()
+                model.endInspection()
                 isInTimerCancelZone = false
             }
         }
@@ -580,18 +581,53 @@ struct ContentView: View {
 
     private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5) -> some View {
         Group {
-            if model.isReady || isInTimerCancelZone {
+            if let inspectionStart = model.inspectionStarted {
+                TimelineView(.animation(minimumInterval: 0.1)) { _ in
+                    let elapsed = inspectionStart.duration(to: .now)
+                    let readout = switch TimerModel.penalty(forInspection: elapsed) {
+                    case .dnf: "DNF"
+                    case .plusTwo: "+2"
+                    case nil: String(max(0, elapsed.components.seconds))
+                    }
+                    Text(readout)
+                        .font(.system(size: fontSize, weight: .light, design: .rounded).monospacedDigit())
+                        .foregroundStyle(model.isReady && !isInTimerCancelZone ? Color.green : Color.red)
+                        .lineLimit(1)
+                        .minimumScaleFactor(minimumScale)
+                        .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: 1, weight: .light))
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height)
+                        .accessibilityLabel(language.text("WCA 观察", "WCA inspection"))
+                        .accessibilityValue(readout)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { model.activateAccessibleTimer() }
+                        .accessibilityIdentifier("timer.inspection")
+                }
+                .overlay(alignment: .bottom) {
+                    Text(language.text("WCA 观察", "WCA inspection"))
+                        .font(.footnote)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .foregroundStyle(.secondary)
+                        .alignmentGuide(.bottom) { $0[.top] - 6 }
+                        .accessibilityHidden(true)
+                }
+            } else if model.isReady || isInTimerCancelZone {
                 Text(isInTimerCancelZone
                      ? language.text("松开取消", "Release to cancel")
                      : language.text("松开开启", "Release to start"))
-                    .font(.system(size: fontSize * 0.45, weight: .bold, design: .rounded))
+                    .font(.system(size: fontSize * 0.45, weight: isInTimerCancelZone ? .bold : .regular, design: .rounded))
                     .foregroundStyle(isInTimerCancelZone ? Color.red : Color.green)
                     .lineLimit(1)
                     .minimumScaleFactor(minimumScale)
+                    .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: 0.45,
+                                                       weight: isInTimerCancelZone ? .bold : .regular))
                     .padding(.horizontal, 12)
-                .frame(height: height)
-                .transition(.identity)
-                .accessibilityIdentifier("timer.start-prompt")
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .transition(.identity)
+                    .accessibilityIdentifier("timer.start-prompt")
             } else {
                 timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale)
             }
@@ -613,6 +649,7 @@ struct ContentView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(minimumScale)
                 .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity)
                 .frame(height: height)
                 .accessibilityLabel(isTiming ? language.text("停止计时", "Stop timer") : language.text("开始计时", "Start timer"))
                 .accessibilityValue(solve?.resultText ?? TimerModel.format(seconds))
@@ -621,6 +658,17 @@ struct ContentView: View {
                 .accessibilityAction { model.activateAccessibleTimer() }
         }
         .allowsHitTesting(false)
+    }
+
+    private func readoutCenterAdjustment(fontSize: CGFloat, scale: CGFloat, weight: UIFont.Weight) -> CGFloat {
+        func capCenterOffset(size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+            let base = UIFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+            let descriptor = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+            let font = UIFont(descriptor: descriptor, size: size)
+            return (font.ascender + font.descender - font.capHeight) / 2
+        }
+        return capCenterOffset(size: fontSize, weight: .regular)
+            - capCenterOffset(size: fontSize * scale, weight: weight)
     }
 
     private var postSolveControls: some View {

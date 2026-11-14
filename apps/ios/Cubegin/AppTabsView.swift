@@ -73,7 +73,7 @@ struct AppTabsView: View {
     }
 
     @State private var isInTimerCancelZone = false
-    private var showsTimingLayout: Bool { model.started != nil || model.isReady || isInTimerCancelZone }
+    private var showsTimingLayout: Bool { model.started != nil || model.inspectionStarted != nil || model.isReady || isInTimerCancelZone }
     @State private var selection = Destination.home
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false
@@ -1859,6 +1859,9 @@ private struct SettingsView: View {
     @State private var path: [Page] = []
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
+    @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
+    @AppStorage(TimerModel.trainingInspectionKey) private var usesTrainingInspection = false
+    @AppStorage(TimerModel.inspectionVoiceKey) private var inspectionVoice = InspectionVoice.off
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
@@ -1893,6 +1896,8 @@ private struct SettingsView: View {
                             Text(option.name).tag(option)
                         }
                     }
+                }
+                CardSection(language.text("计时", "Timer")) {
                     HStack(spacing: 8) {
                         let title = language.text("启动延迟", "Start delay")
                         let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"
@@ -1922,6 +1927,16 @@ private struct SettingsView: View {
                             }
                         }
                         .accessibilityIdentifier("settings.startDelay")
+                    }
+                    Toggle(language.text("WCA 观察", "WCA inspection"), isOn: $usesInspection)
+                        .accessibilityIdentifier("settings.inspection.enabled")
+                    if usesInspection {
+                        Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: $usesTrainingInspection)
+                        Picker(language.text("观察报时", "Inspection voice"), selection: $inspectionVoice) {
+                            ForEach(InspectionVoice.allCases, id: \.self) { voice in
+                                Text(voice.title(in: language)).tag(voice)
+                            }
+                        }
                     }
                 }
                 CardSection(language.text("成绩", "Results")) {

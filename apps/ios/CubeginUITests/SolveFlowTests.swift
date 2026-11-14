@@ -857,6 +857,37 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testInspectionContinuesAfterSwipeCancellation() {
+        continueAfterFailure = false
+
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "2"]
+        app.launch()
+        XCUIDevice.shared.orientation = .portrait
+
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(timer.waitForExistence(timeout: 20))
+        let center = timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.tap()
+
+        let inspection = app.descendants(matching: .any).matching(identifier: "timer.inspection").firstMatch
+        XCTAssertTrue(inspection.waitForExistence(timeout: 5))
+        let inspectionFrame = inspection.frame
+        let readout = inspection.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let cancelZone = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
+        readout.press(forDuration: 0.5, thenDragTo: cancelZone, withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(inspection.exists)
+
+        readout.press(forDuration: 0.5)
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        XCTAssertFalse(inspection.exists)
+        XCTAssertEqual(timer.frame.midX, inspectionFrame.midX, accuracy: 1)
+        XCTAssertEqual(timer.frame.midY, inspectionFrame.midY, accuracy: 1)
+    }
+
+    @MainActor
     func testTimedSolveAndPenaltySurviveRelaunch() {
         continueAfterFailure = false
 
