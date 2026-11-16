@@ -12,6 +12,7 @@ struct ContentView: View {
     var isDuoOuterDisplay = false
     var landscapeContentInsets: LandscapeContentInsets?
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
+    @AppStorage(TimerModel.hapticsKey) private var usesTimerHaptics = true
     @FocusState private var hasTimerKeyboardFocus: Bool
     @State private var idlePageFrame: CGRect?
     private var isTiming: Bool { model.started != nil }
@@ -74,6 +75,13 @@ struct ContentView: View {
             }
         }
         .appBackground()
+        .sensoryFeedback(.impact(weight: .heavy), trigger: model.showsReadyFeedback) { _, isShowing in
+            isShowing && usesTimerHaptics && isTimerActive && !model.isTouchReady
+                && !model.usesInspection && model.inspectionStarted == nil
+        }
+        .sensoryFeedback(.impact(weight: .heavy), trigger: model.lastSolveID) { _, solveID in
+            solveID != nil && usesTimerHaptics && isTimerActive
+        }
         .focusable(isTimerActive)
         .focusEffectDisabled()
         .focused($hasTimerKeyboardFocus)
@@ -597,10 +605,17 @@ struct ContentView: View {
 
     private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
-            onDown: {
+            onDown: { feedback in
                 guard isTimerActive, !showsProjectList, solveToDelete == nil else { return }
                 if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
-                model.press(.touch, delayTenths: startDelayTenths)
+                if usesTimerHaptics, !model.usesInspection {
+                    feedback.prepare()
+                }
+                model.press(.touch, delayTenths: startDelayTenths) {
+                    guard usesTimerHaptics, !isInTimerCancelZone else { return }
+                    // Request feedback while the touch is still held.
+                    feedback.impactOccurred()
+                }
             },
             onUp: {
                 if isInTimerCancelZone {
@@ -945,7 +960,7 @@ private struct CompactControlTarget: ViewModifier {
 
 // The touch surface sits behind page controls and cancels an armed start on drag.
 private struct TimerTouchSurface: UIViewRepresentable {
-    var onDown: () -> Void
+    var onDown: (UIImpactFeedbackGenerator) -> Void
     var onUp: () -> Void
     var onCancel: () -> Void
     var isReady: Bool
@@ -957,6 +972,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
+        context.coordinator.readyFeedback = UIImpactFeedbackGenerator(style: .heavy, view: view)
         view.addGestureRecognizer(context.coordinator)
         return view
     }
@@ -967,16 +983,17 @@ private struct TimerTouchSurface: UIViewRepresentable {
 
     final class PressRecognizer: UIGestureRecognizer {
         var callbacks: TimerTouchSurface?
+        var readyFeedback: UIImpactFeedbackGenerator?
         private var initialPoint: CGPoint?
         private var isDraggingUp = false
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard initialPoint == nil, touches.count == 1, let touch = touches.first else {
+            guard initialPoint == nil, touches.count == 1, let touch = touches.first, let readyFeedback else {
                 state = .failed
                 return
             }
             initialPoint = touch.location(in: view?.window)
-            callbacks?.onDown()
+            callbacks?.onDown(readyFeedback)
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {

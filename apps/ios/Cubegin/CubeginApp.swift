@@ -117,7 +117,7 @@ enum SettingsSync {
     private static let keys = [
         AppLanguage.preferenceKey, AppTheme.preferenceKey, TimerModel.startDelayKey,
         TimerModel.keepTimerScreenOnKey, TimerModel.inspectionKey, TimerModel.trainingInspectionKey,
-        TimerModel.inspectionVoiceKey, ResultExtremes.includeDNFPreferenceKey
+        TimerModel.inspectionVoiceKey, TimerModel.hapticsKey, ResultExtremes.includeDNFPreferenceKey
     ]
 
     private static var isEnabled: Bool {

@@ -1869,6 +1869,7 @@ private struct SettingsView: View {
     @AppStorage(TimerModel.trainingInspectionKey) private var usesTrainingInspection = false
     @AppStorage(TimerModel.inspectionVoiceKey) private var inspectionVoice = InspectionVoice.off
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
+    @AppStorage(TimerModel.hapticsKey) private var usesTimerHaptics = true
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
@@ -1914,6 +1915,8 @@ private struct SettingsView: View {
                 CardSection(language.text("计时", "Timer")) {
                     Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
                         .accessibilityIdentifier("settings.timer.keepScreenOn")
+                    Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
+                        .accessibilityIdentifier("settings.timer.haptics")
                     HStack(spacing: 8) {
                         let title = language.text("启动延迟", "Start delay")
                         let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"

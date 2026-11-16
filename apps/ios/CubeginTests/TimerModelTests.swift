@@ -5,6 +5,28 @@ import Testing
 
 @MainActor
 struct TimerModelTests {
+    @Test(arguments: [0, 1])
+    func readyPromptFeedbackFiresWhileHolding(delayTenths: Int) async throws {
+        try await withFixture { fixture in
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+
+            var feedbackCount = 0
+            model.press(.touch, delayTenths: delayTenths) {
+                #expect(model.showsReadyFeedback)
+                #expect(model.started == nil)
+                feedbackCount += 1
+            }
+
+            try await waitUntil { model.showsReadyFeedback }
+            #expect(feedbackCount == 1)
+            model.release(.touch)
+            #expect(model.started != nil)
+            #expect(feedbackCount == 1)
+        }
+    }
+
     @Test(arguments: [14_999, 15_000, 16_999, 17_000])
     func inspectionUsesReleaseTimeAndPersistsPenalty(milliseconds: Int) async throws {
         try await withFixture { fixture in
