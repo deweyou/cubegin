@@ -14,8 +14,14 @@ struct TimerModelTests {
             model.refresh()
             try await waitForGeneration(model)
 
+            model.press(.keyboard, delayTenths: 20)
+            #expect(model.isReady)
+            #expect(!model.isTouchReady)
+            model.cancelPress(.keyboard)
+
             model.press(.touch, delayTenths: 20)
             #expect(model.isReady)
+            #expect(model.isTouchReady)
             #expect(model.inspectionStarted == nil)
             model.release(.touch)
             let inspectionStart = try #require(model.inspectionStarted)
@@ -27,9 +33,9 @@ struct TimerModelTests {
             model.release(.touch)
             #expect(model.inspectionStarted == inspectionStart)
 
-            now += .milliseconds(milliseconds - 200)
-            model.press(.touch, delayTenths: 2)
-            now += .milliseconds(200)
+            now += .milliseconds(milliseconds)
+            model.press(.touch, delayTenths: 20)
+            #expect(model.isReady)
             model.release(.touch)
             #expect(model.started == now)
             #expect(model.inspectionStarted == nil)
@@ -67,6 +73,31 @@ struct TimerModelTests {
         }
     }
 
+    @Test(arguments: [TimerInput.touch, .keyboard])
+    func readyFeedbackWaitsWithoutDelayingRelease(_ input: TimerInput) async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+
+            model.press(input, delayTenths: 20)
+            #expect(model.isReady)
+            #expect(!model.showsReadyFeedback)
+            model.release(input)
+            #expect(model.inspectionStarted != nil)
+            #expect(!model.showsReadyFeedback)
+
+            model.press(input, delayTenths: 20)
+            #expect(model.isReady)
+            #expect(!model.showsReadyFeedback)
+            try await waitUntil { model.showsReadyFeedback }
+            model.release(input)
+            #expect(model.started != nil)
+            #expect(!model.showsReadyFeedback)
+        }
+    }
+
     @Test func holdReleaseAndStopPersistTheOriginalScrambleAndExactTime() async throws {
         try await withFixture { fixture in
             var now = ContinuousClock.now
@@ -83,6 +114,8 @@ struct TimerModelTests {
             #expect(model.started == nil)
 
             model.press(.keyboard, delayTenths: 2)
+            #expect(!model.isReady)
+            #expect(!model.isTouchReady)
             now += .milliseconds(200)
             model.release(.touch)
             #expect(model.started == nil)

@@ -17,7 +17,12 @@ struct ContentView: View {
     private var isTiming: Bool { model.started != nil }
     @Binding var isInTimerCancelZone: Bool
     private static let cancelZoneHeight: CGFloat = 88
-    private var showsTimingLayout: Bool { isTiming || model.inspectionStarted != nil || model.isReady || isInTimerCancelZone }
+    private var showsTimingLayout: Bool {
+        isTiming || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
+    }
+    private var showsCancelHint: Bool {
+        (model.showsReadyFeedback && model.isTouchReady) || isInTimerCancelZone
+    }
     @State private var showsProjectList = false
     @State private var timerTouchResumesAt: ContinuousClock.Instant?
     @State private var solveToDelete: Solve?
@@ -28,6 +33,7 @@ struct ContentView: View {
     private let controlRowHeight: CGFloat = 44
     private let compactControlSize: CGFloat = 32
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
     static let landscapeBottomInset: CGFloat = 8
@@ -162,7 +168,7 @@ struct ContentView: View {
             let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
             Group {
                 if let fold {
-                    foldedPortraitPage(size: geometry.size, fold: fold, cancelZoneTop: frame.minY + fold.maxY)
+                    foldedPortraitPage(frame: frame, fold: fold)
                 } else if usesDuoWideLayout {
                     page(frame: frame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
                          timerFrame: timerFrame.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: trailingNavigationWidth)),
@@ -179,9 +185,8 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if model.isTouchReady || isInTimerCancelZone {
-                    cancelHint(atLowerDisplay: fold != nil)
-                        .offset(y: fold?.maxY ?? 0)
+                if fold == nil, showsCancelHint {
+                    cancelHint(atLowerDisplay: false)
                 }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { measuredFrame in
@@ -202,54 +207,131 @@ struct ContentView: View {
         return nil
     }
 
-    private func foldedPortraitPage(size: CGSize, fold: CGRect, cancelZoneTop: CGFloat) -> some View {
+    private func foldedPortraitPage(frame: CGRect, fold: CGRect) -> some View {
+        let size = frame.size
         let padding: CGFloat = 16
         let foldClearance: CGFloat = 8
+        let rowSpacing: CGFloat = 8
         let width = max(1, size.width - 2 * padding)
         let upperHeight = max(0, fold.minY - 2 * foldClearance)
         let lowerHeight = max(0, size.height - fold.maxY - foldClearance)
-        let formulaHeight = upperHeight * 0.48
-        let footerHeight = max(0, upperHeight - formulaHeight - 8)
+        let formulaFraction = model.mode == .standard && model.event == "minx" ? 0.42 : 0.28
+        let formulaHeight = upperHeight * formulaFraction
+        let footerHeight = min(140, lowerHeight * 0.38)
         let summaryWidth = min(144, width * 0.38)
         let diagramWidth = max(0, width - summaryWidth - 12)
-        let timerAreaHeight = max(0, lowerHeight - controlRowHeight)
-        let timerFontSize = max(1, min(90, timerAreaHeight * 0.36))
+        let timerHeight = max(0, upperHeight - formulaHeight - 2 * rowSpacing)
+        let centersReadout = showsTimingLayout
+        let showsSolveActions = !centersReadout && model.lastSolve != nil
+        let readoutAreaHeight = timerHeight - (showsSolveActions ? compactControlSize + rowSpacing : 0)
+        let preferredTimerFontSize = min(90, upperHeight * 0.26)
+        let timerFontSize = max(1, centersReadout ? preferredTimerFontSize
+                                : min(preferredTimerFontSize, readoutAreaHeight / 1.2))
+        let numberHeight = timerFontSize * 1.2
+        let readoutY = centersReadout ? max(0, (upperHeight - frame.minY) / 2)
+            : upperHeight - timerHeight + readoutAreaHeight / 2
+        let showsScrambleDetails = !showsTimingLayout
+        let detailsTop = showsTimingLayout ? foldClearance : controlRowHeight + 2 * foldClearance
+        let promptTop = showsScrambleDetails ? detailsTop + footerHeight : 0
+        let promptY = (promptTop + lowerHeight) / 2
+        let positionAnimation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.2)
 
         return VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                currentScramble(width: width)
-                    .frame(height: formulaHeight)
-                HStack(alignment: .bottom, spacing: 12) {
-                    TimerSummary(model: model, height: footerHeight)
-                        .frame(width: summaryWidth)
-                    scrambleDiagram()
-                        .frame(width: diagramWidth * 0.8, height: min(140, footerHeight))
-                        .frame(width: diagramWidth, alignment: .trailing)
+            ZStack(alignment: .top) {
+                if !centersReadout {
+                    currentScramble(width: width)
+                        .frame(height: formulaHeight)
+                        .padding(.top, rowSpacing)
+                        .allowsHitTesting(false)
                 }
-                .frame(height: footerHeight, alignment: .bottom)
+                timerNumber(fontSize: timerFontSize, height: numberHeight, showsStartPrompt: false,
+                            feedbackColor: foldedTimerFeedbackColor, showsZero: model.showsReadyFeedback || isInTimerCancelZone)
+                    .frame(width: width)
+                    .animation(positionAnimation) { content in
+                        content.position(x: width / 2, y: readoutY)
+                    }
+                if showsSolveActions {
+                    postSolveControls
+                        .position(x: width / 2, y: readoutY + numberHeight / 2 + rowSpacing
+                                  + compactControlSize / 2)
+                }
             }
             .frame(width: width, height: upperHeight)
-            .opacity(showsTimingLayout ? 0 : 1)
-            .accessibilityHidden(showsTimingLayout)
             .padding(.top, foldClearance)
 
             Color.clear.frame(height: fold.height + 2 * foldClearance)
                 .accessibilityHidden(true)
 
-            VStack(spacing: 0) {
-                phoneControls
-                    .opacity(showsTimingLayout ? 0 : 1)
-                    .allowsHitTesting(!showsTimingLayout)
-                    .accessibilityHidden(showsTimingLayout)
-                ZStack {
-                    timerTouchSurface(cancelZoneTop: cancelZoneTop)
-                    timerDisplay(fontSize: timerFontSize, numberHeight: timerFontSize * 1.2)
+            ZStack(alignment: .top) {
+                timerTouchSurface(cancelZoneTop: frame.minY + fold.maxY + foldClearance)
+                    .frame(width: size.width, height: lowerHeight)
+                if !showsTimingLayout {
+                    phoneControls
+                        .frame(width: width)
+                        .padding(.top, foldClearance)
                 }
-                .frame(height: timerAreaHeight)
+                HStack(alignment: .top, spacing: 12) {
+                    TimerSummary(model: model, height: footerHeight)
+                        .frame(width: summaryWidth)
+                    scrambleDiagram(alignment: .topTrailing)
+                        .frame(width: diagramWidth * 0.8, height: footerHeight)
+                        .frame(width: diagramWidth, alignment: .trailing)
+                }
+                .frame(width: width, height: footerHeight)
+                .padding(.top, detailsTop)
+                .opacity(showsScrambleDetails ? 1 : 0)
+                .accessibilityHidden(!showsScrambleDetails)
+                .allowsHitTesting(false)
+
+                foldedTimerPrompt
+                    .padding(.horizontal, padding)
+                    .frame(width: size.width)
+                    .animation(positionAnimation) { content in
+                        content.position(x: size.width / 2, y: promptY)
+                    }
+                    .allowsHitTesting(false)
+
+                if showsCancelHint {
+                    cancelHint(atLowerDisplay: true)
+                }
             }
-            .frame(width: width, height: lowerHeight)
+            .frame(width: size.width, height: lowerHeight)
         }
         .frame(width: size.width, height: size.height, alignment: .top)
+    }
+
+    private var foldedTimerFeedbackColor: Color? {
+        if isInTimerCancelZone { return .red }
+        return model.showsReadyFeedback ? .green : nil
+    }
+
+    private var foldedTimerPrompt: some View {
+        let startsInspection = model.usesInspection && model.inspectionStarted == nil
+        let prompt: String
+        if isInTimerCancelZone {
+            prompt = language.text("松开取消", "Release to cancel")
+        } else if isTiming {
+            prompt = language.text("轻点停止", "Tap to stop")
+        } else if model.showsReadyFeedback {
+            prompt = startsInspection ? language.text("松开开始观察", "Release to inspect")
+                : language.text("松开开始计时", "Release to start")
+        } else if startsInspection {
+            prompt = language.text("轻点开始观察", "Tap to inspect")
+        } else if model.inspectionStarted != nil {
+            prompt = language.text("按下开始", "Press to start")
+        } else if startDelayTenths == 0 {
+            prompt = language.text("轻点开始计时", "Tap to start")
+        } else {
+            prompt = language.text("长按开始", "Hold to start")
+        }
+
+        return Text(prompt)
+            .font(isTiming ? .title3 : .title2.weight(.medium))
+            .multilineTextAlignment(.center)
+            .foregroundStyle(foldedTimerFeedbackColor ?? .secondary)
+            .opacity(model.busy || model.scramble == nil ? 0 : 1)
+            .accessibilityHidden(model.busy || model.scramble == nil)
+            .accessibilityIdentifier("timer.folded-prompt")
     }
 
     private func landscapePage(frame: CGRect, timerFrame: CGRect, screenCenter: CGPoint) -> some View {
@@ -572,7 +654,8 @@ struct ContentView: View {
             .accessibilityIdentifier("timer.scramble-diagram")
     }
 
-    private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5) -> some View {
+    private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5,
+                             showsStartPrompt: Bool = true, feedbackColor: Color? = nil, showsZero: Bool = false) -> some View {
         Group {
             if let inspectionStart = model.inspectionStarted {
                 TimelineView(.animation(minimumInterval: 0.1)) { _ in
@@ -584,7 +667,7 @@ struct ContentView: View {
                     }
                     Text(readout)
                         .font(.system(size: fontSize, weight: .light, design: .rounded).monospacedDigit())
-                        .foregroundStyle(model.isReady && !isInTimerCancelZone ? Color.green : Color.red)
+                        .foregroundStyle(feedbackColor ?? (model.showsReadyFeedback && !isInTimerCancelZone ? .green : .red))
                         .lineLimit(1)
                         .minimumScaleFactor(minimumScale)
                         .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: 1, weight: .light))
@@ -606,7 +689,7 @@ struct ContentView: View {
                         .alignmentGuide(.bottom) { $0[.top] - 6 }
                         .accessibilityHidden(true)
                 }
-            } else if model.isReady || isInTimerCancelZone {
+            } else if showsStartPrompt, model.showsReadyFeedback || isInTimerCancelZone {
                 Text(isInTimerCancelZone
                      ? language.text("松开取消", "Release to cancel")
                      : language.text("松开开启", "Release to start"))
@@ -622,22 +705,25 @@ struct ContentView: View {
                     .transition(.identity)
                     .accessibilityIdentifier("timer.start-prompt")
             } else {
-                timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale)
+                timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale,
+                                 feedbackColor: feedbackColor, showsZero: showsZero)
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func timerReadoutView(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat) -> some View {
+    private func timerReadoutView(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat,
+                                  feedbackColor: Color?, showsZero: Bool) -> some View {
         TimelineView(.animation(minimumInterval: 0.03, paused: !isTiming)) { _ in
             let duration = model.started.map { $0.duration(to: .now) }
-            let solve = model.lastSolve
+            let solve = showsZero ? nil : model.lastSolve
             let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? solve?.resultSeconds ?? 0
             let readout = solve?.penalty == .dnf
                 ? AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
                 : timerReadout(seconds, fontSize: fontSize,
                                showsPlus: UIDevice.current.userInterfaceIdiom == .pad && solve?.penalty == .plusTwo)
             Text(readout)
+                .foregroundStyle(feedbackColor ?? .primary)
                 .contentTransition(.identity)
                 .lineLimit(1)
                 .minimumScaleFactor(minimumScale)
@@ -1039,6 +1125,7 @@ private struct TimerSummary: View {
 struct SVGView: UIViewRepresentable {
     enum ContentAlignment: String {
         case bottomTrailing = "right bottom"
+        case topTrailing = "right top"
         case center
     }
 

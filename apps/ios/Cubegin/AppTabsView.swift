@@ -78,7 +78,9 @@ struct AppTabsView: View {
         isActive && scenePhase == .active && selection == .home
             && (keepsTimerScreenOn || model.started != nil || model.inspectionStarted != nil)
     }
-    private var showsTimingLayout: Bool { model.started != nil || model.inspectionStarted != nil || model.isReady || isInTimerCancelZone }
+    private var showsTimingLayout: Bool {
+        model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
+    }
     @State private var selection = Destination.home
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false

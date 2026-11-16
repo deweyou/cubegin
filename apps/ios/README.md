@@ -13,6 +13,8 @@ Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It
 
 [Development guide](DEVELOPMENT.md) · [GPL-3.0-only](LICENSE)
 
-Optional WCA inspection includes 8- and 12-second voice calls and automatic inspection penalties.
+Optional WCA inspection includes 8- and 12-second voice calls and automatic inspection penalties. Release to enter inspection or start the solve without waiting for the configured hold delay.
+
+On a partially folded iPhone Duo in portrait, read the scramble and time above the fold and use the lower half to start or stop the timer.
 
 App settings sync across devices signed into the same iCloud account when the app is signed with the iCloud key-value storage capability.

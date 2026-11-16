@@ -138,6 +138,7 @@ enum InspectionVoice: String, CaseIterable {
     var error: String?
     private(set) var started: ContinuousClock.Instant?
     private(set) var isReady = false
+    private(set) var showsReadyFeedback = false
     @ObservationIgnored private var heldInput: TimerInput?
     var isTouchReady: Bool { isReady && heldInput == .touch }
     @ObservationIgnored private var readyAt: ContinuousClock.Instant?
@@ -402,19 +403,22 @@ enum InspectionVoice: String, CaseIterable {
         }
         guard heldInput == nil, scramble != nil, !busy else { return }
         heldInput = input
-        let beginsInspection = usesInspection && inspectionStarted == nil
-        let delay = beginsInspection ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let bypassesHoldDelay = usesInspection || inspectionStarted != nil
+        let delay = bypassesHoldDelay ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
         let deadline = now().advanced(by: delay)
         readyAt = deadline
-        if delay == .zero {
-            isReady = true
-        } else {
-            readinessTask = Task { [weak self] in
-                do { try await ContinuousClock().sleep(until: deadline) }
-                catch { return }
-                guard !Task.isCancelled else { return }
-                self?.isReady = true
-            }
+        if delay == .zero { isReady = true }
+        readinessTask = Task { [weak self] in
+            do {
+                if delay != .zero {
+                    try await ContinuousClock().sleep(until: deadline)
+                    try Task.checkCancellation()
+                    self?.isReady = true
+                }
+                try await Task.sleep(for: .milliseconds(150))
+                try Task.checkCancellation()
+                self?.showsReadyFeedback = true
+            } catch { return }
         }
     }
 
@@ -439,6 +443,7 @@ enum InspectionVoice: String, CaseIterable {
         heldInput = nil
         readyAt = nil
         isReady = false
+        showsReadyFeedback = false
     }
 
     func interrupt() {
