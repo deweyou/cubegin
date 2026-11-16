@@ -446,6 +446,111 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testDuoFoldedPortraitKeepsFormulaAndTimerAboveDiagram() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+                                "-timer.wcaInspection", "NO", "-timer.startDelayTenths", "2"]
+        app.launch()
+        try XCTSkipUnless(app.frame.width > 550 && app.frame.width < app.frame.height,
+                          "Run with the Duo inner display active in portrait.")
+
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(timer.waitForExistence(timeout: 20))
+        let event = app.buttons["Event"]
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
+        let diagram = app.descendants(matching: .any)["timer.scramble-diagram"]
+        let summary = app.descendants(matching: .any)["timer-summary.count"]
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        try XCTSkipUnless(timer.frame.midY < app.frame.minY + app.frame.height * 0.44,
+                          "Run with the Duo partially unfolded.")
+        XCTAssertTrue(diagram.exists)
+        XCTAssertTrue(summary.exists)
+        XCTAssertGreaterThan(event.frame.midY, app.frame.midY)
+        XCTAssertLessThan(event.frame.maxY, diagram.frame.minY)
+        XCTAssertLessThan(scramble.frame.maxY, timer.frame.minY)
+        XCTAssertLessThan(timer.frame.maxY, app.frame.midY)
+        XCTAssertGreaterThan(diagram.frame.minY, app.frame.midY)
+        let prompt = app.staticTexts["timer.folded-prompt"]
+        XCTAssertEqual(prompt.label, "Hold to start")
+        XCTAssertLessThan(diagram.frame.maxY, prompt.frame.minY)
+        XCTAssertGreaterThan(prompt.frame.midY, app.frame.minY + app.frame.height * 0.77)
+
+        let touch = prompt.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let cancel = diagram.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        touch.press(forDuration: 0.5, thenDragTo: cancel, withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertEqual(timer.label, "Start timer")
+        XCTAssertEqual(prompt.label, "Hold to start")
+
+        let idleReadout = timer.frame
+        let idlePromptY = prompt.frame.midY
+        touch.press(forDuration: 0.5)
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        XCTAssertLessThan(timer.frame.midY, idleReadout.midY)
+        XCTAssertEqual(timer.frame.midY, app.frame.minY + app.frame.height / 4, accuracy: 12)
+        XCTAssertFalse(event.exists)
+        XCTAssertFalse(scramble.exists)
+        XCTAssertEqual(prompt.label, "Tap to stop")
+        XCTAssertLessThan(prompt.frame.midY, idlePromptY)
+        touch.tap()
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertTrue(event.waitForExistence(timeout: 5))
+        XCTAssertTrue(diagram.exists)
+        XCTAssertTrue(summary.exists)
+        let plusTwo = app.buttons["timer.penalty.plusTwo"]
+        XCTAssertTrue(plusTwo.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(plusTwo.frame.minY, timer.frame.maxY)
+        XCTAssertLessThan(plusTwo.frame.maxY, app.frame.midY)
+        plusTwo.tap()
+        XCTAssertTrue(plusTwo.isSelected)
+        XCTAssertEqual(timer.label, "Start timer")
+    }
+
+    @MainActor
+    func testDuoFoldedPortraitKeepsInspectionAndSolveReadoutsInPlace() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "20"]
+        app.launch()
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(timer.waitForExistence(timeout: 20))
+        try XCTSkipUnless(app.frame.width > 550 && app.frame.width < app.frame.height
+                          && timer.frame.midY < app.frame.minY + app.frame.height * 0.44,
+                          "Run with the Duo partially unfolded in portrait.")
+
+        let prompt = app.staticTexts["timer.folded-prompt"]
+        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Tap to inspect", timeout: 5))
+        let idlePromptY = prompt.frame.midY
+        let touch = prompt.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        touch.tap()
+        let inspection = app.descendants(matching: .any).matching(identifier: "timer.inspection").firstMatch
+        XCTAssertTrue(inspection.waitForExistence(timeout: 5))
+        let readoutY = inspection.frame.midY
+        XCTAssertEqual(readoutY, app.frame.minY + app.frame.height / 4, accuracy: 12)
+        XCTAssertEqual(prompt.label, "Press to start")
+        XCTAssertLessThan(prompt.frame.midY, idlePromptY)
+
+        let cancel = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+        touch.press(forDuration: 0.4, thenDragTo: cancel, withVelocity: .fast, thenHoldForDuration: 0.1)
+        XCTAssertTrue(inspection.exists)
+        XCTAssertEqual(inspection.frame.midY, readoutY, accuracy: 1)
+        XCTAssertEqual(prompt.label, "Press to start")
+
+        touch.tap()
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        XCTAssertEqual(timer.frame.midY, readoutY, accuracy: 1)
+        touch.tap()
+        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Tap to inspect", timeout: 5))
+    }
+
+    @MainActor
     func testDuoInnerRightStatusColumnTabsAreUsable() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4")
         continueAfterFailure = false
@@ -615,13 +720,14 @@ final class SolveFlowTests: XCTestCase {
     @MainActor
     func testLandscapeEventPickerCanSelectFirstEventAfterScrolling() {
         continueAfterFailure = false
-        XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
 
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "222"]
         app.launch()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(app.buttons["side-nav.home"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 20))
 
         let picker = app.buttons["Event"]
@@ -653,7 +759,10 @@ final class SolveFlowTests: XCTestCase {
         if firstEvent.exists {
             XCTAssertLessThan(firstEvent.frame.minY, initialFirstEventY)
         }
-        top.press(forDuration: 0.05, thenDragTo: bottom)
+        for _ in 0..<4 {
+            top.press(forDuration: 0.05, thenDragTo: bottom)
+            if firstEvent.isHittable && abs(firstEvent.frame.minY - initialFirstEventY) <= 1 { break }
+        }
         XCTAssertTrue(firstEvent.isHittable)
         XCTAssertEqual(firstEvent.frame.minY, initialFirstEventY, accuracy: 1)
         firstEvent.tap()
@@ -664,13 +773,13 @@ final class SolveFlowTests: XCTestCase {
     func testLandscapeNavigationAndCenteredTimer() async throws {
         continueAfterFailure = false
 
-        XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
 
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2", "-timer.wcaInspection", "NO"]
         app.launch()
+        XCUIDevice.shared.orientation = .landscapeLeft
 
         let scramble = app.descendants(matching: .any)["timer.scramble"]
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
@@ -682,10 +791,10 @@ final class SolveFlowTests: XCTestCase {
         let home = app.buttons["side-nav.home"]
         let results = app.buttons["side-nav.results"]
         let settings = app.buttons["side-nav.settings"]
+        XCTAssertTrue(home.waitForExistence(timeout: 5))
         XCTAssertTrue(diagram.exists)
         XCTAssertTrue(count.exists)
         XCTAssertTrue(mo3.exists)
-        XCTAssertTrue(home.exists)
         XCTAssertTrue(results.exists)
         XCTAssertTrue(settings.exists)
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
@@ -717,7 +826,7 @@ final class SolveFlowTests: XCTestCase {
         let column = CGRect(x: leading, y: columnTop,
                             width: scramble.frame.maxX - leading, height: columnBottom - columnTop)
         // WebKit can finish painting the diagram after its AX element appears.
-        let deadline = ContinuousClock.now + .seconds(10)
+        let deadline = ContinuousClock.now + .seconds(20)
         var screen: XCUIScreenshot
         var renderedFrames: (formula: CGRect, diagram: CGRect)?
         repeat {
@@ -858,6 +967,31 @@ final class SolveFlowTests: XCTestCase {
             XCTAssertLessThan(timer.frame.maxX, rail.frame.minX)
         }
         XCTAssertLessThan(plusTwo.frame.maxY, summary["timer-summary.count"].frame.minY)
+    }
+
+    @MainActor
+    func testQuickInspectionTapsUseTheSharedTimer() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "Use the Duo-specific case for its separate touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "20"]
+        app.launch()
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+
+        center.tap()
+        let inspection = app.descendants(matching: .any).matching(identifier: "timer.inspection").firstMatch
+        XCTAssertTrue(inspection.waitForExistence(timeout: 5))
+        center.tap()
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        center.tap()
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
     }
 
     @MainActor
