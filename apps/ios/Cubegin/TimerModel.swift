@@ -74,6 +74,7 @@ enum InspectionVoice: String, CaseIterable {
     static let startDelayKey = "timer.startDelayTenths"
     static let defaultStartDelayTenths = 2
     static let keepTimerScreenOnKey = "timer.keepScreenOn"
+    static let hapticsKey = "timer.haptics"
     static let inspectionKey = "timer.wcaInspection"
     static let trainingInspectionKey = "timer.trainingInspection"
     static let inspectionVoiceKey = "timer.inspectionVoice"
@@ -160,7 +161,7 @@ enum InspectionVoice: String, CaseIterable {
             $0.event == event && ($0.groupID ?? SolveGroup.initialID(for: $0.event)) == currentGroup.id
         }
     }
-    private var lastSolveID: Solve.ID?
+    private(set) var lastSolveID: Solve.ID?
     var lastSolve: Solve? {
         guard let solve = solves.first, solve.id == lastSolveID else { return nil }
         return solve
@@ -396,7 +397,7 @@ enum InspectionVoice: String, CaseIterable {
         }
     }
 
-    func press(_ input: TimerInput, delayTenths: Int) {
+    func press(_ input: TimerInput, delayTenths: Int, onReadyPrompt: (() -> Void)? = nil) {
         if started != nil {
             stop()
             return
@@ -417,7 +418,9 @@ enum InspectionVoice: String, CaseIterable {
                 }
                 try await Task.sleep(for: .milliseconds(150))
                 try Task.checkCancellation()
-                self?.showsReadyFeedback = true
+                guard let self else { return }
+                self.showsReadyFeedback = true
+                if !bypassesHoldDelay { onReadyPrompt?() }
             } catch { return }
         }
     }

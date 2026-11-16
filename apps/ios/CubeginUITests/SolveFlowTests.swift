@@ -229,7 +229,7 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testPortraitSolveListKeepsPickersFixedWhileScrolling() {
+    func testPortraitSolveListKeepsPickersFixedWhileScrolling() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
 
@@ -258,6 +258,15 @@ final class SolveFlowTests: XCTestCase {
 
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
+        let haptics = app.switches["settings.timer.haptics"]
+        XCTAssertTrue(haptics.waitForExistence(timeout: 5))
+        let originalHapticsValue = try XCTUnwrap(haptics.value as? String)
+        let updatedHapticsValue = originalHapticsValue == "1" ? "0" : "1"
+        let hapticsThumb = haptics.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        hapticsThumb.tap()
+        XCTAssertEqual(haptics.value as? String, updatedHapticsValue)
+        hapticsThumb.tap()
+        XCTAssertEqual(haptics.value as? String, originalHapticsValue)
         let worst = app.switches["settings.results.includeDNFInWorst"]
         XCTAssertTrue(worst.waitForExistence(timeout: 5))
         recordPortraitPage("Settings", frames: [worst.frame])
