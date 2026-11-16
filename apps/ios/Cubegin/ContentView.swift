@@ -1166,7 +1166,6 @@ struct SVGView: UIViewRepresentable {
                 view.backgroundColor = .clear
                 view.scrollView.isScrollEnabled = false
                 view.scrollView.pinchGestureRecognizer?.isEnabled = false
-                view.isHidden = true
             }
         }
 
@@ -1199,6 +1198,8 @@ struct SVGView: UIViewRepresentable {
                 slot.view.navigationDelegate = self
                 slot.view.frame = container.bounds
                 slot.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                // Keep the first page renderable. Hide only the spare used for preloading.
+                slot.view.isHidden = visible != nil
                 container.addSubview(slot.view)
             }
             guard slot.svg != svg else { return }
