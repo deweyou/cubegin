@@ -1267,6 +1267,12 @@ private struct TimerSummary: View {
 
     var body: some View {
         let solves = model.groupSolves
+        if !solves.isEmpty {
+            summary(for: solves)
+        }
+    }
+
+    private func summary(for solves: [Solve]) -> some View {
         let language = locale.appLanguage
         let latestCount = SolveAverage.ao12.count
         var validCount = 0
@@ -1298,26 +1304,27 @@ private struct TimerSummary: View {
         let maximumRowHeight = usesLargeType ? preferredSize / 0.76 : 20
         let rowHeight = min(maximumRowHeight, height / (twoColumns ? 3 : 6))
         let fontSize = min(preferredSize, rowHeight * 0.76)
-        let mean = validCount > 0 ? TimerModel.format(total / Double(validCount)) : "—"
 
         let overall = VStack(spacing: 0) {
             row(nil, value: "\(validCount.formatted()) / \(solves.count.formatted())",
                 accessibilityName: language.text("有效成绩次数 / 总次数", "Valid solves / Total attempts"),
                 id: "count", fontSize: fontSize, height: rowHeight)
-            row("mean", value: mean, accessibilityName: language.text("总平均", "Overall mean"),
-                id: "mean", fontSize: fontSize, height: rowHeight)
-            row("best", value: best?.resultText ?? "—", accessibilityName: language.text("最好单次", "Best single"),
-                id: "best", fontSize: fontSize, height: rowHeight)
+            if let best {
+                row("mean", value: TimerModel.format(total / Double(validCount)),
+                    accessibilityName: language.text("总平均", "Overall mean"),
+                    id: "mean", fontSize: fontSize, height: rowHeight)
+                row("best", value: best.resultText, accessibilityName: language.text("最好单次", "Best single"),
+                    id: "best", fontSize: fontSize, height: rowHeight)
+            }
         }
         let rolling = VStack(spacing: 0) {
-            ForEach(Self.averageKinds, id: \.self) { kind in
-                let value = recent.count >= kind.count
-                    ? kind.summarize(recent.prefix(kind.count)).mean.map(TimerModel.format) ?? "DNF"
-                    : "—"
+            ForEach(Self.averageKinds.filter { recent.count >= $0.count }, id: \.self) { kind in
+                let value = kind.summarize(recent.prefix(kind.count)).mean.map(TimerModel.format) ?? "DNF"
                 row(kind.title, value: value, accessibilityName: kind.title,
                     id: kind.title, fontSize: fontSize, height: rowHeight)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
 
         return Group {
             if twoColumns {

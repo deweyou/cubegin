@@ -588,7 +588,7 @@ final class SolveFlowTests: XCTestCase {
         try XCTSkipUnless(timer.frame.midY < app.frame.minY + app.frame.height * 0.44,
                           "Run with the Duo partially unfolded.")
         XCTAssertTrue(diagram.exists)
-        XCTAssertTrue(summary.exists)
+        XCTAssertFalse(summary.exists)
         XCTAssertGreaterThan(event.frame.midY, app.frame.midY)
         XCTAssertLessThan(event.frame.maxY, diagram.frame.minY)
         XCTAssertLessThan(scramble.frame.maxY, timer.frame.minY)
@@ -893,7 +893,7 @@ final class SolveFlowTests: XCTestCase {
 
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2", "-timer.wcaInspection", "NO"]
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2", "-timer.wcaInspection", "NO", "-timer.entryMethod", "timer"]
         app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
 
@@ -909,8 +909,9 @@ final class SolveFlowTests: XCTestCase {
         let settings = app.buttons["side-nav.settings"]
         XCTAssertTrue(home.waitForExistence(timeout: 5))
         XCTAssertTrue(diagram.exists)
-        XCTAssertTrue(count.exists)
-        XCTAssertTrue(mo3.exists)
+        XCTAssertFalse(count.exists)
+        XCTAssertFalse(mo3.exists)
+        XCTAssertFalse(ao12.exists)
         XCTAssertTrue(results.exists)
         XCTAssertTrue(settings.exists)
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
@@ -918,8 +919,6 @@ final class SolveFlowTests: XCTestCase {
         let idleTimer = timer.frame
         XCTAssertLessThan(scramble.frame.maxX, idleTimer.midX)
         XCTAssertLessThan(diagram.frame.maxX, idleTimer.midX)
-        XCTAssertGreaterThan(count.frame.minY, idleTimer.maxY)
-        XCTAssertLessThanOrEqual(count.frame.maxX, mo3.frame.minX)
         XCTAssertGreaterThan(home.frame.minX, idleTimer.maxX)
         XCTAssertEqual(home.frame.midX, results.frame.midX, accuracy: 2)
         XCTAssertEqual(home.frame.midX, settings.frame.midX, accuracy: 2)
@@ -930,7 +929,6 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(edgeGap, 21, accuracy: 2)
         let hintsFrame = app.buttons["timer.formula-hints"].frame
         XCTAssertLessThan(hintsFrame.maxX, settings.frame.minX - 4)
-        XCTAssertEqual(ao12.frame.maxY, settings.frame.maxY + 4, accuracy: 3)
         let columnTop = hintsFrame.maxY + 8
         let columnBottom = settings.frame.maxY + 4
         // On iOS 26.2, XCTest reports the selectable text's AX frame beyond
@@ -981,6 +979,9 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(timer.frame.midY, idleTimer.midY, accuracy: 2)
         XCTAssertTrue(app.buttons["timer.penalty.dnf"].waitForExistence(timeout: 5))
         XCTAssertEqual(count.value as? String, "1 / 1")
+        XCTAssertGreaterThan(count.frame.minY, idleTimer.maxY)
+        XCTAssertFalse(mo3.exists)
+        XCTAssertFalse(ao12.exists)
         XCTAssertTrue(results.waitForExistence(timeout: 5))
 
         let formerRail = app.coordinate(withNormalizedOffset: .zero).withOffset(
@@ -1112,6 +1113,8 @@ final class SolveFlowTests: XCTestCase {
         let readout = app.descendants(matching: .any)["timer.readout"]
         XCTAssertTrue(readout.wait(for: \.label, toEqual: "Enter result", timeout: 5))
         XCTAssertEqual(readout.value as? String, "0.000")
+        let summary = app.descendants(matching: .any)
+        XCTAssertFalse(summary["timer-summary.count"].exists)
         let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let idleScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         idleScreenshot.name = "Timer before manual entry"
@@ -1155,6 +1158,8 @@ final class SolveFlowTests: XCTestCase {
         )], timeout: 5), .completed)
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         XCTAssertNotEqual(scramble.label, originalScramble)
+        XCTAssertEqual(summary["timer-summary.count"].value as? String, "1 / 1")
+        XCTAssertFalse(summary["timer-summary.ao12"].exists)
 
         center.tap()
         XCTAssertTrue(field.waitForExistence(timeout: 5))
