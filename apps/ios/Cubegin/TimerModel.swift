@@ -110,7 +110,7 @@ struct ManualSolveContext: Identifiable {
 
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
-    static let defaultStartDelayTenths = 2
+    static let defaultStartDelayTenths = 0
     static let keepTimerScreenOnKey = "timer.keepScreenOn"
     static let displayKey = "timer.display"
     static let entryMethodKey = "timer.entryMethod"
