@@ -11,7 +11,7 @@ Cubegin is a speedcubing timer and training project. It includes a native iPhone
 
 ## iPhone and iPad app
 
-Time solves, practice with event and training scrambles, and track results by group. View rolling averages and charts, or bring existing results over from DCTimer. The app uses SwiftUI and supports iOS and iPadOS 26 or later.
+Time solves, practice with event and training scrambles, and track results by group. View rolling averages and charts, or bring existing results over from DCTimer. Tap ✨ on the timer to choose from the solution methods available for the current puzzle. The app uses SwiftUI and supports iOS and iPadOS 26 or later.
 
 [Explore the iOS app](https://github.com/deweyou/cubegin/blob/main/apps/ios/README.md)
 

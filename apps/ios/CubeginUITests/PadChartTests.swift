@@ -3,6 +3,72 @@ import XCTest
 
 final class PadChartTests: XCTestCase {
     @MainActor
+    func testPadTopBarKeepsLongTrainingProjectAccessible() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad)
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launch()
+
+        let project = app.buttons["Event"]
+        let home = app.buttons.matching(identifier: "Home").firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 20))
+        try XCTSkipUnless(home.exists && home.frame.midY < app.frame.midY,
+                          "Run with the iPad top tab bar visible.")
+        XCTAssertTrue(project.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+        XCTAssertEqual(project.frame.midY, home.frame.midY, accuracy: 8)
+        let hints = app.buttons["timer.formula-hints"]
+        XCTAssertTrue(hints.waitForExistence(timeout: 10))
+        let window = app.windows.firstMatch.frame
+        if window.origin == .zero {
+            // Floating windows also reserve space for the system window controls.
+            let projectGlyphInset = project.frame.minX - window.minX
+            let hintsGlyphInset = window.maxX - hints.frame.maxX + 12
+            XCTAssertEqual(projectGlyphInset, hintsGlyphInset, accuracy: 2)
+        }
+        XCTAssertEqual(project.frame.midY, hints.frame.midY, accuracy: 2)
+        attachScreenshot("iPad top bar aligned controls")
+
+        project.tap()
+        let training = app.buttons["event.mode.training"]
+        XCTAssertTrue(training.waitForExistence(timeout: 5))
+        training.tap()
+        let group = app.buttons["4x4x4 Yau/Hoya"]
+        let start = training.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: 0, dy: 228))
+        let end = start.withOffset(CGVector(dx: 0, dy: -160))
+        for _ in 0..<8 where !group.isHittable {
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        }
+        XCTAssertTrue(group.isHittable)
+        group.tap()
+        let choice = app.buttons["event.choice.444.hoya.rldx_centers"]
+        for _ in 0..<8 where !choice.isHittable {
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        }
+        XCTAssertTrue(choice.isHittable)
+        choice.tap()
+        XCTAssertTrue(project.wait(for: \.isEnabled, toEqual: true, timeout: 60))
+        XCTAssertEqual(project.value as? String, "4x4x4 Yau/Hoya · RLDX center solved")
+        XCTAssertTrue(project.isHittable)
+        XCTAssertEqual(project.frame.midY, home.frame.midY, accuracy: 8)
+        XCTAssertLessThanOrEqual(project.frame.maxX + 16, home.frame.minX)
+        if window.origin == .zero && window.width >= 834 {
+            // The widest project button measures 198.5pt at default text size.
+            XCTAssertGreaterThanOrEqual(project.frame.width, 198)
+        }
+        if (689...705).contains(window.width) {
+            XCTAssertGreaterThan(project.frame.width, 80)
+            XCTAssertLessThan(project.frame.width, 198)
+        }
+        attachScreenshot("iPad top bar long training project")
+        project.tap()
+        XCTAssertTrue(app.buttons["event.mode.training"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testPadTimerKeepsItsCenterThroughLongSolve() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else {
             throw XCTSkip("This layout uses the iPad window.")

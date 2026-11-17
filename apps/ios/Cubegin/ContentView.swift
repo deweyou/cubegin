@@ -15,6 +15,7 @@ struct ContentView: View {
     @AppStorage(TimerModel.hapticsKey) private var usesTimerHaptics = true
     @FocusState private var hasTimerKeyboardFocus: Bool
     @State private var idlePageFrame: CGRect?
+    @State private var padProjectAnchor: CGRect?
     private var isTiming: Bool { model.started != nil }
     @Binding var isInTimerCancelZone: Bool
     private static let cancelZoneHeight: CGFloat = 88
@@ -25,6 +26,7 @@ struct ContentView: View {
         (model.showsReadyFeedback && model.isTouchReady) || isInTimerCancelZone
     }
     @State private var showsProjectList = false
+    @State private var assistScramble: AssistScramble?
     @State private var timerTouchResumesAt: ContinuousClock.Instant?
     @State private var solveToDelete: Solve?
     @State private var showsGenerating = false
@@ -32,8 +34,12 @@ struct ContentView: View {
     private var language: AppLanguage { locale.appLanguage }
     private let controlIconSize: CGFloat = 20
     private let controlRowHeight: CGFloat = 44
+    private let padToolbarMargin: CGFloat = 20
+    private var controlIconInset: CGFloat { (controlRowHeight - controlIconSize) / 2 }
+    private var padProjectToolbarInset: CGFloat { padToolbarMargin + controlIconInset }
     private let compactControlSize: CGFloat = 32
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
@@ -43,6 +49,10 @@ struct ContentView: View {
     private var usesTopNavigation: Bool {
         UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
     }
+    private var canUseTimerInput: Bool {
+        isTimerActive && !showsProjectList && assistScramble == nil && solveToDelete == nil
+    }
+
     var body: some View {
         Group {
             if UIDevice.current.userInterfaceIdiom == .pad {
@@ -51,24 +61,28 @@ struct ContentView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar(showsTimingLayout ? .hidden : .visible, for: .navigationBar)
                         .toolbar {
-                            if !usesTopNavigation {
-                                ToolbarItem(placement: .topBarLeading) {
-                                    // Keep the icon and text together as custom toolbar content.
-                                    HStack(spacing: 0) {
-                                        projectMenu
-                                    }
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .disabled(model.busy || model.started != nil)
+                            ToolbarItem(placement: .topBarLeading) {
+                                if usesTopNavigation {
+                                    padProjectToolbarAnchor
+                                } else {
+                                    HStack(spacing: 0) { projectMenu }
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .disabled(model.busy || model.started != nil)
                                 }
-                                .sharedBackgroundVisibility(.hidden)
                             }
+                            .sharedBackgroundVisibility(.hidden)
                             ToolbarItem(placement: .topBarTrailing) {
                                 trailingControls
-                                    .padding(.trailing, usesTopNavigation ? 20 : 0)
+                                    .padding(.trailing, usesTopNavigation ? padToolbarMargin : 0)
                                     .disabled(model.busy || model.started != nil)
                             }
                             .sharedBackgroundVisibility(.hidden)
                         }
+                }
+                .overlay {
+                    if usesTopNavigation && !showsTimingLayout {
+                        padProjectToolbarButton
+                    }
                 }
             } else {
                 page
@@ -82,11 +96,11 @@ struct ContentView: View {
         .sensoryFeedback(.impact(weight: .heavy), trigger: model.lastSolveID) { _, solveID in
             solveID != nil && usesTimerHaptics && isTimerActive
         }
-        .focusable(isTimerActive)
+        .focusable(isTimerActive && assistScramble == nil)
         .focusEffectDisabled()
         .focused($hasTimerKeyboardFocus)
         .onKeyPress(.space, phases: [.down, .up, .repeat]) { press in
-            guard isTimerActive, !showsProjectList, solveToDelete == nil else { return .ignored }
+            guard canUseTimerInput else { return .ignored }
             switch press.phase {
             case .down: model.press(.keyboard, delayTenths: startDelayTenths)
             case .up: model.release(.keyboard)
@@ -95,7 +109,7 @@ struct ContentView: View {
             return .handled
         }
         .onChange(of: isTimerActive, initial: true) { _, active in
-            hasTimerKeyboardFocus = active
+            hasTimerKeyboardFocus = active && assistScramble == nil
             if !active {
                 model.cancelPress()
                 model.endInspection()
@@ -109,6 +123,18 @@ struct ContentView: View {
                 timerTouchResumesAt = .now.advanced(by: .milliseconds(250))
                 if isTimerActive { hasTimerKeyboardFocus = true }
             }
+        }
+        .sheet(item: assistPresentation(onDuo: false), onDismiss: resumeTimerInput) { scramble in
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                AssistFormulaView(scramble: scramble)
+                    .presentationSizing(.form)
+            } else {
+                AssistFormulaView(scramble: scramble)
+            }
+        }
+        .fullScreenCover(item: assistPresentation(onDuo: true), onDismiss: resumeTimerInput) { scramble in
+            AssistFormulaModal(scramble: scramble)
+                .presentationBackground(.clear)
         }
         .alert(language.text("确定删除这条成绩吗？", "Delete this solve?"), isPresented: Binding(
             get: { solveToDelete != nil },
@@ -138,6 +164,18 @@ struct ContentView: View {
         }
 #endif
     }
+    private func assistPresentation(onDuo: Bool) -> Binding<AssistScramble?> {
+        Binding(
+            get: { assistScramble?.usesDuoModal == onDuo ? assistScramble : nil },
+            set: { if $0 == nil, assistScramble?.usesDuoModal == onDuo { assistScramble = nil } }
+        )
+    }
+
+    private func resumeTimerInput() {
+        timerTouchResumesAt = .now.advanced(by: .milliseconds(250))
+        if isTimerActive { hasTimerKeyboardFocus = true }
+    }
+
     private func cancelHint(atLowerDisplay: Bool) -> some View {
         Text(language.text("上滑到这里取消", "Slide here to cancel"))
             .font(.footnote.weight(.medium))
@@ -448,14 +486,16 @@ struct ContentView: View {
             timerFontSize = timerFrame.width > 600 ? 110 : 76
         }
         let timerNumberHeight = timerFontSize * 1.2
-        let showsControlsInPage = usesTopNavigation || UIDevice.current.userInterfaceIdiom != .pad
+        let showsControlsInPage = !isPad
         let controlsHeight = showsControlsInPage ? controlRowHeight : 0
         let topClearance: CGFloat = 8
         let controlSpacing: CGFloat = showsControlsInPage ? 8 : 0
         let timerTouchTop = showsTimingLayout ? 0 : topClearance + controlsHeight + controlSpacing
-        let recentRowHeight: CGFloat = 26
-        let recentHalfHeight = 3 * recentRowHeight
-        let formulaClearance = usesDuoWideLayout ? max(timerNumberHeight / 2, recentHalfHeight) : timerNumberHeight / 2
+        let compactRecentRowHeight: CGFloat = 26
+        let preferredRecentRowHeight: CGFloat = 30
+        let recentColumnHalfRows: CGFloat = 3 // Title and five results, centered on the timer.
+        let compactRecentHalfHeight = recentColumnHalfRows * compactRecentRowHeight
+        let formulaClearance = usesDuoWideLayout ? max(timerNumberHeight / 2, compactRecentHalfHeight) : timerNumberHeight / 2
         let formulaHeight = max(1, min(height * 0.3,
             height / 2 - formulaClearance - controlsHeight - controlSpacing - topClearance - 8))
         let footerSpacing: CGFloat = 12
@@ -483,11 +523,16 @@ struct ContentView: View {
         let recentColumnGap: CGFloat = 24
         let sideWidth = 2 * (recentColumnWidth + recentColumnGap)
         let timerHorizontalPadding: CGFloat = 12
+        let availableRecentHalfHeight = height / 2 - max(
+            topClearance + controlsHeight + controlSpacing + formulaHeight,
+            diagramHeight + diagramBottomPadding
+        )
+        let recentRowHeight = max(compactRecentRowHeight,
+                                  min(preferredRecentRowHeight, (availableRecentHalfHeight / recentColumnHalfRows).rounded(.down)))
         let fitsRecentResults = (isPad || usesDuoWideLayout)
             && timerWidth - sideWidth >= longestTimerWidth(parts: longestTimeParts, fontSize: timerFontSize)
                 + 2 * timerHorizontalPadding
-            && height / 2 - recentHalfHeight >= topClearance + controlsHeight + controlSpacing + formulaHeight
-            && height / 2 - recentHalfHeight >= diagramHeight + diagramBottomPadding
+            && availableRecentHalfHeight >= compactRecentHalfHeight
 
         return ZStack {
             timerTouchSurface()
@@ -496,13 +541,9 @@ struct ContentView: View {
 
             if !showsTimingLayout {
                 VStack(spacing: 0) {
-                    if usesTopNavigation {
-                        projectMenu
-                            .frame(maxWidth: .infinity)
-                            .frame(height: controlRowHeight)
-                            .disabled(model.busy || model.started != nil)
-                    } else if showsControlsInPage {
+                    if showsControlsInPage {
                         phoneControls
+                            .padding(.leading, usesDuoWideLayout ? controlIconInset : 0)
                     }
                     currentScramble(width: contentWidth)
                         .frame(height: formulaHeight)
@@ -606,7 +647,7 @@ struct ContentView: View {
     private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
             onDown: { feedback in
-                guard isTimerActive, !showsProjectList, solveToDelete == nil else { return }
+                guard canUseTimerInput else { return }
                 if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
                 if usesTimerHaptics, !model.usesInspection {
                     feedback.prepare()
@@ -634,7 +675,7 @@ struct ContentView: View {
             cancelZoneTop: cancelZoneTop,
             onCancelZoneChange: { isInTimerCancelZone = $0 }
         )
-        .allowsHitTesting(isTimerActive && !showsProjectList && solveToDelete == nil)
+        .allowsHitTesting(canUseTimerInput)
         .accessibilityHidden(true)
     }
 
@@ -876,7 +917,39 @@ struct ContentView: View {
     }
 
     private var projectMenu: some View {
-        EventPicker(model: model, isPresented: $showsProjectList, large: usesTopNavigation)
+        EventPicker(model: model, isPresented: $showsProjectList)
+    }
+
+    private var padProjectToolbarAnchor: some View {
+        // Let the system make room for the window controls and place the project on the tab row.
+        Color.clear
+            .frame(width: EventPicker.minimumButtonWidth, height: controlRowHeight)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                if frame.minY >= 0 { padProjectAnchor = frame }
+            }
+            .padding(.leading, padProjectToolbarInset)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+    }
+
+    private var padProjectToolbarButton: some View {
+        GeometryReader { geometry in
+            if let anchor = padProjectAnchor {
+                let bounds = geometry.frame(in: .global)
+                let isRightToLeft = layoutDirection == .rightToLeft
+                let leading = isRightToLeft ? bounds.maxX - anchor.maxX : anchor.minX - bounds.minX
+                // The three icon-only tabs occupy about 154 pt at the center of the window.
+                let tabBarReserve: CGFloat = 96
+                let titleSpace = bounds.width / 2 - leading - tabBarReserve - EventPicker.minimumButtonWidth
+                EventPicker(model: model, isPresented: $showsProjectList, large: true,
+                            titleWidthLimit: titleSpace >= 24 ? titleSpace : 0)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(model.busy || model.started != nil)
+                    .offset(x: isRightToLeft ? -leading : leading, y: anchor.minY - bounds.minY)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .ignoresSafeArea(.container, edges: .top)
     }
 
 #if DEBUG
@@ -907,21 +980,40 @@ struct ContentView: View {
         }
     }
 #endif
-    private var trailingControls: some View {
-        HStack(spacing: 8) {
-            trainingButton
+    @ViewBuilder private var trailingControls: some View {
+        if canShowAssist {
+            assistButton
+        }
+    }
+
+    private var assistButton: some View {
+        Button {
+            guard let algorithm = model.scramble?.algorithm else { return }
+            model.cancelPress()
+            isInTimerCancelZone = false
+            hasTimerKeyboardFocus = false
+            assistScramble = AssistScramble(event: model.event,
+                                            groupID: model.currentGroup?.id ?? SolveGroup.initialID(for: model.event),
+                                            algorithm: algorithm,
+                                            usesDuoModal: isDuoInnerDisplay || isDuoOuterDisplay)
+        } label: {
             Image(systemName: "sparkles")
                 .resizable()
                 .scaledToFit()
                 .frame(width: controlIconSize, height: controlIconSize)
-                .foregroundStyle(.secondary)
-                .frame(width: 32, height: controlRowHeight)
-                .accessibilityHidden(true)
+                .frame(width: controlRowHeight, height: controlRowHeight)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .accessibilityLabel(language.text("辅助公式", "Formula hints"))
+        .accessibilityIdentifier("timer.formula-hints")
     }
 
-    private var trainingButton: some View { TrainingButton(model: model) }
-
+    private var canShowAssist: Bool {
+        !AssistMethod.available(for: model.event).isEmpty
+            && model.scramble != nil && !model.busy && !showsTimingLayout
+    }
 }
 
 private struct LandscapeScrambleLayout: Layout {
@@ -1250,41 +1342,87 @@ struct SVGView: UIViewRepresentable {
 }
 
 struct EventPicker: View {
+    static let minimumButtonWidth: CGFloat = 44
     @Bindable var model: TimerModel
     @Binding var isPresented: Bool
     var large = false
+    var titleWidthLimit: CGFloat?
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
-    private var showsProjectList: Bool {
-        get { isPresented }
-        nonmutating set { isPresented = newValue }
-    }
+    @State private var browsingMode = ScrambleMode.standard
+    @State private var expandedTrainingGroups: Set<String> = []
+
     var body: some View {
-        Self.projectButton(event: model.event, language: language, large: large) {
-            showsProjectList = true
+        Self.projectButton(event: model.event, language: language, large: large, titleWidthLimit: titleWidthLimit) {
+            browsingMode = model.mode
+            expandedTrainingGroups.removeAll()
+            isPresented = true
         }
         .popover(isPresented: $isPresented, arrowEdge: .top) {
-            List {
-                if model.mode == .standard {
-                    ForEach(ScrambleCatalog.standard, content: projectRow)
-                } else {
-                    ForEach(ScrambleCatalog.trainingGroups(in: language), id: \.self) { group in
-                        DisclosureGroup(group) {
-                            ForEach(ScrambleCatalog.training.filter { $0.group(in: language) == group }, content: projectRow)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    ForEach(ScrambleMode.allCases) { mode in
+                        CapsuleSegmentButton(mode.title(in: language), isSelected: mode == browsingMode) {
+                            browsingMode = mode
+                        }
+                        .accessibilityIdentifier("event.mode.\(mode.rawValue)")
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                List {
+                    if browsingMode == .standard {
+                        ForEach(ScrambleCatalog.standard, content: projectRow)
+                    } else {
+                        ForEach(ScrambleCatalog.trainingGroups(in: language), id: \.self) { group in
+                            trainingGroupRow(group)
+                            if expandedTrainingGroups.contains(group) {
+                                ForEach(ScrambleCatalog.training.filter { $0.group(in: language) == group }) { choice in
+                                    projectRow(choice)
+                                        .padding(.leading, 16)
+                                }
+                            }
                         }
                     }
                 }
+                .id(browsingMode)
+                .listStyle(.plain)
             }
-            .listStyle(.plain)
             .frame(width: 300)
             .frame(idealHeight: 400, maxHeight: 400)
             .presentationCompactAdaptation(.popover)
         }
     }
 
+    private func trainingGroupRow(_ group: String) -> some View {
+        let isExpanded = expandedTrainingGroups.contains(group)
+        return Button {
+            withAnimation {
+                if isExpanded {
+                    expandedTrainingGroups.remove(group)
+                } else {
+                    expandedTrainingGroups.insert(group)
+                }
+            }
+        } label: {
+            HStack {
+                Text(group)
+                Spacer()
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isExpanded ? language.text("已展开", "Expanded") : language.text("已折叠", "Collapsed"))
+    }
+
     private func projectRow(_ choice: ScrambleChoice) -> some View {
         Button {
-            showsProjectList = false
+            isPresented = false
+            model.mode = browsingMode
             model.eventSelection = choice.id
         } label: {
             HStack {
@@ -1292,6 +1430,7 @@ struct EventPicker: View {
                 Spacer()
                 if choice.id == model.event {
                     Image(systemName: "checkmark")
+                        .font(.footnote.weight(.semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -1299,11 +1438,13 @@ struct EventPicker: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(choice.id == model.event ? .isSelected : [])
+        .accessibilityIdentifier("event.choice.\(choice.id)")
     }
 
-    static func projectButton(event: String, language: AppLanguage, large: Bool, action: @escaping () -> Void) -> some View {
+    static func projectButton(event: String, language: AppLanguage, large: Bool,
+                              titleWidthLimit: CGFloat? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            projectMenuLabel(event: event, language: language, large: large)
+            projectMenuLabel(event: event, language: language, large: large, titleWidthLimit: titleWidthLimit)
         }
         .buttonStyle(.plain)
         .controlSize(large ? .regular : .small)
@@ -1311,7 +1452,7 @@ struct EventPicker: View {
         .accessibilityValue(ScrambleCatalog.title(event, in: language))
     }
 
-    static func projectMenuLabel(event: String, language: AppLanguage, large: Bool) -> some View {
+    static func projectMenuLabel(event: String, language: AppLanguage, large: Bool, titleWidthLimit: CGFloat?) -> some View {
         let iconID = String(event.prefix { $0 != "." })
         return HStack(spacing: 6) {
             Image("Event-\(iconID)")
@@ -1319,8 +1460,11 @@ struct EventPicker: View {
                 .scaledToFit()
                 .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
-            if let title = ScrambleCatalog.trainingSelectionTitle(event, in: language) {
-                Text(title).lineLimit(1)
+            if titleWidthLimit != 0, let title = ScrambleCatalog.trainingSelectionTitle(event, in: language) {
+                Text(title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: titleWidthLimit, alignment: .leading)
             }
             Image(systemName: "chevron.down")
                 .font(.caption2.weight(.semibold))
@@ -1328,33 +1472,38 @@ struct EventPicker: View {
         }
         .font(large ? .body.weight(.medium) : .subheadline.weight(.medium))
         .foregroundStyle(.primary)
-        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+        .frame(minWidth: minimumButtonWidth, minHeight: 44, alignment: .leading)
         .contentShape(Rectangle())
     }
 
 }
 
-struct TrainingButton: View {
-    @Bindable var model: TimerModel
-    @Environment(\.locale) private var locale
-    private var language: AppLanguage { locale.appLanguage }
+struct CapsuleSegmentButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    init(_ title: String, isSelected: Bool, action: @escaping () -> Void) {
+        self.title = title
+        self.isSelected = isSelected
+        self.action = action
+    }
+
     var body: some View {
-        Button {
-            model.mode = model.mode == .training ? .standard : .training
-        } label: {
-            Image(systemName: "dumbbell")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 20, height: 20)
-                .foregroundStyle(model.mode == .training ? Color.accentColor : Color.secondary)
-                .modifier(CompactControlTarget(size: 32))
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .fixedSize()
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .frame(minWidth: 44)
+                .background(isSelected ? Color.primary.opacity(0.08) : .clear, in: Capsule())
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(language.text("训练模式", "Training"))
-        .accessibilityValue(model.mode == .training ? language.text("已开启", "On") : language.text("已关闭", "Off"))
-        .accessibilityAddTraits(model.mode == .training ? .isSelected : [])
-        .accessibilityHint(language.text("切换标准打乱与训练打乱", "Switch between standard and training scrambles"))
-        .frame(minHeight: 44)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

@@ -3,6 +3,8 @@
 B0 = {isa = PBXBuildFile; fileRef = F0; };
 F1 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
 B1 = {isa = PBXBuildFile; fileRef = F1; };
+ASSIST = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistFormulaView.swift; sourceTree = "<group>"; };
+ASSISTBUILD = {isa = PBXBuildFile; fileRef = ASSIST; };
 F2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerModel.swift; sourceTree = "<group>"; };
 B2 = {isa = PBXBuildFile; fileRef = F2; };
 F3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -23,9 +25,9 @@ LAUNCHSCREEN = {isa = PBXFileReference; lastKnownFileType = file.storyboard; pat
 LAUNCHSCREENBUILD = {isa = PBXBuildFile; fileRef = LAUNCHSCREEN; };
 APP = {isa = PBXFileReference; explicitFileType = wrapper.application; path = cubegin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 ROOT = {isa = PBXGroup; children = (SRC, PRODUCTS); sourceTree = "<group>"; };
-SRC = {isa = PBXGroup; path = Cubegin; children = (F0,F1,F2,F3,TABS,DCIMPORT,CHARTS,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
+SRC = {isa = PBXGroup; path = Cubegin; children = (F0,F1,F2,F3,ASSIST,TABS,DCIMPORT,CHARTS,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
 PRODUCTS = {isa = PBXGroup; children = (APP); name = Products; sourceTree = "<group>"; };
-SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,B1,B2,B3,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
+SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,B1,B2,B3,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
 FRAMEWORKS = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 RESOURCES = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (ASSETSBUILD,INSPECTIONAUDIOBUILD,LAUNCHSCREENBUILD); runOnlyForDeploymentPostprocessing = 0; };
 TARGET = {isa = PBXNativeTarget; buildConfigurationList = TCL; buildPhases = (SOURCES,FRAMEWORKS,RESOURCES); buildRules = (); dependencies = (); name = CubeginPreview; packageProductDependencies = (); productName = cubegin; productReference = APP; productType = "com.apple.product-type.application"; };

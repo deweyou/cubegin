@@ -5,6 +5,59 @@ import Testing
 
 @MainActor
 struct TimerModelTests {
+    @Test
+    func trainingHintsMatchThePracticedStage() async throws {
+        #expect(AssistMethod.available(for: "333.easy_cross") == [.cross])
+        #expect(AssistMethod.available(for: "333.easy_xcross") == [.xcross])
+        #expect(AssistMethod.available(for: "333.f2l") == [.cfopF2L])
+        #expect(AssistMethod.available(for: "333.pll").isEmpty)
+        #expect(AssistMethod.available(for: "222.cll").isEmpty)
+
+        for (event, method) in [("333.easy_cross", AssistMethod.cross), ("333.easy_xcross", .xcross)] {
+            let solutions = try await Engine.assistSolutions(event: event, method: method, algorithm: "R U F")
+            #expect(solutions.map(\.target) == ["D"])
+            #expect(solutions.first?.setupRotation == "")
+        }
+
+        let scramble = "L' B U D F2 D2 B D' R B2 U B2 D' L2 U' R2 B2 D' L2 B2 D'"
+        let f2l = try await Engine.assistSolutions(event: "333.f2l", method: .cfopF2L, algorithm: scramble)
+        #expect(f2l.map(\.target) == ["F2L-1", "F2L-2", "F2L-3", "F2L-4"])
+
+        let standard = try await Engine.assistSolutions(event: "333", method: .cfopF2L, algorithm: scramble)
+        #expect(standard.first?.target == "Cross")
+        #expect(standard.first?.solution == "")
+    }
+
+    @Test
+    func formulaHintPreferencesAreScopedToEventGroupAndMethod() async throws {
+        try await withFixture { fixture in
+            let preferences = AssistPreferences(event: "333", groupID: "practice", defaults: fixture.defaults)
+            let otherGroup = AssistPreferences(event: "333", groupID: "speed", defaults: fixture.defaults)
+            let otherEvent = AssistPreferences(event: "333oh", groupID: "practice", defaults: fixture.defaults)
+            let methods = AssistMethod.available(for: "333")
+            preferences.saveMethod(.xcross)
+            #expect(preferences.selectedMethod(from: methods) == .xcross)
+            #expect(preferences.selectedMethod(from: [.cross]) == .cross)
+            #expect(otherGroup.selectedMethod(from: methods) == .cross)
+            #expect(otherEvent.selectedMethod(from: methods) == .cross)
+
+            func solution(_ target: String, formula: String = "R") -> AssistSolution {
+                AssistSolution(target: target, targetLabel: target, setupRotation: "", solution: formula, metric: nil)
+            }
+            preferences.saveOrder([solution("U"), solution("D"), solution("L")], for: .xcross)
+            let next = [solution("D"), solution("U", formula: "F"), solution("R")]
+            let restored = preferences.ordered(next, for: .xcross)
+            #expect(restored.map(\.id) == ["U", "D", "R"])
+            #expect(restored.first?.solution == "F")
+            #expect(preferences.ordered(next, for: .cross).map(\.id) == ["D", "U", "R"])
+            #expect(otherGroup.ordered(next, for: .xcross).map(\.id) == ["D", "U", "R"])
+            #expect(otherEvent.ordered(next, for: .xcross).map(\.id) == ["D", "U", "R"])
+
+            preferences.saveOrder([solution("U"), solution("D")], for: .cfopF2L)
+            #expect(preferences.ordered(next, for: .cfopF2L).map(\.id) == ["D", "U", "R"])
+        }
+    }
+
     @Test(arguments: [0, 1])
     func readyPromptFeedbackFiresWhileHolding(delayTenths: Int) async throws {
         try await withFixture { fixture in

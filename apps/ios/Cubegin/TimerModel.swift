@@ -649,7 +649,9 @@ enum InspectionVoice: String, CaseIterable {
 enum ScrambleMode: String, CaseIterable, Identifiable {
     case standard, training
     var id: Self { self }
-    var title: String { self == .standard ? "标准" : "训练" }
+    func title(in language: AppLanguage) -> String {
+        self == .standard ? language.text("标准", "Standard") : language.text("训练", "Training")
+    }
 }
 struct ScrambleChoice: Identifiable {
     let id: String
