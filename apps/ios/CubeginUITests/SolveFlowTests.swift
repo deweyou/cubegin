@@ -1125,6 +1125,17 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(scramble.label, originalScramble)
         center.tap()
         XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let save = app.buttons["Save"]
+        XCTAssertFalse(save.isEnabled)
+        let lastDigit = app.buttons["manual-result.digit.6"]
+        lastDigit.tap()
+        field.typeText("1")
+        XCTAssertEqual(lastDigit.value as? String, "1")
+        XCTAssertTrue(save.isEnabled)
+        lastDigit.tap()
+        field.typeText("0")
+        XCTAssertFalse(save.isEnabled)
+        app.buttons["manual-result.digit.0"].tap()
         field.typeText("001234")
         app.buttons["+2"].tap()
         let preview = app.staticTexts["manual-result.preview"]
@@ -1135,10 +1146,13 @@ final class SolveFlowTests: XCTestCase {
         add(screenshot)
         field.typeText("5")
         XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.345+", timeout: 5))
+        app.buttons["manual-result.digit.5"].tap()
+        field.typeText("9")
+        XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.395+", timeout: 5))
         app.buttons["Save"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "14.345+"), object: readout
+            predicate: NSPredicate(format: "value == %@", "14.395+"), object: readout
         )], timeout: 5), .completed)
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         XCTAssertNotEqual(scramble.label, originalScramble)
