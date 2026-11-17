@@ -1243,6 +1243,7 @@ private struct SolveDetailsView: View {
                         .accessibilityIdentifier("solve-detail.time")
                     HStack(spacing: 12) {
                         Spacer(minLength: 0)
+                        penaltyButton(language.text("无惩罚", "No penalty"), penalty: nil, solve: solve)
                         penaltyButton("+2", penalty: .plusTwo, solve: solve)
                         penaltyButton("DNF", penalty: .dnf, solve: solve)
                     }
@@ -1313,21 +1314,25 @@ private struct SolveDetailsView: View {
         }
     }
 
-    private func penaltyButton(_ title: String, penalty: SolvePenalty, solve: Solve) -> some View {
-        Button {
-            model.togglePenalty(penalty, for: solve.id)
+    private func penaltyButton(_ title: String, penalty: SolvePenalty?, solve: Solve) -> some View {
+        let isSelected = solve.penalty == penalty
+        return Button {
+            if !isSelected { model.setPenalty(penalty, for: solve.id) }
         } label: {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(solve.penalty == penalty ? Color.accentColor : Color.secondary.opacity(0.8))
-                .frame(width: 44, height: 36)
-                .background(solve.penalty == penalty ? Color.accentColor.opacity(0.12) : Color.clear, in: Capsule())
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.8))
+                .padding(.horizontal, 10)
+                .frame(minWidth: 44, minHeight: 36)
+                .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear, in: Capsule())
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
+                .opacity(solve.allowsPenaltyChange || isSelected ? 1 : 0.5)
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("solve-detail.\(title)")
-        .accessibilityAddTraits(solve.penalty == penalty ? .isSelected : [])
+        .accessibilityIdentifier("solve-detail.\(penalty == nil ? "no-penalty" : title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .disabled(!solve.allowsPenaltyChange)
     }
 
     @ViewBuilder private func groupPicker(_ solve: Solve) -> some View {

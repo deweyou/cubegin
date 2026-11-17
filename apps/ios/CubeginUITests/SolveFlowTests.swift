@@ -1156,6 +1156,42 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         XCTAssertNotEqual(scramble.label, originalScramble)
 
+        center.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.isEnabled)
+        app.buttons["DNF"].tap()
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        let timerDNF = app.buttons["timer.penalty.dnf"]
+        XCTAssertTrue(timerDNF.waitForExistence(timeout: 5))
+        XCTAssertTrue(timerDNF.isSelected)
+        XCTAssertFalse(timerDNF.isEnabled)
+        XCTAssertFalse(app.buttons["timer.penalty.plusTwo"].isEnabled)
+
+        app.tabBars.buttons["Results"].tap()
+        app.buttons["solve-row-2"].tap()
+        let noPenalty = app.buttons["solve-detail.no-penalty"]
+        let detailPlusTwo = app.buttons["solve-detail.+2"]
+        let detailDNF = app.buttons["solve-detail.DNF"]
+        XCTAssertTrue(detailDNF.waitForExistence(timeout: 5))
+        XCTAssertTrue(detailDNF.isSelected)
+        XCTAssertFalse(noPenalty.isEnabled)
+        XCTAssertFalse(detailPlusTwo.isEnabled)
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.buttons["solve-row-1"].tap()
+        XCTAssertTrue(detailPlusTwo.waitForExistence(timeout: 5))
+        XCTAssertTrue(detailPlusTwo.isSelected)
+        noPenalty.tap()
+        XCTAssertTrue(noPenalty.isSelected)
+        XCTAssertFalse(detailPlusTwo.isSelected)
+        noPenalty.tap()
+        XCTAssertTrue(noPenalty.isSelected)
+        detailDNF.tap()
+        XCTAssertTrue(detailDNF.isSelected)
+        XCTAssertFalse(noPenalty.isSelected)
+
         if originallyUsedTimer {
             app.tabBars.buttons["Settings"].tap()
             method.tap()

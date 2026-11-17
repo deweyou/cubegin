@@ -12,6 +12,8 @@ struct Solve: Codable, Identifiable, Equatable, Sendable {
     var penalty: SolvePenalty?
     var groupID: String?
 
+    var allowsPenaltyChange: Bool { penalty != .dnf || seconds != 0 }
+
     var resultSeconds: Double? {
         switch penalty {
         case .plusTwo: seconds + 2
@@ -573,7 +575,8 @@ struct ManualSolveContext: Identifiable {
 
     @discardableResult
     func setPenalty(_ penalty: SolvePenalty?, for id: Solve.ID) -> Bool {
-        guard started == nil, let index = solves.firstIndex(where: { $0.id == id }) else { return false }
+        guard started == nil, let index = solves.firstIndex(where: { $0.id == id }),
+              solves[index].allowsPenaltyChange || penalty == .dnf else { return false }
         cancelPress()
         var updated = solves
         updated[index].penalty = penalty

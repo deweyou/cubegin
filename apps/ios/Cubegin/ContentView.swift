@@ -932,8 +932,8 @@ struct ContentView: View {
         Group {
             if !showsTimingLayout, let solve = model.lastSolve {
                 HStack(spacing: 10) {
-                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, selected: solve.penalty)
-                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, selected: solve.penalty)
+                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, solve: solve)
+                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, solve: solve)
                     Button(role: .destructive) {
                         model.cancelPress()
                         solveToDelete = solve
@@ -956,7 +956,7 @@ struct ContentView: View {
         .frame(height: compactControlSize)
     }
 
-    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, selected: SolvePenalty?) -> some View {
+    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, solve: Solve) -> some View {
         Button {
             model.togglePenalty(penalty)
         } label: {
@@ -964,13 +964,15 @@ struct ContentView: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .foregroundStyle(selected == penalty ? Color.accentColor : Color.secondary)
+                .foregroundStyle(solve.penalty == penalty ? Color.accentColor : Color.secondary)
+                .opacity(solve.allowsPenaltyChange || solve.penalty == penalty ? 1 : 0.5)
                 .modifier(CompactControlTarget(size: compactControlSize))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityIdentifier("timer.penalty.\(penalty.rawValue)")
-        .accessibilityAddTraits(selected == penalty ? .isSelected : [])
+        .accessibilityAddTraits(solve.penalty == penalty ? .isSelected : [])
+        .disabled(!solve.allowsPenaltyChange)
     }
 
     private func longestTimerWidth(parts: [String], fontSize: CGFloat) -> CGFloat {

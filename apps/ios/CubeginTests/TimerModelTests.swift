@@ -48,6 +48,12 @@ struct TimerModelTests {
             let next = try #require(model.manualSolveContext())
             #expect(model.saveManualSolve(milliseconds: nil, penalty: .dnf, context: next) == nil)
             #expect(model.lastSolve?.resultText == "DNF")
+            let dnf = try #require(model.lastSolve)
+            #expect(!dnf.allowsPenaltyChange)
+            #expect(!model.setPenalty(.plusTwo, for: dnf.id))
+            #expect(!model.setPenalty(nil, for: dnf.id))
+            #expect(!model.togglePenalty(.dnf, for: dnf.id))
+            #expect(fixture.model().solves.first?.penalty == .dnf)
             #expect(fixture.model().solves.count == 2)
         }
     }
