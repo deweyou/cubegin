@@ -197,7 +197,7 @@ private struct ManualSolveKeyboard: UIViewRepresentable {
         func requestFocus() {
             // Focus after UIKit installs the field in the presentation's window.
             DispatchQueue.main.async { [weak self] in
-                guard let self, window != nil else { return }
+                guard let self, window != nil, !isFirstResponder else { return }
                 becomeFirstResponder()
             }
         }

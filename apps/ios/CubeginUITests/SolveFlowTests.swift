@@ -349,6 +349,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
         app.launch()
 
         let event = app.buttons["Event"]
@@ -1140,6 +1141,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(save.isEnabled)
         app.buttons["manual-result.digit.0"].tap()
         field.typeText("001234")
+        XCTAssertEqual(field.value as? String, "0012340")
         let plusTwo = app.buttons["+2"]
         plusTwo.tap()
         XCTAssertTrue(plusTwo.isSelected)
@@ -1149,8 +1151,12 @@ final class SolveFlowTests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
         field.typeText("5")
-        app.buttons["manual-result.digit.5"].tap()
+        XCTAssertEqual(field.value as? String, "0012345")
+        let editedDigit = app.buttons["manual-result.digit.5"]
+        editedDigit.tap()
+        XCTAssertTrue(editedDigit.isSelected)
         field.typeText("9")
+        XCTAssertEqual(field.value as? String, "0012395")
         app.buttons["Save"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
@@ -1295,6 +1301,7 @@ final class SolveFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
         app.launch()
         XCUIDevice.shared.orientation = .portrait
 
