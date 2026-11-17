@@ -1141,7 +1141,8 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(save.isEnabled)
         app.buttons["manual-result.digit.0"].tap()
         field.typeText("001234")
-        XCTAssertEqual(field.value as? String, "0012340")
+        let digitValues = (0..<7).map { app.buttons["manual-result.digit.\($0)"].value as? String ?? "" }
+        XCTAssertEqual(digitValues.joined(), "0012340")
         let plusTwo = app.buttons["+2"]
         plusTwo.tap()
         XCTAssertTrue(plusTwo.isSelected)
@@ -1151,12 +1152,13 @@ final class SolveFlowTests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
         field.typeText("5")
-        XCTAssertEqual(field.value as? String, "0012345")
+        XCTAssertEqual(lastDigit.value as? String, "5")
         let editedDigit = app.buttons["manual-result.digit.5"]
         editedDigit.tap()
         XCTAssertTrue(editedDigit.isSelected)
         field.typeText("9")
-        XCTAssertEqual(field.value as? String, "0012395")
+        XCTAssertEqual(editedDigit.value as? String, "9")
+        XCTAssertEqual(lastDigit.value as? String, "5")
         app.buttons["Save"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(

@@ -167,6 +167,8 @@ private struct ManualSolveKeyboard: UIViewRepresentable {
         let field = DigitField()
         field.delegate = field
         field.keyboardType = .numberPad
+        // Keep a backing character for the delete key. The visible cells own the draft.
+        field.text = "0"
         field.textColor = .clear
         field.tintColor = .clear
         field.accessibilityIdentifier = "manual-result.time"
@@ -175,7 +177,7 @@ private struct ManualSolveKeyboard: UIViewRepresentable {
 
     func updateUIView(_ field: DigitField, context: Context) {
         field.accessibilityLabel = label
-        if field.text != displayedDigits { field.text = displayedDigits }
+        field.accessibilityValue = displayedDigits
         field.insertDigits = insert
         field.removeDigit = delete
         if field.focusRequest != focusRequest {
