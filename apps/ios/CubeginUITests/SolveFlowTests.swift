@@ -4,6 +4,118 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testFormulaHintsShowSolutionsForCurrentScramble() {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launch()
+
+        let hints = app.buttons["timer.formula-hints"]
+        XCTAssertTrue(hints.waitForExistence(timeout: 20))
+        XCTAssertTrue(hints.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+        hints.tap()
+
+        let sheet = app.navigationBars["Formula hints"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        let method = app.buttons["assist.method"]
+        XCTAssertTrue(method.waitForExistence(timeout: 5))
+        method.tap()
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertFalse(app.buttons["Two-Phase Full Solve"].exists)
+        XCTAssertFalse(app.buttons["Goal Presets"].exists)
+        app.buttons["Cross"].tap()
+        XCTAssertTrue(app.staticTexts["Cross(D)"].waitForExistence(timeout: 20))
+        method.tap()
+        app.buttons["XCross"].tap()
+        XCTAssertTrue(app.staticTexts["XCross(D)"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.staticTexts["Cross(D)"].exists)
+
+        let down = app.staticTexts["XCross(D)"]
+        let up = app.staticTexts["XCross(U)"]
+        XCTAssertTrue(up.exists)
+        let upRow = app.cells.containing(.staticText, identifier: "XCross(U)").firstMatch
+        XCTAssertTrue(upRow.staticTexts.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "z2", "z2 "))
+            .firstMatch.exists)
+        let startsWithDown = down.frame.minY < up.frame.minY
+        let firstLabel = startsWithDown ? "XCross(D)" : "XCross(U)"
+        let firstCell = app.cells.containing(.staticText, identifier: firstLabel).firstMatch
+        XCTAssertTrue(firstCell.exists)
+        let secondText = startsWithDown ? up : down
+        let handle = firstCell.descendants(matching: .any)[startsWithDown ? "assist.reorder.D" : "assist.reorder.U"]
+        XCTAssertTrue(handle.exists)
+        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let drop = start.withOffset(CGVector(dx: 0, dy: secondText.frame.midY - firstCell.frame.minY))
+        start.press(forDuration: 0.4, thenDragTo: drop, withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertNotEqual(down.frame.minY < up.frame.minY, startsWithDown)
+
+        sheet.buttons["Done"].tap()
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        XCTAssertFalse(sheet.exists)
+        hints.tap()
+        XCTAssertTrue(down.waitForExistence(timeout: 20))
+        XCTAssertTrue(up.exists)
+        XCTAssertNotEqual(down.frame.minY < up.frame.minY, startsWithDown)
+    }
+
+    @MainActor
+    func testTrainingShowsHintsOnlyForSupportedStages() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+
+        for (event, expected) in [("333.easy_xcross", "XCross(D)"), ("333.pll", nil)] {
+            app.launchArguments = ["-app.language", "en", "-scramble.standard", "333", "-scramble.training", event]
+            app.launch()
+
+            let project = app.buttons["Event"]
+            XCTAssertTrue(project.waitForExistence(timeout: 20))
+            XCTAssertTrue(project.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+            project.tap()
+            let training = app.buttons["event.mode.training"]
+            XCTAssertTrue(training.waitForExistence(timeout: 5))
+            if event == "333.easy_xcross" { captureProjectPicker("Standard projects") }
+            training.tap()
+            XCTAssertTrue(training.isSelected)
+            if event == "333.easy_xcross" { captureProjectPicker("Training projects") }
+            let group = app.buttons["3x3x3 CFOP"]
+            XCTAssertTrue(group.waitForExistence(timeout: 5))
+            group.tap()
+            let projectName = event == "333.easy_xcross" ? "easy xcross" : "PLL"
+            let row = app.buttons["event.choice.\(event)"]
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: group.frame.midX - app.frame.minX,
+                                                    dy: group.frame.midY - app.frame.minY + 120))
+            let end = start.withOffset(CGVector(dx: 0, dy: -185))
+            for _ in 0..<8 where !row.isHittable {
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+            }
+            XCTAssertTrue(row.isHittable)
+            row.tap()
+            XCTAssertEqual(project.value as? String, "3x3x3 CFOP · \(projectName)")
+
+            let hints = app.buttons["timer.formula-hints"]
+            if let expected {
+                XCTAssertTrue(hints.wait(for: \.isEnabled, toEqual: true, timeout: 20))
+                hints.tap()
+                XCTAssertTrue(app.staticTexts[expected].waitForExistence(timeout: 20))
+                XCTAssertFalse(app.staticTexts["XCross(U)"].exists)
+            } else {
+                XCTAssertFalse(hints.exists)
+            }
+        }
+    }
+
+    @MainActor
+    private func captureProjectPicker(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testDCTimerImportOpensFilesAndCanBeCancelled() {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -240,10 +352,9 @@ final class SolveFlowTests: XCTestCase {
         app.launch()
 
         let event = app.buttons["Event"]
-        let training = app.buttons["Training"]
         XCTAssertTrue(event.waitForExistence(timeout: 20))
         XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 10))
-        recordPortraitPage("Home", frames: [event.frame, training.frame])
+        recordPortraitPage("Home", frames: [event.frame])
 
         // The 12 seeded rows fit on a 17 Pro in portrait. Add a solve to make the list scroll.
         let timer = app.descendants(matching: .any)["timer.readout"]
@@ -279,7 +390,7 @@ final class SolveFlowTests: XCTestCase {
         let groupFrame = group.frame
         let viewFrame = view.frame
         let rowFrame = row.frame
-        recordPortraitPage("Results before scroll", frames: [event.frame, training.frame, groupFrame, viewFrame, rowFrame])
+        recordPortraitPage("Results before scroll", frames: [event.frame, groupFrame, viewFrame, rowFrame])
 
         let start = app.coordinate(withNormalizedOffset: .zero).withOffset(
             CGVector(dx: rowFrame.midX, dy: rowFrame.midY + 45))
@@ -604,10 +715,8 @@ final class SolveFlowTests: XCTestCase {
         }, object: settings)
         XCTAssertEqual(XCTWaiter.wait(for: [rightTabs], timeout: 5), .completed)
         let event = app.buttons["Event"]
-        let training = app.buttons["Training"]
         XCTAssertTrue(event.waitForExistence(timeout: 5))
         let timerEventFrame = event.frame
-        let timerTrainingFrame = training.frame
         captureLandscapePage("Duo timer header", cutout: "right")
         app.buttons["side-nav.results"].tap()
         let picker = app.buttons["results.view"]
@@ -616,8 +725,6 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
         XCTAssertEqual(event.frame.minX, timerEventFrame.minX, accuracy: 2)
         XCTAssertEqual(event.frame.midY, timerEventFrame.midY, accuracy: 2)
-        XCTAssertEqual(training.frame.maxX, timerTrainingFrame.maxX + 40, accuracy: 2) // Sparkles slot and spacing.
-        XCTAssertEqual(training.frame.midY, timerTrainingFrame.midY, accuracy: 2)
         let groupFrame = group.frame
         let pickerFrame = picker.frame
         let firstRowY = firstRow.frame.midY
@@ -666,7 +773,7 @@ final class SolveFlowTests: XCTestCase {
             XCUIDevice.shared.orientation = orientation
             app.launch()
             let event = app.buttons["Event"]
-            let training = app.buttons["Training"]
+            let hints = app.buttons["timer.formula-hints"]
             let home = app.buttons["side-nav.home"]
             let results = app.buttons["side-nav.results"]
             let settings = app.buttons["side-nav.settings"]
@@ -674,7 +781,8 @@ final class SolveFlowTests: XCTestCase {
             home.tap()
             XCTAssertTrue(event.waitForExistence(timeout: 10))
             let leading = event.frame.minX
-            let trailing = training.frame.maxX + 40 // Sparkles slot and spacing.
+            XCTAssertTrue(hints.exists)
+            let trailing = hints.frame.maxX
             XCTAssertGreaterThanOrEqual(leading - app.frame.minX, 42)
             XCTAssertEqual(settings.frame.minX - trailing, 20, accuracy: 2) // Includes the capsule's 4pt inset.
             captureLandscapePage("Home", cutout: cutout)
@@ -704,7 +812,6 @@ final class SolveFlowTests: XCTestCase {
             let overview = app.staticTexts["Valid / Total"]
             XCTAssertTrue(overview.waitForExistence(timeout: 10))
             XCTAssertEqual(event.frame.minX, leading, accuracy: 2)
-            XCTAssertEqual(training.frame.maxX, trailing, accuracy: 2)
             XCTAssertEqual(group.frame.minX, groupFrame.minX, accuracy: 2)
             XCTAssertEqual(picker.frame.maxX, pickerFrame.maxX, accuracy: 2)
             XCTAssertLessThan(overview.frame.maxX, settings.frame.minX)
@@ -821,11 +928,10 @@ final class SolveFlowTests: XCTestCase {
         // The 44pt button sits 4pt inside the 52pt capsule.
         let edgeGap = app.frame.maxX - settings.frame.maxX - 4
         XCTAssertEqual(edgeGap, 21, accuracy: 2)
-        // The 32pt sparkles slot and its 8pt spacing follow Training.
-        let trainingFrame = app.buttons["Training"].frame
-        XCTAssertLessThan(trainingFrame.maxX + 40, settings.frame.minX - 4)
+        let hintsFrame = app.buttons["timer.formula-hints"].frame
+        XCTAssertLessThan(hintsFrame.maxX, settings.frame.minX - 4)
         XCTAssertEqual(ao12.frame.maxY, settings.frame.maxY + 4, accuracy: 3)
-        let columnTop = trainingFrame.midY + 22 + 8
+        let columnTop = hintsFrame.maxY + 8
         let columnBottom = settings.frame.maxY + 4
         // On iOS 26.2, XCTest reports the selectable text's AX frame beyond
         // its visible glyphs. Check the rendered formula and diagram instead.
@@ -889,7 +995,6 @@ final class SolveFlowTests: XCTestCase {
         results.tap()
         let solve = app.buttons["solve-row-2"]
         XCTAssertTrue(solve.waitForExistence(timeout: 5))
-        XCTAssertEqual(trainingFrame.maxX + 40, app.buttons["Training"].frame.maxX, accuracy: 3)
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
         solve.tap()
         let time = app.descendants(matching: .any)["solve-detail.time"]

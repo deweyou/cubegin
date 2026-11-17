@@ -494,10 +494,6 @@ private struct ResultsView: View {
                         }
                         .sharedBackgroundVisibility(.hidden)
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        trainingButton.padding(.trailing, usesTopNavigation ? 20 : 0)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
                 }
             }
         }
@@ -537,12 +533,9 @@ private struct ResultsView: View {
     }
 
     private var resultsProjectRow: some View {
-        HStack {
-            projectPicker
-            Spacer(minLength: 12)
-            trainingButton
-        }
-        .frame(height: 44)
+        projectPicker
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 44)
     }
 
     private var resultsPickerRow: some View {
@@ -564,9 +557,6 @@ private struct ResultsView: View {
                     .disabled(model.busy || model.started != nil)
             }
         }
-    }
-    private var trainingButton: some View {
-        TrainingButton(model: model).disabled(isSelecting || model.busy || model.started != nil)
     }
     private var viewPicker: some View {
         Menu {
@@ -714,23 +704,9 @@ private struct ResultsView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(options, id: \.self) { option in
-                        let isSelected = option == selected
-                        Button {
+                        CapsuleSegmentButton(option?.title ?? language.text("单次", "Single"), isSelected: option == selected) {
                             averageKind = option
-                        } label: {
-                            Text(option?.title ?? language.text("单次", "Single"))
-                                .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? .primary : .secondary)
-                                .fixedSize()
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 6)
-                                .frame(minWidth: 44)
-                                .background(isSelected ? Color.primary.opacity(0.08) : .clear, in: Capsule())
-                                .frame(minHeight: 44)
-                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                         .accessibilityIdentifier("results.average-type.\(option?.title ?? "single")")
                         .id(option)
                     }
@@ -1547,7 +1523,7 @@ private struct GroupManager: View {
             .accessibilityLabel(group.displayName)
             .accessibilityValue(group.isDefault ? language.text("默认分组", "Default group") : "")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
-            GroupReorderHandle()
+            ListReorderHandle()
                 .frame(width: 32, height: 44)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(language.text("调整分组顺序", "Reorder group"))
@@ -1572,7 +1548,7 @@ private struct GroupManager: View {
 }
 
 // Start the list's native interactive movement only from this handle.
-private struct GroupReorderHandle: UIViewRepresentable {
+struct ListReorderHandle: UIViewRepresentable {
     func makeUIView(context: Context) -> HandleView { HandleView() }
     func updateUIView(_ view: HandleView, context: Context) {}
 

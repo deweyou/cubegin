@@ -31,7 +31,7 @@ See [testing](docs/testing.md) and the [CI rules](../../docs/ci.md).
 
 ## Ownership
 
-`Engine.swift` is a thin background adapter for `generateEvent` and `evaluateEvent` (SVG net). Cube semantics stay in Rust. Swift owns timing, gestures, local JSON persistence, native layout and SVG display in a JavaScript-disabled WKWebView.
+`Engine.swift` is a thin background adapter for `generateEvent`, `evaluateEvent` (SVG net), and `solveAssist` (formula hints). Cube semantics stay in Rust. Swift owns timing, gestures, local JSON persistence, native layout and SVG display in a JavaScript-disabled WKWebView.
 
 ## 知识库
 
