@@ -65,13 +65,6 @@ struct ManualSolveEntryView: View {
                     if time.milliseconds == nil {
                         Text(language.text("秒位必须在 00 到 59 之间。", "Seconds must be between 00 and 59."))
                             .foregroundStyle(.red)
-                    } else if penalty == .dnf {
-                        Text("DNF")
-                            .accessibilityIdentifier("manual-result.preview")
-                    } else if penalty == .plusTwo, let milliseconds = time.milliseconds, milliseconds > 0 {
-                        let adjusted = TimerModel.format(Double(milliseconds + 2_000) / 1_000)
-                        Text(verbatim: adjusted + "+")
-                            .accessibilityIdentifier("manual-result.preview")
                     }
                     if let saveError {
                         Text(saveError)

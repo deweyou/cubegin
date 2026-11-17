@@ -1137,18 +1137,17 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(save.isEnabled)
         app.buttons["manual-result.digit.0"].tap()
         field.typeText("001234")
-        app.buttons["+2"].tap()
-        let preview = app.staticTexts["manual-result.preview"]
-        XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.340+", timeout: 5))
+        let plusTwo = app.buttons["+2"]
+        plusTwo.tap()
+        XCTAssertTrue(plusTwo.isSelected)
+        XCTAssertFalse(app.staticTexts["manual-result.preview"].exists)
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "Manual result entry"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         field.typeText("5")
-        XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.345+", timeout: 5))
         app.buttons["manual-result.digit.5"].tap()
         field.typeText("9")
-        XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.395+", timeout: 5))
         app.buttons["Save"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
