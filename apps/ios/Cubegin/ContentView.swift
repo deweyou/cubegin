@@ -12,6 +12,8 @@ struct ContentView: View {
     var isDuoOuterDisplay = false
     var landscapeContentInsets: LandscapeContentInsets?
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
+    @AppStorage(TimerModel.displayKey) private var displayDuringSolve = TimerDisplay.realtime
+    @AppStorage(TimerModel.entryMethodKey) private var entryMethod = SolveEntryMethod.timer
     @AppStorage(TimerModel.hapticsKey) private var usesTimerHaptics = true
     @FocusState private var hasTimerKeyboardFocus: Bool
     @State private var idlePageFrame: CGRect?
@@ -29,6 +31,7 @@ struct ContentView: View {
     @State private var assistScramble: AssistScramble?
     @State private var timerTouchResumesAt: ContinuousClock.Instant?
     @State private var solveToDelete: Solve?
+    @State private var manualContext: ManualSolveContext?
     @State private var showsGenerating = false
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
@@ -39,6 +42,8 @@ struct ContentView: View {
     private var padProjectToolbarInset: CGFloat { padToolbarMargin + controlIconInset }
     private let compactControlSize: CGFloat = 32
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
@@ -50,7 +55,7 @@ struct ContentView: View {
         UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
     }
     private var canUseTimerInput: Bool {
-        isTimerActive && !showsProjectList && assistScramble == nil && solveToDelete == nil
+        isTimerActive && !showsProjectList && assistScramble == nil && solveToDelete == nil && manualContext == nil
     }
 
     var body: some View {
@@ -90,17 +95,21 @@ struct ContentView: View {
         }
         .appBackground()
         .sensoryFeedback(.impact(weight: .heavy), trigger: model.showsReadyFeedback) { _, isShowing in
-            isShowing && usesTimerHaptics && isTimerActive && !model.isTouchReady
+            isShowing && entryMethod == .timer && usesTimerHaptics && isTimerActive && !model.isTouchReady
                 && !model.usesInspection && model.inspectionStarted == nil
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: model.lastSolveID) { _, solveID in
-            solveID != nil && usesTimerHaptics && isTimerActive
+            solveID != nil && entryMethod == .timer && usesTimerHaptics && isTimerActive
         }
-        .focusable(isTimerActive && assistScramble == nil)
+        .focusable(isTimerActive && assistScramble == nil && manualContext == nil)
         .focusEffectDisabled()
         .focused($hasTimerKeyboardFocus)
         .onKeyPress(.space, phases: [.down, .up, .repeat]) { press in
             guard canUseTimerInput else { return .ignored }
+            if entryMethod == .manual, !isTiming {
+                if press.phase == .up { openManualEntry() }
+                return .handled
+            }
             switch press.phase {
             case .down: model.press(.keyboard, delayTenths: startDelayTenths)
             case .up: model.release(.keyboard)
@@ -135,6 +144,35 @@ struct ContentView: View {
         .fullScreenCover(item: assistPresentation(onDuo: true), onDismiss: resumeTimerInput) { scramble in
             AssistFormulaModal(scramble: scramble)
                 .presentationBackground(.clear)
+        }
+        .sheet(item: manualPresentation(edgeToEdge: false), onDismiss: resumeTimerInput) { context in
+            manualEntryForm(context)
+                .presentationSizing(.form)
+                .presentationBackground(Color(uiColor: .systemBackground))
+        }
+        .fullScreenCover(item: manualPresentation(edgeToEdge: true), onDismiss: resumeTimerInput) { context in
+            ZStack(alignment: .bottom) {
+                Color.black.opacity(0.22)
+                    .ignoresSafeArea()
+                    .onTapGesture { setManualContext(nil) }
+                    .accessibilityHidden(true)
+                manualEntryForm(context, close: { setManualContext(nil) })
+                    .frame(height: 260)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(uiColor: .systemBackground))
+                    .clipShape(.rect(topLeadingRadius: 28, topTrailingRadius: 28))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .ignoresSafeArea(.container, edges: .bottom)
+            .presentationBackground(.clear)
+        }
+        .onChange(of: entryMethod) { _, method in
+            if method == .manual {
+                if !isTiming { model.interrupt() }
+                isInTimerCancelZone = false
+            } else {
+                setManualContext(nil)
+            }
         }
         .alert(language.text("确定删除这条成绩吗？", "Delete this solve?"), isPresented: Binding(
             get: { solveToDelete != nil },
@@ -354,7 +392,9 @@ struct ContentView: View {
     private var foldedTimerPrompt: some View {
         let startsInspection = model.usesInspection && model.inspectionStarted == nil
         let prompt: String
-        if isInTimerCancelZone {
+        if entryMethod == .manual && !isTiming {
+            prompt = ""
+        } else if isInTimerCancelZone {
             prompt = language.text("松开取消", "Release to cancel")
         } else if isTiming {
             prompt = language.text("轻点停止", "Tap to stop")
@@ -376,7 +416,7 @@ struct ContentView: View {
             .multilineTextAlignment(.center)
             .foregroundStyle(foldedTimerFeedbackColor ?? .secondary)
             .opacity(model.busy || model.scramble == nil ? 0 : 1)
-            .accessibilityHidden(model.busy || model.scramble == nil)
+            .accessibilityHidden(prompt.isEmpty || model.busy || model.scramble == nil)
             .accessibilityIdentifier("timer.folded-prompt")
     }
 
@@ -644,11 +684,43 @@ struct ContentView: View {
         }
     }
 
+    private var usesEdgeToEdgeManualEntry: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone && verticalSizeClass == .regular
+            && !isDuoInnerDisplay && !dynamicTypeSize.isAccessibilitySize
+    }
+
+    private func manualPresentation(edgeToEdge: Bool) -> Binding<ManualSolveContext?> {
+        Binding(
+            get: { usesEdgeToEdgeManualEntry == edgeToEdge ? manualContext : nil },
+            set: { if $0 == nil, usesEdgeToEdgeManualEntry == edgeToEdge { setManualContext(nil) } }
+        )
+    }
+
+    private func setManualContext(_ context: ManualSolveContext?) {
+        var transaction = Transaction()
+        // Only the keyboard should move the bottom panel. The full-screen backdrop stays in place.
+        transaction.disablesAnimations = usesEdgeToEdgeManualEntry
+        withTransaction(transaction) { manualContext = context }
+    }
+
+    private func manualEntryForm(_ context: ManualSolveContext, close: (() -> Void)? = nil) -> some View {
+        ManualSolveEntryView(save: { milliseconds, penalty in
+            model.saveManualSolve(milliseconds: milliseconds, penalty: penalty, context: context)
+        }, close: close)
+    }
+
+    private func openManualEntry() {
+        guard canUseTimerInput else { return }
+        if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
+        setManualContext(model.manualSolveContext())
+    }
+
     private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
             onDown: { feedback in
                 guard canUseTimerInput else { return }
                 if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
+                guard entryMethod == .timer || isTiming else { return }
                 if usesTimerHaptics, !model.usesInspection {
                     feedback.prepare()
                 }
@@ -659,7 +731,9 @@ struct ContentView: View {
                 }
             },
             onUp: {
-                if isInTimerCancelZone {
+                if entryMethod == .manual {
+                    openManualEntry()
+                } else if isInTimerCancelZone {
                     model.cancelPress(.touch)
                 } else {
                     model.release(.touch)
@@ -746,20 +820,21 @@ struct ContentView: View {
                         .accessibilityHidden(true)
                 }
             } else if showsStartPrompt, model.showsReadyFeedback || isInTimerCancelZone {
-                Text(isInTimerCancelZone
-                     ? language.text("松开取消", "Release to cancel")
-                     : language.text("松开开启", "Release to start"))
-                    .font(.system(size: fontSize * 0.45, weight: .regular, design: .rounded))
-                    .foregroundStyle(isInTimerCancelZone ? Color.red : Color.green)
-                    .lineLimit(1)
-                    .minimumScaleFactor(minimumScale)
-                    .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: 0.45,
-                                                       weight: .regular))
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: height)
-                    .transition(.identity)
+                let prompt = isInTimerCancelZone
+                    ? language.text("松开取消", "Release to cancel")
+                    : language.text("松开开启", "Release to start")
+                timerPrompt(prompt, fontSize: fontSize, height: height, minimumScale: minimumScale,
+                            color: isInTimerCancelZone ? .red : .green)
                     .accessibilityIdentifier("timer.start-prompt")
+            } else if isTiming, displayDuringSolve == .observation {
+                let prompt = language.text("还原中", "Solving")
+                timerPrompt(prompt, fontSize: fontSize, height: height, minimumScale: minimumScale,
+                            color: feedbackColor ?? .primary)
+                    .accessibilityLabel(language.text("停止计时", "Stop timer"))
+                    .accessibilityValue(prompt)
+                    .accessibilityIdentifier("timer.readout")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { model.activateAccessibleTimer() }
             } else {
                 timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale,
                                  feedbackColor: feedbackColor, showsZero: showsZero)
@@ -768,16 +843,34 @@ struct ContentView: View {
         .allowsHitTesting(false)
     }
 
+    private func timerPrompt(_ prompt: String, fontSize: CGFloat, height: CGFloat,
+                             minimumScale: CGFloat, color: Color) -> some View {
+        let scale: CGFloat = 0.45
+        return Text(prompt)
+            .font(.system(size: fontSize * scale, weight: .regular, design: .rounded))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .minimumScaleFactor(minimumScale)
+            .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: scale, weight: .regular))
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .transition(.identity)
+    }
+
     private func timerReadoutView(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat,
                                   feedbackColor: Color?, showsZero: Bool) -> some View {
-        TimelineView(.animation(minimumInterval: 0.03, paused: !isTiming)) { _ in
-            let duration = model.started.map { $0.duration(to: .now) }
-            let solve = showsZero ? nil : model.lastSolve
-            let seconds = duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? solve?.resultSeconds ?? 0
-            let readout = solve?.penalty == .dnf
-                ? AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
-                : timerReadout(seconds, fontSize: fontSize,
-                               showsPlus: UIDevice.current.userInterfaceIdiom == .pad && solve?.penalty == .plusTwo)
+        let entersManually = entryMethod == .manual && !isTiming
+        let actionTitle = if entersManually {
+            language.text("录入成绩", "Enter result")
+        } else if isTiming {
+            language.text("停止计时", "Stop timer")
+        } else {
+            language.text("开始计时", "Start timer")
+        }
+        return TimelineView(.animation(minimumInterval: displayDuringSolve == .seconds ? 0.1 : 0.03,
+                                paused: !isTiming)) { _ in
+            let readout = timerReadoutContent(fontSize: fontSize, showsZero: showsZero)
             Text(readout)
                 .foregroundStyle(feedbackColor ?? .primary)
                 .contentTransition(.identity)
@@ -786,13 +879,42 @@ struct ContentView: View {
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
-                .accessibilityLabel(isTiming ? language.text("停止计时", "Stop timer") : language.text("开始计时", "Start timer"))
-                .accessibilityValue(solve?.resultText ?? TimerModel.format(seconds))
+                .accessibilityLabel(actionTitle)
+                .accessibilityValue((isTiming || showsZero ? nil : model.lastSolve?.resultText) ?? String(readout.characters))
                 .accessibilityIdentifier("timer.readout")
                 .accessibilityAddTraits(.isButton)
-                .accessibilityAction { model.activateAccessibleTimer() }
+                .accessibilityAction {
+                    if entersManually {
+                        openManualEntry()
+                    } else {
+                        model.activateAccessibleTimer()
+                    }
+                }
         }
         .allowsHitTesting(false)
+    }
+
+    private func timerReadoutContent(fontSize: CGFloat, showsZero: Bool) -> AttributedString {
+        let font = Font.system(size: fontSize, design: .rounded)
+        if let start = model.started {
+            let duration = start.duration(to: .now)
+            if displayDuringSolve == .seconds {
+                let readout = TimerDisplay.wholeSeconds(duration)
+                return AttributedString(readout, attributes: AttributeContainer.font(font.monospacedDigit()))
+            }
+            let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+            return timerReadout(seconds, fontSize: fontSize, showsPlus: false)
+        }
+        return finishedTimerReadout(showsZero ? nil : model.lastSolve, fontSize: fontSize,
+                                    showsPlus: UIDevice.current.userInterfaceIdiom == .pad)
+    }
+
+    private func finishedTimerReadout(_ solve: Solve?, fontSize: CGFloat, showsPlus: Bool) -> AttributedString {
+        if solve?.penalty == .dnf {
+            return AttributedString("DNF", attributes: AttributeContainer.font(.system(size: fontSize, design: .rounded)))
+        }
+        return timerReadout(solve?.resultSeconds ?? 0, fontSize: fontSize,
+                            showsPlus: showsPlus && solve?.penalty == .plusTwo)
     }
 
     private func readoutCenterAdjustment(fontSize: CGFloat, scale: CGFloat, weight: UIFont.Weight) -> CGFloat {

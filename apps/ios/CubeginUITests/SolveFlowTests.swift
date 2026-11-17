@@ -1084,6 +1084,100 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testManualEntryCanCancelAndSaveAPenalizedResult() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "The Duo has a separate touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-timer.wcaInspection", "YES"]
+        app.launch()
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        app.tabBars.buttons["Settings"].tap()
+        let method = app.descendants(matching: .any).matching(identifier: "settings.timer.entryMethod").firstMatch
+        let display = app.descendants(matching: .any).matching(identifier: "settings.timer.display").firstMatch
+        XCTAssertTrue(method.waitForExistence(timeout: 5))
+        let originallyUsedTimer = display.exists
+        if originallyUsedTimer {
+            method.tap()
+            app.buttons["Manual"].tap()
+        }
+        XCTAssertFalse(display.exists)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        let originalScramble = scramble.label
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Enter result", timeout: 5))
+        XCTAssertEqual(readout.value as? String, "0.000")
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let idleScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        idleScreenshot.name = "Timer before manual entry"
+        idleScreenshot.lifetime = .keepAlways
+        add(idleScreenshot)
+        center.tap()
+        let field = app.textFields["manual-result.time"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(scramble.label, originalScramble)
+        center.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("001234")
+        app.buttons["+2"].tap()
+        let preview = app.staticTexts["manual-result.preview"]
+        XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.340+", timeout: 5))
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Manual result entry"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        field.typeText("5")
+        XCTAssertTrue(preview.wait(for: \.label, toEqual: "14.345+", timeout: 5))
+        app.buttons["Save"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "14.345+"), object: readout
+        )], timeout: 5), .completed)
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        XCTAssertNotEqual(scramble.label, originalScramble)
+
+        if originallyUsedTimer {
+            app.tabBars.buttons["Settings"].tap()
+            method.tap()
+            app.buttons["Timer"].tap()
+            XCTAssertTrue(display.waitForExistence(timeout: 5))
+        }
+    }
+
+    @MainActor
+    func testObservationOnlyKeepsInspectionAndFinalTime() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "The Duo has a separate touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-timer.display", "observation", "-timer.wcaInspection", "YES"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 20))
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["timer.inspection"].waitForExistence(timeout: 5))
+        center.tap()
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Solving"), object: readout
+        )], timeout: 5), .completed)
+        center.tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        let result = try XCTUnwrap(readout.value as? String)
+        XCTAssertNotNil(result.range(of: #"^\d+\.\d{3}$"#, options: .regularExpression))
+    }
+
+    @MainActor
     func testQuickInspectionTapsUseTheSharedTimer() throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
                       "Use the Duo-specific case for its separate touch surface.")
@@ -1093,6 +1187,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
                                 "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "20"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
         app.launch()
         let scramble = app.descendants(matching: .any)["timer.scramble"]
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))

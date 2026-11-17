@@ -9,6 +9,8 @@ F2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timer
 B2 = {isa = PBXBuildFile; fileRef = F2; };
 F3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 B3 = {isa = PBXBuildFile; fileRef = F3; };
+MANUALSOLVE = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSolveEntryView.swift; sourceTree = "<group>"; };
+MANUALSOLVEBUILD = {isa = PBXBuildFile; fileRef = MANUALSOLVE; };
 ICON = {isa = PBXFileReference; lastKnownFileType = folder.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 ICONBUILD = {isa = PBXBuildFile; fileRef = ICON; };
 TABS = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabsView.swift; sourceTree = "<group>"; };
@@ -27,9 +29,9 @@ LAUNCHSCREEN = {isa = PBXFileReference; lastKnownFileType = file.storyboard; pat
 LAUNCHSCREENBUILD = {isa = PBXBuildFile; fileRef = LAUNCHSCREEN; };
 APP = {isa = PBXFileReference; explicitFileType = wrapper.application; path = cubegin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 ROOT = {isa = PBXGroup; children = (SRC, TESTGROUP, UITESTGROUP, PRODUCTS); sourceTree = "<group>"; };
-SRC = {isa = PBXGroup; path = Cubegin; children = (F0,F1,F2,F3,ASSIST,TABS,DCIMPORT,CHARTS,ICON,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
+SRC = {isa = PBXGroup; path = Cubegin; children = (F0,F1,F2,F3,MANUALSOLVE,ASSIST,TABS,DCIMPORT,CHARTS,ICON,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
 PRODUCTS = {isa = PBXGroup; children = (APP, TESTPRODUCT, UITESTPRODUCT); name = Products; sourceTree = "<group>"; };
-SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,B1,B2,B3,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
+SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,B1,B2,B3,MANUALSOLVEBUILD,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
 FRAMEWORKS = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (SDKBUILD); runOnlyForDeploymentPostprocessing = 0; };
 RESOURCES = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (ICONBUILD,ASSETSBUILD,INSPECTIONAUDIOBUILD,LAUNCHSCREENBUILD); runOnlyForDeploymentPostprocessing = 0; };
 SDK = {isa = XCLocalSwiftPackageReference; relativePath = "../.."; };

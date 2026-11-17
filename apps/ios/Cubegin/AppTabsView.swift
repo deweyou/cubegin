@@ -205,6 +205,7 @@ struct AppTabsView: View {
                     landscapeContentInsets: contentInsets,
                     isInTimerCancelZone: $isInTimerCancelZone
                 )
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
                     .labelStyle(.titleAndIcon)
                     .toolbar(usesSideNavigation || showsTimingLayout ? .hidden : .automatic, for: .tabBar)
             } label: {
@@ -1845,6 +1846,8 @@ private struct SettingsView: View {
     @AppStorage(TimerModel.trainingInspectionKey) private var usesTrainingInspection = false
     @AppStorage(TimerModel.inspectionVoiceKey) private var inspectionVoice = InspectionVoice.off
     @AppStorage(TimerModel.startDelayKey) private var startDelayTenths = TimerModel.defaultStartDelayTenths
+    @AppStorage(TimerModel.displayKey) private var timerDisplay = TimerDisplay.realtime
+    @AppStorage(TimerModel.entryMethodKey) private var entryMethod = SolveEntryMethod.timer
     @AppStorage(TimerModel.hapticsKey) private var usesTimerHaptics = true
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
@@ -1852,6 +1855,51 @@ private struct SettingsView: View {
 
     private var syncedLanguage: Binding<String> {
         SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }
+    }
+
+    @ViewBuilder private var timerSettings: some View {
+        Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
+            .accessibilityIdentifier("settings.timer.haptics")
+        HStack(spacing: 8) {
+            let title = language.text("启动延迟", "Start delay")
+            let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"
+            Text(title)
+                .accessibilityHidden(true)
+            Spacer(minLength: 0)
+            Text(value)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .fixedSize()
+                .accessibilityHidden(true)
+            Slider(value: Binding(
+                get: { Double(startDelayTenths) },
+                set: { syncedStartDelay.wrappedValue = Int($0.rounded()) }
+            ), in: 0...20) {
+                Text(title)
+            }
+            .labelsHidden()
+            .frame(idealWidth: 112, maxWidth: 112)
+            .accessibilityLabel(title)
+            .accessibilityValue(value)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: syncedStartDelay.wrappedValue = min(20, startDelayTenths + 1)
+                case .decrement: syncedStartDelay.wrappedValue = max(0, startDelayTenths - 1)
+                @unknown default: break
+                }
+            }
+            .accessibilityIdentifier("settings.startDelay")
+        }
+        Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
+            .accessibilityIdentifier("settings.inspection.enabled")
+        if usesInspection {
+            Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 })
+            Picker(language.text("观察报时", "Inspection voice"), selection: SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }) {
+                ForEach(InspectionVoice.allCases, id: \.self) { voice in
+                    Text(voice.title(in: language)).tag(voice)
+                }
+            }
+        }
     }
 
     private var syncedStartDelay: Binding<Int> {
@@ -1891,47 +1939,20 @@ private struct SettingsView: View {
                 CardSection(language.text("计时", "Timer")) {
                     Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
                         .accessibilityIdentifier("settings.timer.keepScreenOn")
-                    Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
-                        .accessibilityIdentifier("settings.timer.haptics")
-                    HStack(spacing: 8) {
-                        let title = language.text("启动延迟", "Start delay")
-                        let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"
-                        Text(title)
-                            .accessibilityHidden(true)
-                        Spacer(minLength: 0)
-                        Text(value)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .fixedSize()
-                            .accessibilityHidden(true)
-                        Slider(value: Binding(
-                            get: { Double(startDelayTenths) },
-                            set: { syncedStartDelay.wrappedValue = Int($0.rounded()) }
-                        ), in: 0...20) {
-                            Text(title)
+                    Picker(language.text("成绩产生方式", "Result entry"), selection: SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }) {
+                        ForEach(SolveEntryMethod.allCases, id: \.self) { method in
+                            Text(method.title(in: language)).tag(method)
                         }
-                        .labelsHidden()
-                        .frame(idealWidth: 112, maxWidth: 112)
-                        .accessibilityLabel(title)
-                        .accessibilityValue(value)
-                        .accessibilityAdjustableAction { direction in
-                            switch direction {
-                            case .increment: syncedStartDelay.wrappedValue = min(20, startDelayTenths + 1)
-                            case .decrement: syncedStartDelay.wrappedValue = max(0, startDelayTenths - 1)
-                            @unknown default: break
-                            }
-                        }
-                        .accessibilityIdentifier("settings.startDelay")
                     }
-                    Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
-                        .accessibilityIdentifier("settings.inspection.enabled")
-                    if usesInspection {
-                        Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 })
-                        Picker(language.text("观察报时", "Inspection voice"), selection: SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }) {
-                            ForEach(InspectionVoice.allCases, id: \.self) { voice in
-                                Text(voice.title(in: language)).tag(voice)
+                    .accessibilityIdentifier("settings.timer.entryMethod")
+                    if entryMethod == .timer {
+                        Picker(language.text("计时器的时间显示", "Timer display"), selection: SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }) {
+                            ForEach(TimerDisplay.allCases, id: \.self) { display in
+                                Text(display.title(in: language)).tag(display)
                             }
                         }
+                        .accessibilityIdentifier("settings.timer.display")
+                        timerSettings
                     }
                 }
                 CardSection(language.text("成绩", "Results")) {
