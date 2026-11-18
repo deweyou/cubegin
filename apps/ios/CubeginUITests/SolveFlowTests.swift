@@ -225,6 +225,7 @@ final class SolveFlowTests: XCTestCase {
         settings.tap()
         XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
         let clearPage = app.descendants(matching: .any)["settings.results.clear"].firstMatch
+        app.swipeUp()
         tapCardRowEdge(clearPage)
         let clearAll = app.buttons["settings.results.clearAll"]
         XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
@@ -256,6 +257,7 @@ final class SolveFlowTests: XCTestCase {
         app.launch()
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
+        app.swipeUp()
         XCTAssertTrue(clearPage.waitForExistence(timeout: 5))
         tapCardRowEdge(clearPage)
         XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
