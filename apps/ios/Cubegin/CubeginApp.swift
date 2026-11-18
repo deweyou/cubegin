@@ -119,7 +119,7 @@ enum SettingsSync {
         TimerModel.keepTimerScreenOnKey, TimerModel.inspectionKey, TimerModel.trainingInspectionKey,
         TimerModel.inspectionVoiceKey, TimerModel.hapticsKey, TimerModel.displayKey, TimerModel.entryMethodKey,
         ResultExtremes.includeDNFPreferenceKey
-    ]
+    ] + TimerSwipeDirection.allCases.map(\.preferenceKey)
 
     private static var isEnabled: Bool {
 #if targetEnvironment(simulator)

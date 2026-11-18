@@ -225,6 +225,7 @@ final class SolveFlowTests: XCTestCase {
         settings.tap()
         XCTAssertTrue(app.staticTexts["settings.title"].waitForExistence(timeout: 5))
         let clearPage = app.descendants(matching: .any)["settings.results.clear"].firstMatch
+        app.swipeUp()
         tapCardRowEdge(clearPage)
         let clearAll = app.buttons["settings.results.clearAll"]
         XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
@@ -256,6 +257,7 @@ final class SolveFlowTests: XCTestCase {
         app.launch()
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
+        app.swipeUp()
         XCTAssertTrue(clearPage.waitForExistence(timeout: 5))
         tapCardRowEdge(clearPage)
         XCTAssertTrue(clearAll.waitForExistence(timeout: 5))
@@ -1083,6 +1085,105 @@ final class SolveFlowTests: XCTestCase {
             XCTAssertLessThan(timer.frame.maxX, rail.frame.minX)
         }
         XCTAssertLessThan(plusTwo.frame.maxY, summary["timer-summary.count"].frame.minY)
+    }
+
+    @MainActor
+    func testTimerSwipeShortcutsPersistAndUseTheExistingSolveFlows() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "The Duo has a separate touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-timer.entryMethod", "timer",
+                                "-timer.wcaInspection", "NO", "-timer.startDelayTenths", "0"]
+        app.launch()
+
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        let gestures = app.buttons["settings.timer.gestures"]
+        let form = app.scrollViews.firstMatch
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.5))
+        let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.5))
+
+        func openGestures() {
+            app.tabBars.buttons["Settings"].tap()
+            if !gestures.isHittable { form.swipeUp() }
+            XCTAssertTrue(gestures.isHittable)
+            gestures.tap()
+        }
+
+        func select(_ option: String, for direction: String) {
+            let picker = app.descendants(matching: .any).matching(identifier: "settings.timer.swipe.\(direction)").firstMatch
+            XCTAssertTrue(picker.waitForExistence(timeout: 5))
+            picker.tap()
+            app.buttons[option].tap()
+        }
+
+        func swipe(to end: XCUICoordinate, hold: TimeInterval = 0.01) {
+            center.press(forDuration: hold, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        }
+
+        func expectResult(_ result: String) {
+            let value = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", result), object: readout)
+            XCTAssertEqual(XCTWaiter.wait(for: [value], timeout: 5), .completed)
+        }
+
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        openGestures()
+        let timerSettings = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        timerSettings.name = "Timer gesture settings"
+        timerSettings.lifetime = .keepAlways
+        add(timerSettings)
+        select("Enter result manually", for: "left")
+        select("Generate new scramble", for: "right")
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        let originalScramble = scramble.label
+        let field = app.textFields["manual-result.time"]
+        swipe(to: left, hold: 0.5)
+        XCTAssertFalse(field.exists)
+        XCTAssertEqual(readout.label, "Start timer")
+
+        swipe(to: center.withOffset(CGVector(dx: 22, dy: 0)))
+        XCTAssertEqual(scramble.label, originalScramble)
+        XCTAssertEqual(readout.label, "Start timer")
+
+        swipe(to: right)
+        let newScramble = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == YES AND label != %@", originalScramble), object: scramble
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [newScramble], timeout: 20), .completed)
+        swipe(to: left)
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("0012345")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        expectResult("12.345")
+        XCTAssertEqual(readout.label, "Start timer")
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+
+        openGestures()
+        select("Delete last result", for: "right")
+        app.tabBars.buttons["Home"].tap()
+        swipe(to: right)
+        let confirmation = app.alerts["Delete this solve?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirmation.staticTexts["12.345"].exists)
+        confirmation.buttons["Delete"].tap()
+        expectResult("0.000")
+
+        openGestures()
+        select("None", for: "right")
+        app.tabBars.buttons["Home"].tap()
+        let unchangedScramble = scramble.label
+        swipe(to: right)
+        XCTAssertEqual(scramble.label, unchangedScramble)
+        XCTAssertEqual(readout.label, "Start timer")
+        XCTAssertFalse(confirmation.exists)
     }
 
     @MainActor

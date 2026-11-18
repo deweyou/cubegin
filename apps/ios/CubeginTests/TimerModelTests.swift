@@ -6,6 +6,60 @@ import Testing
 @MainActor
 struct TimerModelTests {
     @Test
+    func swipeDefaultsApplyOnlyWithoutAValidSavedAction() async throws {
+        try await withFixture { fixture in
+            let left = TimerSwipeDirection.left
+            let right = TimerSwipeDirection.right
+            #expect(left.action(in: fixture.defaults) == .newScramble)
+            #expect(right.action(in: fixture.defaults) == .deleteLastSolve)
+
+            fixture.defaults.set(TimerSwipeAction.none.rawValue, forKey: left.preferenceKey)
+            fixture.defaults.set(TimerSwipeAction.manualEntry.rawValue, forKey: right.preferenceKey)
+            #expect(left.action(in: fixture.defaults) == .none)
+            #expect(right.action(in: fixture.defaults) == .manualEntry)
+
+            fixture.defaults.set("unknown-action", forKey: right.preferenceKey)
+            #expect(right.action(in: fixture.defaults) == .deleteLastSolve)
+        }
+    }
+
+    @Test
+    func swipeDirectionRequiresClearHorizontalTravel() {
+        #expect(TimerSwipeDirection(translation: CGSize(width: -70, height: 20)) == .left)
+        #expect(TimerSwipeDirection(translation: CGSize(width: 70, height: -20)) == .right)
+        #expect(TimerSwipeDirection(translation: CGSize(width: 43, height: 0)) == nil)
+        #expect(TimerSwipeDirection(translation: CGSize(width: 60, height: 50)) == nil)
+        #expect(TimerSwipeDirection(translation: CGSize(width: 0, height: -70)) == nil)
+        #expect(TimerSwipeDirection(translation: CGSize(width: 0, height: 70)) == nil)
+    }
+
+    @Test
+    func timerModeAllowsOneOffManualEntryOnlyWhileIdle() async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+
+            model.press(.touch, delayTenths: 0)
+            #expect(model.manualSolveContext() == nil)
+            model.release(.touch)
+            #expect(model.inspectionStarted != nil)
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) != nil)
+            model.activateAccessibleTimer()
+            #expect(model.started != nil)
+            #expect(model.manualSolveContext() == nil)
+            model.interrupt()
+
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) == nil)
+            #expect(model.lastSolve?.resultText == "12.345")
+            #expect(model.lastSolve?.scramble == context.scramble)
+            #expect(model.usesInspection)
+        }
+    }
+
+    @Test
     func manualTimeUsesLeftAlignedDigitsAndValidatesSeconds() {
         #expect(ManualSolveTime("0012345").milliseconds == 12_345)
         #expect(ManualSolveTime("01:02.345").milliseconds == 62_345)

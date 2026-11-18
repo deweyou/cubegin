@@ -57,6 +57,9 @@ struct ContentView: View {
     private var canUseTimerInput: Bool {
         isTimerActive && !showsProjectList && assistScramble == nil && solveToDelete == nil && manualContext == nil
     }
+    private var canUseTimerTouch: Bool {
+        canUseTimerInput && (timerTouchResumesAt.map { ContinuousClock.now >= $0 } ?? true)
+    }
 
     var body: some View {
         Group {
@@ -180,8 +183,7 @@ struct ContentView: View {
         ), presenting: solveToDelete) { solve in
             Button(language.text("取消", "Cancel"), role: .cancel) {}
             Button(language.text("删除", "Delete"), role: .destructive) {
-                guard model.lastSolve?.id == solve.id else { return }
-                model.deleteLastSolve()
+                model.deleteSolve(solve.id)
             }
         }
         .task(id: model.busy) {
@@ -193,6 +195,9 @@ struct ContentView: View {
         }
         .onChange(of: hasTimerKeyboardFocus) { _, focused in
             if !focused { model.cancelPress(.keyboard) }
+        }
+        .onChange(of: solveToDelete?.id) { _, id in
+            if id == nil { resumeTimerInput() }
         }
 #if DEBUG
         .task {
@@ -710,16 +715,24 @@ struct ContentView: View {
     }
 
     private func openManualEntry() {
-        guard canUseTimerInput else { return }
-        if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
+        guard canUseTimerTouch else { return }
         setManualContext(model.manualSolveContext())
+    }
+
+    private func performSwipeAction(_ direction: TimerSwipeDirection) {
+        guard canUseTimerTouch, model.allowsIdleActions else { return }
+        switch direction.action() {
+        case .none: break
+        case .deleteLastSolve: solveToDelete = model.groupSolves.min(by: Solve.newestFirst)
+        case .newScramble: model.refresh(advance: true)
+        case .manualEntry: openManualEntry()
+        }
     }
 
     private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
             onDown: { feedback in
-                guard canUseTimerInput else { return }
-                if let timerTouchResumesAt, ContinuousClock.now < timerTouchResumesAt { return }
+                guard canUseTimerTouch else { return }
                 guard entryMethod == .timer || isTiming else { return }
                 if usesTimerHaptics, !model.usesInspection {
                     feedback.prepare()
@@ -744,7 +757,10 @@ struct ContentView: View {
                 model.cancelPress(.touch)
                 isInTimerCancelZone = false
             },
+            canBeginSwipe: { canUseTimerTouch && model.allowsIdleActions },
+            onSwipe: performSwipeAction,
             isReady: model.isTouchReady,
+            showsReadyFeedback: model.showsReadyFeedback,
             cancelZoneHeight: Self.cancelZoneHeight,
             cancelZoneTop: cancelZoneTop,
             onCancelZoneChange: { isInTimerCancelZone = $0 }
@@ -1179,7 +1195,10 @@ private struct TimerTouchSurface: UIViewRepresentable {
     var onDown: (UIImpactFeedbackGenerator) -> Void
     var onUp: () -> Void
     var onCancel: () -> Void
+    var canBeginSwipe: () -> Bool
+    var onSwipe: (TimerSwipeDirection) -> Void
     var isReady: Bool
+    var showsReadyFeedback: Bool
     var cancelZoneHeight: CGFloat
     var cancelZoneTop: CGFloat?
     var onCancelZoneChange: (Bool) -> Void
@@ -1198,10 +1217,13 @@ private struct TimerTouchSurface: UIViewRepresentable {
     }
 
     final class PressRecognizer: UIGestureRecognizer {
+        private enum Movement { case press, cancelZone, swipe }
+
         var callbacks: TimerTouchSurface?
         var readyFeedback: UIImpactFeedbackGenerator?
         private var initialPoint: CGPoint?
-        private var isDraggingUp = false
+        private var movement = Movement.press
+        private var canSwipe = false
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
             guard initialPoint == nil, touches.count == 1, let touch = touches.first, let readyFeedback else {
@@ -1209,30 +1231,50 @@ private struct TimerTouchSurface: UIViewRepresentable {
                 return
             }
             initialPoint = touch.location(in: view?.window)
+            canSwipe = callbacks?.canBeginSwipe() == true
             callbacks?.onDown(readyFeedback)
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard let initialPoint,
-                  let point = touches.first?.location(in: view?.window) else { return }
-            let dx = point.x - initialPoint.x
-            let dy = point.y - initialPoint.y
-            if let callbacks, callbacks.isReady, isDraggingUp || -dy > abs(dx) {
-                isDraggingUp = true
-                updateCancelZone(at: point, callbacks: callbacks)
-            } else if hypot(dx, dy) > 10 {
-                state = .failed
-            }
+            guard let point = touches.first?.location(in: view?.window) else { return }
+            trackMovement(to: point)
         }
 
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard initialPoint != nil else { return }
-            if isDraggingUp, let callbacks, let touch = touches.first {
-                updateCancelZone(at: touch.location(in: view?.window), callbacks: callbacks)
-            }
-            initialPoint = nil
+            guard let initialPoint, let point = touches.first?.location(in: view?.window) else { return }
+            trackMovement(to: point)
+            guard state != .failed else { return }
+            let movement = self.movement
+            self.initialPoint = nil
             state = .recognized
-            callbacks?.onUp()
+            if movement == .swipe {
+                let translation = CGSize(width: point.x - initialPoint.x, height: point.y - initialPoint.y)
+                if let direction = TimerSwipeDirection(translation: translation) {
+                    callbacks?.onSwipe(direction)
+                }
+            } else {
+                callbacks?.onUp()
+            }
+        }
+
+        private func trackMovement(to point: CGPoint) {
+            guard let initialPoint, let callbacks, movement != .swipe else { return }
+            let dx = point.x - initialPoint.x
+            let dy = point.y - initialPoint.y
+            if movement == .cancelZone {
+                updateCancelZone(at: point, callbacks: callbacks)
+            } else if hypot(dx, dy) > 10 {
+                if callbacks.isReady, -dy > abs(dx) {
+                    movement = .cancelZone
+                    updateCancelZone(at: point, callbacks: callbacks)
+                } else if canSwipe, !callbacks.showsReadyFeedback, abs(dx) > abs(dy) {
+                    // Abandon the press at its movement limit. A swipe still needs to travel far enough.
+                    movement = .swipe
+                    callbacks.onCancel()
+                } else {
+                    state = .failed
+                }
+            }
         }
 
         private func updateCancelZone(at point: CGPoint, callbacks: TimerTouchSurface) {
@@ -1248,7 +1290,8 @@ private struct TimerTouchSurface: UIViewRepresentable {
         override func reset() {
             if initialPoint != nil { callbacks?.onCancel() }
             initialPoint = nil
-            isDraggingUp = false
+            movement = .press
+            canSwipe = false
             super.reset()
         }
     }
