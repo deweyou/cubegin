@@ -6,6 +6,77 @@ import Testing
 @MainActor
 struct TimerModelTests {
     @Test
+    func manualTimeUsesLeftAlignedDigitsAndValidatesSeconds() {
+        #expect(ManualSolveTime("0012345").milliseconds == 12_345)
+        #expect(ManualSolveTime("01:02.345").milliseconds == 62_345)
+        #expect(ManualSolveTime("99:59.999").milliseconds == ManualSolveTime.maximumMilliseconds)
+        #expect(ManualSolveTime("0060").milliseconds == nil)
+        #expect(ManualSolveTime("0012").milliseconds == 12_000)
+        #expect(ManualSolveTime("00123").displayedDigits == "0012300")
+        #expect(ManualSolveTime("").milliseconds == 0)
+        #expect(ManualSolveTime("1").milliseconds == 600_000)
+        var edited = ManualSolveTime("0012345")
+        #expect(edited.insert("9", at: 5) == 6)
+        #expect(edited.displayedDigits == "0012395")
+        edited.clearDigit(at: 5)
+        #expect(edited.displayedDigits == "0012305")
+        #expect(TimerDisplay.wholeSeconds(.milliseconds(59_999)) == "59")
+        #expect(TimerDisplay.wholeSeconds(.seconds(60)) == "1:00")
+    }
+
+    @Test
+    func manualEntrySkipsInspectionAndSavesTheCurrentScramble() async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(SolveEntryMethod.manual.rawValue, forKey: TimerModel.entryMethodKey)
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            model.press(.touch, delayTenths: 0)
+            model.release(.touch)
+            model.activateAccessibleTimer()
+            #expect(model.started == nil)
+            #expect(model.inspectionStarted == nil)
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: .plusTwo, context: context) == nil)
+            #expect(model.lastSolve?.resultText == "14.345+")
+            #expect(model.lastSolve?.scramble == context.scramble)
+            #expect(model.lastSolve?.groupID == context.groupID)
+            try await waitForGeneration(model)
+            #expect(model.scramble?.algorithm != context.scramble)
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) != nil)
+            let next = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: nil, penalty: .dnf, context: next) == nil)
+            #expect(model.lastSolve?.resultText == "DNF")
+            let dnf = try #require(model.lastSolve)
+            #expect(!dnf.allowsPenaltyChange)
+            #expect(!model.setPenalty(.plusTwo, for: dnf.id))
+            #expect(!model.setPenalty(nil, for: dnf.id))
+            #expect(!model.togglePenalty(.dnf, for: dnf.id))
+            #expect(fixture.model().solves.first?.penalty == .dnf)
+            #expect(fixture.model().solves.count == 2)
+        }
+    }
+
+    @Test
+    func failedManualSaveKeepsTheScrambleForRetry() async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(SolveEntryMethod.manual.rawValue, forKey: TimerModel.entryMethodKey)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            try FileManager.default.createDirectory(at: fixture.storage, withIntermediateDirectories: false)
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) != nil)
+            #expect(model.solves.isEmpty)
+            #expect(model.scramble?.algorithm == context.scramble)
+            try FileManager.default.removeItem(at: fixture.storage)
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) == nil)
+            #expect(model.solves.count == 1)
+        }
+    }
+
+    @Test
     func trainingHintsMatchThePracticedStage() async throws {
         #expect(AssistMethod.available(for: "333.easy_cross") == [.cross])
         #expect(AssistMethod.available(for: "333.easy_xcross") == [.xcross])

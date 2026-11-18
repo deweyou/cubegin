@@ -349,6 +349,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
         app.launch()
 
         let event = app.buttons["Event"]
@@ -588,7 +589,7 @@ final class SolveFlowTests: XCTestCase {
         try XCTSkipUnless(timer.frame.midY < app.frame.minY + app.frame.height * 0.44,
                           "Run with the Duo partially unfolded.")
         XCTAssertTrue(diagram.exists)
-        XCTAssertTrue(summary.exists)
+        XCTAssertFalse(summary.exists)
         XCTAssertGreaterThan(event.frame.midY, app.frame.midY)
         XCTAssertLessThan(event.frame.maxY, diagram.frame.minY)
         XCTAssertLessThan(scramble.frame.maxY, timer.frame.minY)
@@ -893,7 +894,7 @@ final class SolveFlowTests: XCTestCase {
 
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2", "-timer.wcaInspection", "NO"]
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2", "-timer.wcaInspection", "NO", "-timer.entryMethod", "timer"]
         app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
 
@@ -909,8 +910,9 @@ final class SolveFlowTests: XCTestCase {
         let settings = app.buttons["side-nav.settings"]
         XCTAssertTrue(home.waitForExistence(timeout: 5))
         XCTAssertTrue(diagram.exists)
-        XCTAssertTrue(count.exists)
-        XCTAssertTrue(mo3.exists)
+        XCTAssertFalse(count.exists)
+        XCTAssertFalse(mo3.exists)
+        XCTAssertFalse(ao12.exists)
         XCTAssertTrue(results.exists)
         XCTAssertTrue(settings.exists)
         XCTAssertFalse(app.tabBars.buttons["Home"].exists)
@@ -918,8 +920,6 @@ final class SolveFlowTests: XCTestCase {
         let idleTimer = timer.frame
         XCTAssertLessThan(scramble.frame.maxX, idleTimer.midX)
         XCTAssertLessThan(diagram.frame.maxX, idleTimer.midX)
-        XCTAssertGreaterThan(count.frame.minY, idleTimer.maxY)
-        XCTAssertLessThanOrEqual(count.frame.maxX, mo3.frame.minX)
         XCTAssertGreaterThan(home.frame.minX, idleTimer.maxX)
         XCTAssertEqual(home.frame.midX, results.frame.midX, accuracy: 2)
         XCTAssertEqual(home.frame.midX, settings.frame.midX, accuracy: 2)
@@ -930,7 +930,6 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(edgeGap, 21, accuracy: 2)
         let hintsFrame = app.buttons["timer.formula-hints"].frame
         XCTAssertLessThan(hintsFrame.maxX, settings.frame.minX - 4)
-        XCTAssertEqual(ao12.frame.maxY, settings.frame.maxY + 4, accuracy: 3)
         let columnTop = hintsFrame.maxY + 8
         let columnBottom = settings.frame.maxY + 4
         // On iOS 26.2, XCTest reports the selectable text's AX frame beyond
@@ -981,6 +980,9 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(timer.frame.midY, idleTimer.midY, accuracy: 2)
         XCTAssertTrue(app.buttons["timer.penalty.dnf"].waitForExistence(timeout: 5))
         XCTAssertEqual(count.value as? String, "1 / 1")
+        XCTAssertGreaterThan(count.frame.minY, idleTimer.maxY)
+        XCTAssertFalse(mo3.exists)
+        XCTAssertFalse(ao12.exists)
         XCTAssertTrue(results.waitForExistence(timeout: 5))
 
         let formerRail = app.coordinate(withNormalizedOffset: .zero).withOffset(
@@ -1084,6 +1086,160 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testManualEntryCanCancelAndSaveAPenalizedResult() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "The Duo has a separate touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-timer.wcaInspection", "YES"]
+        app.launch()
+        let scramble = app.descendants(matching: .any)["timer.scramble"]
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        app.tabBars.buttons["Settings"].tap()
+        let method = app.descendants(matching: .any).matching(identifier: "settings.timer.entryMethod").firstMatch
+        let display = app.descendants(matching: .any).matching(identifier: "settings.timer.display").firstMatch
+        XCTAssertTrue(method.waitForExistence(timeout: 5))
+        let originallyUsedTimer = display.exists
+        if originallyUsedTimer {
+            method.tap()
+            app.buttons["Manual"].tap()
+        }
+        XCTAssertFalse(display.exists)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        let originalScramble = scramble.label
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Enter result", timeout: 5))
+        XCTAssertEqual(readout.value as? String, "0.000")
+        let summary = app.descendants(matching: .any)
+        XCTAssertFalse(summary["timer-summary.count"].exists)
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let idleScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        idleScreenshot.name = "Timer before manual entry"
+        idleScreenshot.lifetime = .keepAlways
+        add(idleScreenshot)
+        center.tap()
+        let field = app.textFields["manual-result.time"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(scramble.label, originalScramble)
+        center.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let save = app.buttons["Save"]
+        XCTAssertFalse(save.isEnabled)
+        let lastDigit = app.buttons["manual-result.digit.6"]
+        lastDigit.tap()
+        field.typeText("1")
+        XCTAssertEqual(lastDigit.value as? String, "1")
+        XCTAssertTrue(save.isEnabled)
+        lastDigit.tap()
+        field.typeText("0")
+        XCTAssertFalse(save.isEnabled)
+        app.buttons["manual-result.digit.0"].tap()
+        field.typeText("001234")
+        let digitValues = (0..<7).map { app.buttons["manual-result.digit.\($0)"].value as? String ?? "" }
+        XCTAssertEqual(digitValues.joined(), "0012340")
+        let plusTwo = app.buttons["+2"]
+        plusTwo.tap()
+        XCTAssertTrue(plusTwo.isSelected)
+        XCTAssertFalse(app.staticTexts["manual-result.preview"].exists)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Manual result entry"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        field.typeText("5")
+        XCTAssertEqual(lastDigit.value as? String, "5")
+        let editedDigit = app.buttons["manual-result.digit.5"]
+        editedDigit.tap()
+        XCTAssertTrue(editedDigit.isSelected)
+        field.typeText("9")
+        XCTAssertEqual(editedDigit.value as? String, "9")
+        XCTAssertEqual(lastDigit.value as? String, "5")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "14.395+"), object: readout
+        )], timeout: 5), .completed)
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        XCTAssertNotEqual(scramble.label, originalScramble)
+        XCTAssertEqual(summary["timer-summary.count"].value as? String, "1 / 1")
+        XCTAssertFalse(summary["timer-summary.ao12"].exists)
+
+        center.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.isEnabled)
+        app.buttons["DNF"].tap()
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        let timerDNF = app.buttons["timer.penalty.dnf"]
+        XCTAssertTrue(timerDNF.waitForExistence(timeout: 5))
+        XCTAssertTrue(timerDNF.isSelected)
+        XCTAssertFalse(timerDNF.isEnabled)
+        XCTAssertFalse(app.buttons["timer.penalty.plusTwo"].isEnabled)
+
+        app.tabBars.buttons["Results"].tap()
+        app.buttons["solve-row-2"].tap()
+        let noPenalty = app.buttons["solve-detail.no-penalty"]
+        let detailPlusTwo = app.buttons["solve-detail.+2"]
+        let detailDNF = app.buttons["solve-detail.DNF"]
+        XCTAssertTrue(detailDNF.waitForExistence(timeout: 5))
+        XCTAssertTrue(detailDNF.isSelected)
+        XCTAssertFalse(noPenalty.isEnabled)
+        XCTAssertFalse(detailPlusTwo.isEnabled)
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.buttons["solve-row-1"].tap()
+        XCTAssertTrue(detailPlusTwo.waitForExistence(timeout: 5))
+        XCTAssertTrue(detailPlusTwo.isSelected)
+        noPenalty.tap()
+        XCTAssertTrue(noPenalty.isSelected)
+        XCTAssertFalse(detailPlusTwo.isSelected)
+        noPenalty.tap()
+        XCTAssertTrue(noPenalty.isSelected)
+        detailDNF.tap()
+        XCTAssertTrue(detailDNF.isSelected)
+        XCTAssertFalse(noPenalty.isSelected)
+
+        if originallyUsedTimer {
+            app.tabBars.buttons["Settings"].tap()
+            method.tap()
+            app.buttons["Timer"].tap()
+            XCTAssertTrue(display.waitForExistence(timeout: 5))
+        }
+    }
+
+    @MainActor
+    func testObservationOnlyKeepsInspectionAndFinalTime() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "The Duo has a separate touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-timer.display", "observation", "-timer.wcaInspection", "YES"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["timer.scramble"].waitForExistence(timeout: 20))
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["timer.inspection"].waitForExistence(timeout: 5))
+        center.tap()
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Solving"), object: readout
+        )], timeout: 5), .completed)
+        center.tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        let result = try XCTUnwrap(readout.value as? String)
+        XCTAssertNotNil(result.range(of: #"^\d+\.\d{3}$"#, options: .regularExpression))
+    }
+
+    @MainActor
     func testQuickInspectionTapsUseTheSharedTimer() throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
                       "Use the Duo-specific case for its separate touch surface.")
@@ -1093,6 +1249,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
                                 "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "20"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
         app.launch()
         let scramble = app.descendants(matching: .any)["timer.scramble"]
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
@@ -1146,6 +1303,7 @@ final class SolveFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.startDelayTenths", "2"]
+        app.launchArguments += ["-timer.entryMethod", "timer"]
         app.launch()
         XCUIDevice.shared.orientation = .portrait
 

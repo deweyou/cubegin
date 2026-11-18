@@ -12,6 +12,8 @@ struct Solve: Codable, Identifiable, Equatable, Sendable {
     var penalty: SolvePenalty?
     var groupID: String?
 
+    var allowsPenaltyChange: Bool { penalty != .dnf || seconds != 0 }
+
     var resultSeconds: Double? {
         switch penalty {
         case .plusTwo: seconds + 2
@@ -70,17 +72,57 @@ enum InspectionVoice: String, CaseIterable {
     }
 }
 
+enum TimerDisplay: String, CaseIterable {
+    case realtime, seconds, observation
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .realtime: language.text("实时", "Real time")
+        case .seconds: language.text("到秒", "Whole seconds")
+        case .observation: language.text("仅观察", "Observation only")
+        }
+    }
+
+    static func wholeSeconds(_ duration: Duration) -> String {
+        let seconds = max(0, duration.components.seconds)
+        let minutes = seconds / 60
+        return minutes == 0 ? String(seconds) : String(format: "%lld:%02lld", minutes, seconds % 60)
+    }
+}
+
+enum SolveEntryMethod: String, CaseIterable {
+    case timer, manual
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .timer: language.text("计时器", "Timer")
+        case .manual: language.text("手动", "Manual")
+        }
+    }
+}
+
+struct ManualSolveContext: Identifiable {
+    let id = UUID()
+    let event: String
+    let scramble: String
+    let groupID: String?
+}
+
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
-    static let defaultStartDelayTenths = 2
+    static let defaultStartDelayTenths = 0
     static let keepTimerScreenOnKey = "timer.keepScreenOn"
+    static let displayKey = "timer.display"
+    static let entryMethodKey = "timer.entryMethod"
     static let hapticsKey = "timer.haptics"
     static let inspectionKey = "timer.wcaInspection"
     static let trainingInspectionKey = "timer.trainingInspection"
     static let inspectionVoiceKey = "timer.inspectionVoice"
 
+    private var usesManualEntry: Bool { defaults.string(forKey: Self.entryMethodKey) == SolveEntryMethod.manual.rawValue }
+
     var usesInspection: Bool {
-        defaults.bool(forKey: Self.inspectionKey)
+        !usesManualEntry && defaults.bool(forKey: Self.inspectionKey)
             && (mode == .standard || defaults.bool(forKey: Self.trainingInspectionKey))
             && !["333bld", "444bld", "555bld"].contains(event)
     }
@@ -402,7 +444,7 @@ enum InspectionVoice: String, CaseIterable {
             stop()
             return
         }
-        guard heldInput == nil, scramble != nil, !busy else { return }
+        guard !usesManualEntry, heldInput == nil, scramble != nil, !busy else { return }
         heldInput = input
         let bypassesHoldDelay = usesInspection || inspectionStarted != nil
         let delay = bypassesHoldDelay ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
@@ -430,7 +472,7 @@ enum InspectionVoice: String, CaseIterable {
         let deadline = readyAt
         let instant = now()
         cancelPress()
-        guard scramble != nil, !busy else { return }
+        guard !usesManualEntry, scramble != nil, !busy else { return }
         guard let deadline, instant >= deadline else { return }
         if usesInspection, inspectionStarted == nil {
             beginInspection(at: instant)
@@ -463,7 +505,7 @@ enum InspectionVoice: String, CaseIterable {
     func activateAccessibleTimer() {
         if started != nil {
             stop()
-        } else if scramble != nil, !busy {
+        } else if !usesManualEntry, scramble != nil, !busy {
             cancelPress()
             let instant = now()
             if usesInspection, inspectionStarted == nil {
@@ -481,9 +523,42 @@ enum InspectionVoice: String, CaseIterable {
         let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
                           penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
+        _ = save([solve] + solves)
+        finishSolve(solve)
+    }
+
+    func manualSolveContext() -> ManualSolveContext? {
+        guard usesManualEntry, started == nil, !busy, let scramble else { return nil }
+        return ManualSolveContext(event: event, scramble: scramble.algorithm, groupID: currentGroup?.id)
+    }
+
+    func saveManualSolve(milliseconds: Int?, penalty: SolvePenalty?, context: ManualSolveContext) -> String? {
+        let language = AppLanguage.saved
+        guard let current = manualSolveContext(),
+              context.event == current.event, context.scramble == current.scramble, context.groupID == current.groupID else {
+            return language.text("当前打乱或分组已变更，请重新打开录入窗口。",
+                                 "The scramble or group changed. Reopen the entry form.")
+        }
+        guard let milliseconds = milliseconds ?? (penalty == .dnf ? 0 : nil),
+              penalty == .dnf || milliseconds > 0,
+              (0...ManualSolveTime.maximumMilliseconds).contains(milliseconds) else {
+            return language.text("请输入有效用时。", "Enter a valid time.")
+        }
+        let solve = Solve(seconds: Double(milliseconds) / 1_000, event: context.event, scramble: context.scramble,
+                          penalty: penalty, groupID: context.groupID)
+        let previousError = error
+        if !save([solve] + solves) {
+            let message = error
+            error = previousError
+            return message ?? language.text("成绩保存失败。", "Could not save the result.")
+        }
+        finishSolve(solve)
+        return nil
+    }
+
+    private func finishSolve(_ solve: Solve) {
         lastSolveID = solve.id
         solves.insert(solve, at: 0)
-        _ = save(solves)
         refresh(advance: true)
     }
 
@@ -500,7 +575,8 @@ enum InspectionVoice: String, CaseIterable {
 
     @discardableResult
     func setPenalty(_ penalty: SolvePenalty?, for id: Solve.ID) -> Bool {
-        guard started == nil, let index = solves.firstIndex(where: { $0.id == id }) else { return false }
+        guard started == nil, let index = solves.firstIndex(where: { $0.id == id }),
+              solves[index].allowsPenaltyChange || penalty == .dnf else { return false }
         cancelPress()
         var updated = solves
         updated[index].penalty = penalty
