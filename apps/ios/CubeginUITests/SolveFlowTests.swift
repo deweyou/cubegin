@@ -1146,6 +1146,10 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(field.exists)
         XCTAssertEqual(readout.label, "Start timer")
 
+        swipe(to: center.withOffset(CGVector(dx: 22, dy: 0)))
+        XCTAssertEqual(scramble.label, originalScramble)
+        XCTAssertEqual(readout.label, "Start timer")
+
         swipe(to: right)
         let newScramble = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == YES AND label != %@", originalScramble), object: scramble

@@ -2045,7 +2045,7 @@ private struct TimerSwipePicker: View {
 
     init(direction: TimerSwipeDirection) {
         self.direction = direction
-        _action = AppStorage(wrappedValue: .none, direction.preferenceKey)
+        _action = AppStorage(wrappedValue: direction.defaultAction, direction.preferenceKey)
     }
 
     var body: some View {

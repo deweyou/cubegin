@@ -106,8 +106,15 @@ enum TimerSwipeDirection: String, CaseIterable {
 
     var preferenceKey: String { "timer.swipe.\(rawValue)" }
 
-    var action: TimerSwipeAction {
-        TimerSwipeAction(rawValue: UserDefaults.standard.string(forKey: preferenceKey) ?? "") ?? .none
+    var defaultAction: TimerSwipeAction {
+        switch self {
+        case .left: .newScramble
+        case .right: .deleteLastSolve
+        }
+    }
+
+    func action(in defaults: UserDefaults = .standard) -> TimerSwipeAction {
+        TimerSwipeAction(rawValue: defaults.string(forKey: preferenceKey) ?? "") ?? defaultAction
     }
 
     func title(in language: AppLanguage) -> String {

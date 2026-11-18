@@ -721,7 +721,7 @@ struct ContentView: View {
 
     private func performSwipeAction(_ direction: TimerSwipeDirection) {
         guard canUseTimerTouch, model.allowsIdleActions else { return }
-        switch direction.action {
+        switch direction.action() {
         case .none: break
         case .deleteLastSolve: solveToDelete = model.groupSolves.min(by: Solve.newestFirst)
         case .newScramble: model.refresh(advance: true)
@@ -1268,6 +1268,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
                     movement = .cancelZone
                     updateCancelZone(at: point, callbacks: callbacks)
                 } else if canSwipe, !callbacks.showsReadyFeedback, abs(dx) > abs(dy) {
+                    // Abandon the press at its movement limit. A swipe still needs to travel far enough.
                     movement = .swipe
                     callbacks.onCancel()
                 } else {
