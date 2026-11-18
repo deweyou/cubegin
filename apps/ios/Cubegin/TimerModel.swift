@@ -101,6 +101,43 @@ enum SolveEntryMethod: String, CaseIterable {
     }
 }
 
+enum TimerSwipeDirection: String, CaseIterable {
+    case left, right
+
+    var preferenceKey: String { "timer.swipe.\(rawValue)" }
+
+    var action: TimerSwipeAction {
+        TimerSwipeAction(rawValue: UserDefaults.standard.string(forKey: preferenceKey) ?? "") ?? .none
+    }
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .left: language.text("向左轻扫", "Swipe left")
+        case .right: language.text("向右轻扫", "Swipe right")
+        }
+    }
+
+    init?(translation: CGSize) {
+        let horizontal = abs(translation.width)
+        let vertical = abs(translation.height)
+        guard horizontal >= 44, horizontal > 1.5 * vertical else { return nil }
+        self = translation.width < 0 ? .left : .right
+    }
+}
+
+enum TimerSwipeAction: String, CaseIterable {
+    case none, deleteLastSolve, newScramble, manualEntry
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .none: language.text("无", "None")
+        case .deleteLastSolve: language.text("删除上一次成绩", "Delete last result")
+        case .newScramble: language.text("生成新打乱", "Generate new scramble")
+        case .manualEntry: language.text("手动输入成绩", "Enter result manually")
+        }
+    }
+}
+
 struct ManualSolveContext: Identifiable {
     let id = UUID()
     let event: String
@@ -184,6 +221,9 @@ struct ManualSolveContext: Identifiable {
     private(set) var showsReadyFeedback = false
     @ObservationIgnored private var heldInput: TimerInput?
     var isTouchReady: Bool { isReady && heldInput == .touch }
+    var allowsIdleActions: Bool {
+        started == nil && inspectionStarted == nil && heldInput == nil && !busy
+    }
     @ObservationIgnored private var readyAt: ContinuousClock.Instant?
     @ObservationIgnored private var readinessTask: Task<Void, Never>?
     private(set) var solves: [Solve] = []
@@ -528,7 +568,7 @@ struct ManualSolveContext: Identifiable {
     }
 
     func manualSolveContext() -> ManualSolveContext? {
-        guard usesManualEntry, started == nil, !busy, let scramble else { return nil }
+        guard allowsIdleActions, let scramble else { return nil }
         return ManualSolveContext(event: event, scramble: scramble.algorithm, groupID: currentGroup?.id)
     }
 
@@ -583,11 +623,6 @@ struct ManualSolveContext: Identifiable {
         guard save(updated) else { return false }
         solves = updated
         return true
-    }
-
-    func deleteLastSolve() {
-        guard let lastSolve else { return }
-        deleteSolve(lastSolve.id)
     }
 
     @discardableResult

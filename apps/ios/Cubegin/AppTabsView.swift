@@ -1842,7 +1842,7 @@ private struct SettingsView: View {
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case imports, clearResults }
+    private enum Page: Hashable { case gestures, imports, clearResults }
     @State private var path: [Page] = []
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
@@ -1959,6 +1959,13 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.timer.display")
                         timerSettings
                     }
+                    cardRowButton {
+                        path.append(.gestures)
+                    } label: {
+                        settingsLinkLabel(language.text("手势", "Gestures"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.timer.gestures")
                 }
                 CardSection(language.text("成绩", "Results")) {
                     Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
@@ -1984,6 +1991,7 @@ private struct SettingsView: View {
             }
             .navigationDestination(for: Page.self) { page in
                 switch page {
+                case .gestures: TimerGestureSettingsView()
                 case .imports: ResultsImportView(model: model)
                 case .clearResults: ClearResultsView(model: model)
                 }
@@ -2007,6 +2015,49 @@ private struct SettingsView: View {
         .onChange(of: isSelected) { _, selected in
             if !selected { path.removeAll() }
         }
+    }
+}
+
+private struct TimerGestureSettingsView: View {
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+
+    var body: some View {
+        Form {
+            CardSection {
+                ForEach(TimerSwipeDirection.allCases, id: \.self) { direction in
+                    TimerSwipePicker(direction: direction)
+                }
+            } footer: {
+                Text(language.text("在计时页待机时轻扫以执行快捷操作。",
+                                   "Swipe on the timer while it is idle to run a shortcut."))
+            }
+        }
+        .appBackground()
+        .navigationTitle(language.text("手势", "Gestures"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+}
+
+private struct TimerSwipePicker: View {
+    let direction: TimerSwipeDirection
+    @AppStorage private var action: TimerSwipeAction
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+
+    init(direction: TimerSwipeDirection) {
+        self.direction = direction
+        _action = AppStorage(wrappedValue: .none, direction.preferenceKey)
+    }
+
+    var body: some View {
+        Picker(direction.title(in: language), selection: SettingsSync.binding($action, key: direction.preferenceKey) { $0.rawValue }) {
+            ForEach(TimerSwipeAction.allCases, id: \.self) { option in
+                Text(option.title(in: language)).tag(option)
+            }
+        }
+        .accessibilityIdentifier("settings.timer.swipe.\(direction.rawValue)")
     }
 }
 
