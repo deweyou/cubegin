@@ -1166,7 +1166,7 @@ final class SolveFlowTests: XCTestCase {
         swipe(to: right)
         let confirmation = app.alerts["Delete this solve?"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertTrue(confirmation.staticTexts["12.345"].exists)
+        XCTAssertFalse(confirmation.staticTexts["12.345"].exists)
         confirmation.buttons["Delete"].tap()
         expectResult("0.000")
 

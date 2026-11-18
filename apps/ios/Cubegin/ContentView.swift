@@ -185,8 +185,6 @@ struct ContentView: View {
             Button(language.text("删除", "Delete"), role: .destructive) {
                 model.deleteSolve(solve.id)
             }
-        } message: { solve in
-            Text(solve.resultText)
         }
         .task(id: model.busy) {
             showsGenerating = false

@@ -2028,9 +2028,6 @@ private struct TimerGestureSettingsView: View {
                 ForEach(TimerSwipeDirection.allCases, id: \.self) { direction in
                     TimerSwipePicker(direction: direction)
                 }
-            } footer: {
-                Text(language.text("在计时页待机时轻扫以执行快捷操作。",
-                                   "Swipe on the timer while it is idle to run a shortcut."))
             }
         }
         .appBackground()
