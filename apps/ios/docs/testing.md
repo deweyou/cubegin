@@ -139,18 +139,31 @@ Duo 多显示器截图要明确选择当前屏幕，不能默认读取外屏：�
 
 ## 本地真机安装
 
-Xcode 需登录开发者账号并完成 Apple 要求的协议更新，手机需配对并启用开发者模式。
-`xcrun devicectl list devices` 获取物理设备 UDID。可用命令行覆盖签名团队和版本，
-避免将个人签名配置写进工程：
+本地调试默认安装 **Cubegin Dev**。独立的 Bundle ID `io.github.deweyou.cubegin.dev`
+为它创建单独的成绩和设置容器。App 仅在正式版 Bundle ID 下启用 iCloud 设置同步。
+
+Xcode 需登录开发者账号并完成 Apple 要求的协议更新，设备需配对并启用开发者模式。
+用 `xcrun devicectl list devices` 获取 UDID。在 `apps/ios/` 下将命令中的
+`<UDID>` 和 `<TEAM_ID>` 替换为实际值，然后构建：
 
 ```sh
 xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
   -destination 'platform=iOS,id=<UDID>' -configuration Debug \
-  -derivedDataPath /tmp/cubegin-ios-device -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM=<TEAM_ID> CURRENT_PROJECT_VERSION=1 MARKETING_VERSION=0.1.0 build
-xcrun devicectl device install app --device <UDID> \
-  /tmp/cubegin-ios-device/Build/Products/Debug-iphoneos/cubegin.app
-xcrun devicectl device process launch --device <UDID> io.github.deweyou.cubegin
+  -derivedDataPath /tmp/cubegin-ios-device-dev -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM=<TEAM_ID> \
+  PRODUCT_BUNDLE_IDENTIFIER=io.github.deweyou.cubegin.dev \
+  'INFOPLIST_KEY_CFBundleDisplayName=Cubegin Dev' CODE_SIGN_ENTITLEMENTS= build
 ```
 
-签名构建、安装返回成功、启动返回成功与真机画面/交互验收应分开记录。
+安装前核对实际产物的 Bundle ID 和显示名称。两项分别是
+`io.github.deweyou.cubegin.dev` 和 `Cubegin Dev` 时，再安装并启动：
+
+```sh
+dev_app=/tmp/cubegin-ios-device-dev/Build/Products/Debug-iphoneos/cubegin.app
+test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io.github.deweyou.cubegin.dev &&
+  test "$(plutil -extract CFBundleDisplayName raw -o - "$dev_app/Info.plist")" = 'Cubegin Dev' &&
+  xcrun devicectl device install app --device <UDID> "$dev_app" &&
+  xcrun devicectl device process launch --device <UDID> io.github.deweyou.cubegin.dev
+```
+
+签名构建、安装成功、启动成功与真机画面或交互验收应分开记录。

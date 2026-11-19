@@ -10,7 +10,8 @@ node scripts/build-ios.mjs --app-only
 open apps/ios/Cubegin.xcodeproj
 ```
 
-Select **CubeginApp** and an iPhone/iPad simulator. For a physical device, select a development team in Signing & Capabilities.
+Build, install, and launch the latest **CubeginApp** on an iPhone simulator and leave it open where the change can be tested. Use the requested iPad, Duo, or physical device for device-specific review.
+Use the separate [Cubegin Dev build](docs/testing.md#本地真机安装) for local debugging on a physical device.
 The project links the **Cubegin** product from the root Swift Package, which uses
 the generated Swift bindings and `dist/CubeginFFI.xcframework`. Rerun the build
 command after Core changes. For SDK packaging and isolated consumer tests, run
