@@ -57,10 +57,10 @@ ao500、ao1000、ao10000。mo3 保留全部成绩。ao 的最快与最差两端�
 [csTimer 默认裁剪规则](https://github.com/cs0x7f/cstimer/blob/master/src/js/stats/timestat.js) ·
 [DCTimer 平均与 σ](https://github.com/MeigenChou/DCTimer-Android/blob/master/app/src/main/java/com/dctimer/util/Stats.java)
 
-SVG 由 Rust 生成，App 使用禁止 JavaScript 的 WKWebView 显示。开始计时后在后台预取
-下一条打乱及 SVG，两个 WebView 交替显示和预加载。停止计时后保留上一张图，直到新图
-加载完成。打乱公式等待超过 250 ms 才显示「生成中…」。原生渲染和控件归
-产品负责。首页计时页固定在一屏内。成绩概要包括有效成绩次数与总次数、总平均、最好单次及当前 mo3、ao5、ao12。iPhone 竖屏和 iPad 在底部并排显示成绩概要和打乱图，概要按图像实际显示高度缩放。
+SVG 由 Rust 生成，App 使用禁止 JavaScript 的 WKWebView 显示。当前打乱及 SVG 生成后，
+立即在后台预取同项目的下一条，切换项目时丢弃旧项目的预取结果。两个 WebView 交替
+显示和预加载。新公式和对应的图同时展示，图尚未加载时两者一起等候。等待超过 250 ms
+显示「生成中…」。首页计时页固定在一屏内。成绩概要包括有效成绩次数与总次数、总平均、最好单次及当前 mo3、ao5、ao12。iPhone 竖屏和 iPad 在底部并排显示成绩概要和打乱图，概要按图像实际显示高度缩放。
 
 iPad 和展开的 Duo 在计时两侧显示最近的 ao5 和单次成绩，两列共用 26–30pt 行高，按打乱与展开图之间的空间调整。
 

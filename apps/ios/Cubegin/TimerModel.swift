@@ -482,6 +482,7 @@ struct ManualSolveContext: Identifiable {
             scramble = nextScramble
             self.nextScramble = nil
             busy = false
+            prefetchNextScramble()
             return
         }
 
@@ -502,6 +503,7 @@ struct ManualSolveContext: Identifiable {
                 self.scramble = generated
                 self.nextScramble = nil
                 self.busy = false
+                self.prefetchNextScramble()
             } catch {
                 guard !Task.isCancelled, let self, self.event == event else { return }
                 self.error = error.localizedDescription
@@ -519,12 +521,15 @@ struct ManualSolveContext: Identifiable {
 #else
         started = instant
 #endif
+    }
+
+    private func prefetchNextScramble() {
         guard prefetchTask == nil else { return }
         let event = self.event
         prefetchTask = Task { [weak self, generateScramble] in
             let generated = try await generateScramble(event)
             try Task.checkCancellation()
-            if let self, self.event == event, self.started != nil {
+            if let self, self.event == event, !self.busy {
                 self.nextScramble = generated
             }
             return generated
@@ -588,9 +593,6 @@ struct ManualSolveContext: Identifiable {
         endInspection()
         guard started != nil else { return }
         started = nil
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        nextScramble = nil
         error = AppLanguage.saved.text("计时因 App 进入后台或中断而取消，未保存成绩。", "Timing was interrupted. The solve was not saved.")
     }
 
