@@ -6,7 +6,7 @@
 | --- | --- |
 | `rust.yml` | Cargo 工作区、Rust 测试与示例、打包脚本。运行 `cargo xtask check`、4×4/FTO 解法回放及七个 crate 的独立打包验证。 |
 | `web.yml` | Rust 引擎、WASM 绑定、Web SDK、工作台、浏览器测试及构建输入。运行 `pnpm lint`，验证真实 WASM 和 npm 独立消费，浏览器 E2E 复用构建结果并比较截图。 |
-| `apple.yml` | Rust 引擎、原生绑定、Swift SDK、iOS App 源码、资源和测试。运行 SwiftLint，验证 Swift 宿主调用及生成绑定，复用同一份 XCFramework 构建 iOS Release、运行模拟器测试和验证独立 SwiftPM 消费。 |
+| `apple.yml` | Rust 引擎、原生绑定、Swift SDK、iOS App 源码、资源和测试。运行 SwiftLint，验证 Swift 宿主调用及生成绑定，复用同一份 XCFramework 构建 iOS Release、并行运行两组 iOS 模拟器检查，并验证独立 SwiftPM 消费。 |
 | `android.yml` | Rust 引擎、原生绑定、Android SDK 和 Gradle 消费方。验证 Kotlin 单测、三种 ABI 的 AAR 及独立 Maven 消费。 |
 | `versions.yml` | Cargo 清单、npm 包元数据、Android Gradle 版本和发布计划脚本。验证版本一致性并保留 dry-run 计划。 |
 | `docs.yml` | Markdown、模块文档目录和品牌 SVG。验证仓库内文档链接和资源。 |
@@ -15,6 +15,31 @@
 纯文档改动走文档检查，修改 workflow 后可手动运行受影响的产品检查来验证构建命令或 runner 配置。Rust crate 的测试和诊断示例由 Rust workflow 验证。平台共享样例为 `fixtures/states.json` 和 `fixtures/events.json`。iOS 使用已提交的资源，排除设计参考、素材生成脚本和预览工程。Android 的 `sdk/android/smoke/` 由独立的本地 Kotlin 冒烟测试使用。
 
 合入前确认 PR 最新提交所需检查全部通过。路径筛选可能使无关 workflow 不产生检查结果。GitHub 的路径比较最多覆盖 300 个文件，大型改动若缺少预期检查，手动运行对应 workflow。跟进步骤见 [PR 跟进](pr-follow-up.md)。
+
+## iOS 模拟器分组
+
+`iOS App (simulator-a)` 和 `iOS App (simulator-b)` 在 Apple SDK 构建完成后分别
+启动。各自在 macOS runner 上准备独立的 iPhone 17 Pro 模拟器，构建 App 和测试，再以
+`-parallel-testing-enabled NO` 执行本组。两个 runner 复用 XCFramework 和生成绑定，
+各自生成测试构建产物。
+
+[测试分组脚本](../scripts/test-ios-simulator.sh)用指定用例运行 A 组。B 组执行 App 单测
+和其余 UI 用例，并排除 A 组清单中的用例。新增测试会自动进入 B 组。根据 GitHub
+Actions 的实测用例耗时，把需要分流的 `SolveFlowTests` 用例移入 A 组清单。iPad 和
+Duo 用例保留原有设备检查，在 iPhone CI 中按原条件跳过。
+
+初始分组使用[历史模拟器日志](https://github.com/deweyou/cubegin/actions/runs/44268378106/job/134679831430)
+的 18 条通过用例耗时，并以本地实测估算两条新增庆祝用例。手动录入、横屏页面边缘等用例
+归入 A 组。计时手势、清空成绩、横屏成绩等用例归入 B 组。A 组用例预计约 5 分 48 秒，
+B 组算上单测和设备跳过约 5 分 47 秒。这些估算只覆盖测试执行。
+
+失败时在 GitHub Actions 单独重跑对应 job。每组上传 `app-test-results-simulator-a`
+或 `app-test-results-simulator-b`，包含各自的 `.xcresult`。比较吞吐量时，分别记录
+从 SDK 完成到 runner 启动的等待时间，以及准备模拟器、构建、运行测试和 runner 的用时。
+合计等待时间以 SDK 完成至较晚结束的模拟器 job 通过为准。
+
+`main` 当前规则集未配置必需的检查名称。若之后需要把模拟器测试设为必需检查，
+在分支保护中同时要求 `iOS App (simulator-a)` 和 `iOS App (simulator-b)`。
 
 ## 运行环境与产物
 

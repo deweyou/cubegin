@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/apple.yml'
+      - 'scripts/test-ios-simulator.sh'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
@@ -41,6 +43,8 @@ on:
       - 'scripts/test-swift.mjs'
   pull_request:
     paths:
+      - '.github/workflows/apple.yml'
+      - 'scripts/test-ios-simulator.sh'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
@@ -174,7 +178,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [release, simulator-tests]
+        check: [release, simulator-a, simulator-b]
     runs-on: macos-15
     timeout-minutes: 30
     env:
@@ -192,9 +196,9 @@ jobs:
           xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
             -destination 'generic/platform=iOS' -configuration Release \
             -derivedDataPath DerivedData/release CODE_SIGNING_ALLOWED=NO build
-      - name: Run App unit and UI tests
-        if: matrix.check == 'simulator-tests'
-        working-directory: apps/ios
+      - name: Prepare iPhone simulator
+        if: matrix.check != 'release'
+        id: simulator
         run: |
           runtime=com.apple.CoreSimulator.SimRuntime.iOS-26-2
           device_type=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro
@@ -207,15 +211,34 @@ jobs:
           if [[ -z "$simulator" ]]; then
             simulator=$(xcrun simctl create 'Cubegin iPhone 17 Pro' "$device_type" "$runtime")
           fi
+          xcrun simctl bootstatus "$simulator" -b
+          echo "id=$simulator" >> "$GITHUB_OUTPUT"
+      - name: Build App and tests
+        if: matrix.check != 'release'
+        working-directory: apps/ios
+        env:
+          SIMULATOR: ${{ steps.simulator.outputs.id }}
+        run: |
           xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
-            -destination "platform=iOS Simulator,id=$simulator" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR" \
             -derivedDataPath DerivedData/app-tests \
-            -resultBundlePath DerivedData/AppTests.xcresult \
-            -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build-for-testing
+      - name: Run assigned App tests
+        if: matrix.check != 'release'
+        working-directory: apps/ios
+        env:
+          SHARD: ${{ matrix.check }}
+          SIMULATOR: ${{ steps.simulator.outputs.id }}
+        run: |
+          bash ../../scripts/test-ios-simulator.sh "$SHARD" \
+            -project Cubegin.xcodeproj -scheme CubeginApp \
+            -destination "platform=iOS Simulator,id=$SIMULATOR" \
+            -derivedDataPath DerivedData/app-tests \
+            -resultBundlePath "DerivedData/AppTests-$SHARD.xcresult"
       - name: Upload App test results
-        if: ${{ !cancelled() && matrix.check == 'simulator-tests' && hashFiles('apps/ios/DerivedData/AppTests.xcresult/Info.plist') != '' }}
+        if: ${{ !cancelled() && matrix.check != 'release' && hashFiles(format('apps/ios/DerivedData/AppTests-{0}.xcresult/Info.plist', matrix.check)) != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: app-test-results
-          path: apps/ios/DerivedData/AppTests.xcresult
+          name: app-test-results-${{ matrix.check }}
+          path: apps/ios/DerivedData/AppTests-${{ matrix.check }}.xcresult
           retention-days: 14
