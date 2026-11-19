@@ -233,7 +233,9 @@ struct ManualSolveContext: Identifiable {
     }
     @ObservationIgnored private var readyAt: ContinuousClock.Instant?
     @ObservationIgnored private var readinessTask: Task<Void, Never>?
-    private(set) var solves: [Solve] = []
+    private(set) var solves: [Solve] = [] {
+        didSet { updateLastSolveCelebration() }
+    }
     private(set) var groups: [SolveGroup] = []
     private var lastImportedSolveIDs: Set<Solve.ID> = []
     var lastImportCount: Int { lastImportedSolveIDs.count }
@@ -250,10 +252,39 @@ struct ManualSolveContext: Identifiable {
             $0.event == event && ($0.groupID ?? SolveGroup.initialID(for: $0.event)) == currentGroup.id
         }
     }
-    private(set) var lastSolveID: Solve.ID?
+    private(set) var lastSolveID: Solve.ID? {
+        didSet {
+            if lastSolveID != oldValue { lastSolveCelebration = nil }
+        }
+    }
     var lastSolve: Solve? {
         guard let solve = solves.first, solve.id == lastSolveID else { return nil }
         return solve
+    }
+    private var lastSolveWasSaved = false
+    private var celebratedSolveID: Solve.ID?
+    private(set) var lastSolveCelebration: SolveCelebration?
+    var celebratedLastSolve: SolveCelebration? {
+        guard let lastSolveCelebration, lastSolveCelebration.solveID == celebratedSolveID else { return nil }
+        return lastSolveCelebration
+    }
+
+    func takeAutomaticCelebration() -> SolveCelebration? {
+        guard let celebration = lastSolveCelebration, celebration.solveID != celebratedSolveID else {
+            return nil
+        }
+        celebratedSolveID = celebration.solveID
+        return celebration
+    }
+
+    private func updateLastSolveCelebration() {
+        guard lastSolveWasSaved, let solve = lastSolve,
+              solve.event == event, (solve.groupID ?? SolveGroup.initialID(for: solve.event)) == currentGroup?.id else {
+            lastSolveCelebration = nil
+            return
+        }
+        let history = groupSolves.filter { Solve.newestFirst(solve, $0) }.sorted(by: Solve.newestFirst)
+        lastSolveCelebration = SolveCelebration(solve: solve, history: history)
     }
     private var storageReadFailed = false
     private let storage: URL
@@ -268,6 +299,14 @@ struct ManualSolveContext: Identifiable {
             return false
         }
         return environment["CUBEGIN_UI_TEST_LONG_SOLVE"] == "1"
+    }()
+
+    private static let usesCelebrationUITestHistory: Bool = {
+        let environment = ProcessInfo.processInfo.environment
+        guard let session = environment["CUBEGIN_UI_TEST_SESSION"], UUID(uuidString: session) != nil else {
+            return false
+        }
+        return environment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] == "1"
     }()
 #endif
 
@@ -308,6 +347,12 @@ struct ManualSolveContext: Identifiable {
             solves = (0..<12).reversed().map { index in
                 Solve(seconds: 35_998, event: "333", scramble: "R U",
                       date: Date(timeIntervalSinceReferenceDate: Double(index)), penalty: .plusTwo)
+            }
+        }
+        if solves.isEmpty, Self.usesCelebrationUITestHistory {
+            solves = (0..<12).reversed().map { index in
+                Solve(seconds: 24.82 - Double(index) * 0.53, event: "333", scramble: "R U",
+                      date: Date(timeIntervalSinceReferenceDate: Double(index)))
             }
         }
 #endif
@@ -570,8 +615,8 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
                           penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
-        _ = save([solve] + solves)
-        finishSolve(solve)
+        let saved = save([solve] + solves)
+        finishSolve(solve, saved: saved)
     }
 
     func manualSolveContext() -> ManualSolveContext? {
@@ -599,12 +644,13 @@ struct ManualSolveContext: Identifiable {
             error = previousError
             return message ?? language.text("成绩保存失败。", "Could not save the result.")
         }
-        finishSolve(solve)
+        finishSolve(solve, saved: true)
         return nil
     }
 
-    private func finishSolve(_ solve: Solve) {
+    private func finishSolve(_ solve: Solve, saved: Bool) {
         lastSolveID = solve.id
+        lastSolveWasSaved = saved
         solves.insert(solve, at: 0)
         refresh(advance: true)
     }
@@ -628,6 +674,7 @@ struct ManualSolveContext: Identifiable {
         var updated = solves
         updated[index].penalty = penalty
         guard save(updated) else { return false }
+        if id == lastSolveID { lastSolveWasSaved = true }
         solves = updated
         return true
     }
@@ -743,8 +790,7 @@ struct ManualSolveContext: Identifiable {
     }
 
     static func displayParts(_ time: Double) -> [String] {
-        let maximumMilliseconds = 35_999_999
-        let milliseconds = Int(min(Double(maximumMilliseconds), (max(0, time) * 1_000).nextUp))
+        let milliseconds = displayMilliseconds(time)
         let wholeSeconds = milliseconds / 1_000
         let hours = wholeSeconds / 3_600
         let minutes = wholeSeconds / 60 % 60
@@ -759,6 +805,10 @@ struct ManualSolveContext: Identifiable {
         parts.append(wholeSeconds < 60 ? "\(seconds)." : String(format: "%02d.", seconds))
         parts.append(String(format: "%03d", milliseconds % 1_000))
         return parts
+    }
+
+    static func displayMilliseconds(_ time: Double) -> Int {
+        Int(min(35_999_999, (max(0, time) * 1_000).nextUp))
     }
 }
 
@@ -918,6 +968,60 @@ enum ScrambleCatalog {
         let choices = isTraining ? training : standard
         let saved = defaults.string(forKey: key) ?? ""
         return choices.contains(where: { $0.id == saved }) ? saved : (isTraining ? "333.pll" : "333")
+    }
+}
+
+struct SolveCelebration: Equatable {
+    enum Kind: Hashable {
+        case first, single, ao5, ao12
+    }
+
+    struct Achievement: Equatable {
+        let kind: Kind
+        let result: String
+    }
+
+    let solveID: Solve.ID
+    let achievements: [Achievement]
+
+    @MainActor init?(solve: Solve, history: [Solve]) {
+        var achievements: [Achievement] = []
+        if let time = solve.resultSeconds {
+            if let best = history.compactMap(\.resultSeconds).min() {
+                if Self.isFaster(time, than: best) {
+                    achievements.append(Achievement(kind: .single, result: solve.resultText))
+                }
+            } else {
+                achievements.append(Achievement(kind: .first, result: solve.resultText))
+            }
+        }
+
+        let latest = [solve] + history.prefix(SolveAverage.ao12.count - 1)
+        for (average, kind) in [(SolveAverage.ao5, Kind.ao5), (.ao12, .ao12)] {
+            if let mean = Self.recordMean(average, latest: latest, history: history) {
+                achievements.append(Achievement(kind: kind, result: TimerModel.format(mean)))
+            }
+        }
+        guard !achievements.isEmpty else { return nil }
+        solveID = solve.id
+        self.achievements = achievements
+    }
+
+    @MainActor private static func recordMean(_ average: SolveAverage, latest: [Solve], history: [Solve]) -> Double? {
+        let count = average.count
+        guard history.count >= count, let mean = average.summarize(latest.prefix(count)).mean else { return nil }
+        var hasBaseline = false
+        for start in 0...(history.count - count) {
+            guard let previous = average.summarize(history[start..<(start + count)]).mean else { continue }
+            guard isFaster(mean, than: previous) else { return nil }
+            hasBaseline = true
+        }
+        return hasBaseline ? mean : nil
+    }
+
+    // Equal displayed millisecond values should never produce a new-record celebration.
+    @MainActor private static func isFaster(_ current: Double, than previous: Double) -> Bool {
+        TimerModel.displayMilliseconds(current) < TimerModel.displayMilliseconds(previous)
     }
 }
 

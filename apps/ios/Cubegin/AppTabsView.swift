@@ -1023,7 +1023,7 @@ private struct ResultsView: View {
     }
 }
 
-private func resultBestColor(for colorScheme: ColorScheme) -> Color {
+func resultBestColor(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark ? Color(uiColor: .systemGreen) : Color(red: 0.10, green: 0.45, blue: 0.24)
 }
 

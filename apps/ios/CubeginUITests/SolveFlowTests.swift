@@ -4,6 +4,115 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testCelebrationReplaysOnlyWhileTheLatestSolveQualifies() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+                                "-timer.entryMethod", "timer", "-timer.startDelayTenths", "0", "-timer.wcaInspection", "NO"]
+        app.launch()
+
+        let replay = app.buttons["timer.celebration-replay"]
+        let hints = app.buttons["timer.formula-hints"]
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        let toast = app.descendants(matching: .any)["timer.celebration-toast.first"]
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        XCTAssertTrue(readout.exists)
+        XCTAssertFalse(app.buttons["timer.confetti-preview"].exists)
+        XCTAssertFalse(replay.exists)
+        XCTAssertFalse(toast.exists)
+
+        let foldedPrompt = app.staticTexts["timer.folded-prompt"]
+        let target = (foldedPrompt.exists ? foldedPrompt : readout)
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        target.tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        target.tap()
+        XCTAssertTrue(toast.wait(for: \.label, toEqual: "First result", timeout: 2))
+        let toastFrame = toast.frame
+        captureScreen("First result toast")
+        XCTAssertTrue(toast.waitForNonExistence(timeout: 4))
+        XCTAssertEqual(toastFrame.midX, readout.frame.midX, accuracy: 2)
+        XCTAssertGreaterThan(toastFrame.minY, readout.frame.maxY)
+        let delete = app.buttons["Delete this solve"]
+        XCTAssertTrue(replay.exists)
+        XCTAssertGreaterThan(replay.frame.midX, delete.frame.midX)
+        XCTAssertEqual(replay.frame.midY, delete.frame.midY, accuracy: 2)
+        captureScreen("Post-solve controls")
+
+        let dnf = app.buttons["timer.penalty.dnf"]
+        dnf.tap()
+        XCTAssertTrue(replay.waitForNonExistence(timeout: 3))
+        dnf.tap()
+        XCTAssertTrue(replay.waitForExistence(timeout: 3))
+        XCTAssertFalse(toast.waitForExistence(timeout: 2))
+        replay.tap()
+        XCTAssertTrue(toast.wait(for: \.label, toEqual: "First result", timeout: 2))
+        delete.tap()
+        app.alerts.buttons["Delete"].tap()
+        XCTAssertTrue(replay.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(toast.waitForNonExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testPersonalBestToastsStackAtTheBottom() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+                                "-timer.entryMethod", "timer", "-timer.startDelayTenths", "0", "-timer.wcaInspection", "NO"]
+        app.launch()
+
+        let elements = app.descendants(matching: .any)
+        let readout = elements["timer.readout"]
+        let scramble = elements["timer.scramble"]
+        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        XCTAssertTrue(readout.exists)
+        let foldedPrompt = app.staticTexts["timer.folded-prompt"]
+        let target = (foldedPrompt.exists ? foldedPrompt : readout)
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        target.tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        target.tap()
+
+        let single = elements["timer.celebration-toast.single"]
+        let ao5 = elements["timer.celebration-toast.ao5"]
+        let ao12 = elements["timer.celebration-toast.ao12"]
+        XCTAssertTrue(single.waitForExistence(timeout: 3))
+        let singleFrame = single.frame
+        let ao5Frame = ao5.frame
+        let ao12Frame = ao12.frame
+        XCTAssertFalse(ao12Frame.isEmpty)
+        XCTAssertGreaterThanOrEqual(ao5Frame.minY - singleFrame.maxY, 6)
+        XCTAssertGreaterThanOrEqual(ao12Frame.minY - ao5Frame.maxY, 6)
+        XCTAssertEqual(singleFrame.midX, ao5Frame.midX, accuracy: 1)
+        XCTAssertEqual(ao5Frame.midX, ao12Frame.midX, accuracy: 1)
+        let readoutCenterY = readout.frame.midY
+        if foldedPrompt.exists {
+            let replayFrame = app.buttons["timer.celebration-replay"].frame
+            XCTAssertTrue(singleFrame.minY > replayFrame.maxY || singleFrame.minX > replayFrame.maxX)
+            XCTAssertLessThan(ao12Frame.maxY, app.frame.midY)
+        } else {
+            XCTAssertGreaterThan(singleFrame.minY, readout.frame.maxY)
+            XCTAssertGreaterThan(ao12Frame.midY, app.frame.minY + app.frame.height * 2 / 3)
+        }
+        let tabBar = app.tabBars.firstMatch
+        if tabBar.exists, tabBar.frame.minY > app.frame.midY {
+            XCTAssertLessThan(ao12Frame.maxY, tabBar.frame.minY)
+            if !foldedPrompt.exists {
+                XCTAssertLessThan(tabBar.frame.minY - ao12Frame.maxY, 32)
+            }
+        }
+        XCTAssertTrue(ao12.waitForNonExistence(timeout: 4))
+        XCTAssertEqual(readout.frame.midY, readoutCenterY, accuracy: 2)
+        XCTAssertTrue(app.buttons["timer.celebration-replay"].exists)
+        captureScreen("Record scores after the toast fades")
+    }
+
+    @MainActor
     func testFormulaHintsShowSolutionsForCurrentScramble() {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -75,10 +184,10 @@ final class SolveFlowTests: XCTestCase {
             project.tap()
             let training = app.buttons["event.mode.training"]
             XCTAssertTrue(training.waitForExistence(timeout: 5))
-            if event == "333.easy_xcross" { captureProjectPicker("Standard projects") }
+            if event == "333.easy_xcross" { captureScreen("Standard projects") }
             training.tap()
             XCTAssertTrue(training.isSelected)
-            if event == "333.easy_xcross" { captureProjectPicker("Training projects") }
+            if event == "333.easy_xcross" { captureScreen("Training projects") }
             let group = app.buttons["3x3x3 CFOP"]
             XCTAssertTrue(group.waitForExistence(timeout: 5))
             group.tap()
@@ -108,7 +217,7 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    private func captureProjectPicker(_ name: String) {
+    private func captureScreen(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways

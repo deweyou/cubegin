@@ -33,7 +33,11 @@ struct ContentView: View {
     @State private var solveToDelete: Solve?
     @State private var manualContext: ManualSolveContext?
     @State private var showsGenerating = false
+    @State private var confettiBurst: TimerConfettiBurst?
+    @State private var showsCelebrationToast = false
+    @State private var celebrationScoreMotion = CelebrationScoreMotion.rest
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     private var language: AppLanguage { locale.appLanguage }
     private let controlIconSize: CGFloat = 20
     private let controlRowHeight: CGFloat = 44
@@ -46,7 +50,10 @@ struct ContentView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .footnote) private var celebrationPillLineHeight: CGFloat = 16
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
+    private let celebrationPillPadding: CGFloat = 7
+    private let celebrationPillSpacing: CGFloat = 10
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
     static let landscapeBottomInset: CGFloat = 8
 
@@ -59,6 +66,15 @@ struct ContentView: View {
     }
     private var canUseTimerTouch: Bool {
         canUseTimerInput && (timerTouchResumesAt.map { ContinuousClock.now >= $0 } ?? true)
+    }
+    private var presentedCelebration: SolveCelebration? {
+        canUseTimerInput && !showsTimingLayout ? model.lastSolveCelebration : nil
+    }
+
+    private var scoreCelebration: ScoreCelebration? {
+        guard !showsTimingLayout, let record = model.celebratedLastSolve else { return nil }
+        let motion = showsCelebrationToast && !reduceMotion ? celebrationScoreMotion : .rest
+        return ScoreCelebration(record: record, motion: motion)
     }
 
     var body: some View {
@@ -127,6 +143,17 @@ struct ContentView: View {
                 model.endInspection()
                 isInTimerCancelZone = false
             }
+        }
+        .onChange(of: presentedCelebration) { _, celebration in
+            if let confettiBurst, confettiBurst.record != celebration { stopCelebration() }
+        }
+        .task(id: presentedCelebration) { [presentedCelebration] in
+            guard let presentedCelebration else { return }
+            do { try await Task.sleep(for: .milliseconds(200)) }
+            catch { return }
+            guard !Task.isCancelled, self.presentedCelebration == presentedCelebration,
+                  let record = model.takeAutomaticCelebration() else { return }
+            playCelebration(record)
         }
         .onChange(of: showsProjectList) { _, isShowing in
             model.cancelPress()
@@ -278,9 +305,38 @@ struct ContentView: View {
                     cancelHint(atLowerDisplay: false)
                 }
             }
+            .overlay {
+                if fold == nil {
+                    celebrationConfetti
+                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                }
+            }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { measuredFrame in
                 if !showsTimingLayout { idlePageFrame = measuredFrame }
             }
+        }
+        .task(id: confettiBurst?.start) {
+            guard confettiBurst != nil else { return }
+            do {
+                if !reduceMotion { try await Task.sleep(for: .milliseconds(150)) }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) {
+                    showsCelebrationToast = true
+                }
+                if !reduceMotion {
+                    for (motion, milliseconds) in CelebrationScoreMotion.steps {
+                        withAnimation(.easeInOut(duration: Double(milliseconds) / 1000)) {
+                            celebrationScoreMotion = motion
+                        }
+                        try await Task.sleep(for: .milliseconds(milliseconds))
+                    }
+                }
+                try await Task.sleep(for: .milliseconds(reduceMotion ? 1500 : 580))
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.34)) {
+                    showsCelebrationToast = false
+                }
+                if !reduceMotion { try await Task.sleep(for: .milliseconds(340)) }
+                stopCelebration()
+            } catch { return }
         }
     }
 
@@ -312,13 +368,20 @@ struct ContentView: View {
         let timerHeight = max(0, upperHeight - formulaHeight - 2 * rowSpacing)
         let centersReadout = showsTimingLayout
         let showsSolveActions = !centersReadout && model.lastSolve != nil
-        let readoutAreaHeight = timerHeight - (showsSolveActions ? compactControlSize + rowSpacing : 0)
+        let actionHeight = showsSolveActions ? compactControlSize + rowSpacing : 0
+        let readoutAreaHeight = timerHeight - actionHeight
         let preferredTimerFontSize = min(90, upperHeight * 0.26)
         let timerFontSize = max(1, centersReadout ? preferredTimerFontSize
                                 : min(preferredTimerFontSize, readoutAreaHeight / 1.2))
         let numberHeight = timerFontSize * 1.2
         let readoutY = centersReadout ? max(0, (upperHeight - frame.minY) / 2)
             : upperHeight - timerHeight + readoutAreaHeight / 2
+        let actionCenterY = readoutY + numberHeight / 2 + rowSpacing + compactControlSize / 2
+        let toastCount = CGFloat(confettiBurst?.record.achievements.count ?? 0)
+        let toastHeight = toastCount * (celebrationPillLineHeight + 2 * celebrationPillPadding)
+            + max(0, toastCount - 1) * celebrationPillSpacing
+        let controlsBottom = readoutY + numberHeight / 2 + actionHeight
+        let canCenterToast = controlsBottom + toastHeight + 2 * foldClearance <= upperHeight
         let showsScrambleDetails = !showsTimingLayout
         let detailsTop = showsTimingLayout ? foldClearance : controlRowHeight + 2 * foldClearance
         let promptTop = showsScrambleDetails ? detailsTop + footerHeight : 0
@@ -341,11 +404,20 @@ struct ContentView: View {
                     }
                 if showsSolveActions {
                     postSolveControls
-                        .position(x: width / 2, y: readoutY + numberHeight / 2 + rowSpacing
-                                  + compactControlSize / 2)
+                        .position(x: width / 2, y: actionCenterY)
                 }
             }
             .frame(width: width, height: upperHeight)
+            .frame(width: size.width)
+            .overlay(alignment: canCenterToast ? .bottom : .bottomTrailing) {
+                celebrationToasts
+                    .padding(.trailing, canCenterToast ? 0 : padding)
+                    .padding(.bottom, foldClearance)
+            }
+            .overlay {
+                celebrationConfetti
+                    .clipped()
+            }
             .padding(.top, foldClearance)
 
             Color.clear.frame(height: fold.height + 2 * foldClearance)
@@ -360,7 +432,7 @@ struct ContentView: View {
                         .padding(.top, foldClearance)
                 }
                 HStack(alignment: .top, spacing: 12) {
-                    TimerSummary(model: model, height: footerHeight)
+                    TimerSummary(model: model, height: footerHeight, scoreCelebration: scoreCelebration)
                         .frame(width: summaryWidth)
                     scrambleDiagram(alignment: .topTrailing)
                         .frame(width: diagramWidth * 0.8, height: footerHeight)
@@ -494,7 +566,8 @@ struct ContentView: View {
                         Color.clear
                             .accessibilityHidden(true)
                         if !showsTimingLayout {
-                            TimerSummary(model: model, height: summaryHeight, twoColumns: true)
+                            TimerSummary(model: model, height: summaryHeight, scoreCelebration: scoreCelebration,
+                                         twoColumns: true)
                                 .frame(maxWidth: 220)
                         }
                     }
@@ -511,6 +584,12 @@ struct ContentView: View {
                     y: timerFrame.minY - frame.minY)
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
+        .overlay(alignment: .bottom) {
+            celebrationToasts
+                .padding(.bottom, Self.landscapeBottomInset)
+                .frame(width: frame.width - headerLeadingInset - headerTrailingInset)
+                .offset(x: (headerLeadingInset - headerTrailingInset) / 2)
+        }
     }
 
     private func page(frame: CGRect, timerFrame: CGRect, diagramBottomPadding: CGFloat,
@@ -603,7 +682,8 @@ struct ContentView: View {
                     Color.clear
                         .frame(width: summaryWidth, height: summaryHeight)
                         .overlay(alignment: .bottomLeading) {
-                            TimerSummary(model: model, height: summaryHeight, usesLargeType: usesLargeSummary)
+                            TimerSummary(model: model, height: summaryHeight, scoreCelebration: scoreCelebration,
+                                         usesLargeType: usesLargeSummary)
                                 .frame(width: summaryTextWidth)
                                 .opacity(usesLargeSummary ? 0.8 : 1)
                         }
@@ -628,6 +708,10 @@ struct ContentView: View {
                 .offset(x: timerFrame.midX - frame.midX, y: timerFrame.midY - frame.midY)
         }
         .frame(height: height)
+        .overlay(alignment: .bottom) {
+            celebrationToasts
+                .padding(.bottom, 16)
+        }
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: maximumWidth)
         .frame(maxWidth: .infinity)
@@ -884,11 +968,17 @@ struct ContentView: View {
         } else {
             language.text("开始计时", "Start timer")
         }
+        let celebration = scoreCelebration
+        let highlight = celebration?.motion(for: .single) ?? celebration?.motion(for: .first)
+        let readoutMotion = highlight ?? .rest
+        let color = feedbackColor ?? (highlight == nil ? .primary : resultBestColor(for: colorScheme))
         return TimelineView(.animation(minimumInterval: displayDuringSolve == .seconds ? 0.1 : 0.03,
                                 paused: !isTiming)) { _ in
             let readout = timerReadoutContent(fontSize: fontSize, showsZero: showsZero)
             Text(readout)
-                .foregroundStyle(feedbackColor ?? .primary)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.18)) { content in
+                    content.foregroundStyle(color)
+                }
                 .contentTransition(.identity)
                 .lineLimit(1)
                 .minimumScaleFactor(minimumScale)
@@ -907,6 +997,8 @@ struct ContentView: View {
                     }
                 }
         }
+        .scaleEffect(1 + 0.14 * readoutMotion.emphasis)
+        .offset(x: 8 * readoutMotion.sway)
         .allowsHitTesting(false)
     }
 
@@ -947,7 +1039,7 @@ struct ContentView: View {
     private var postSolveControls: some View {
         Group {
             if !showsTimingLayout, let solve = model.lastSolve {
-                HStack(spacing: 10) {
+                HStack(spacing: 0) {
                     penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, solve: solve)
                     penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, solve: solve)
                     Button(role: .destructive) {
@@ -955,14 +1047,27 @@ struct ContentView: View {
                         solveToDelete = solve
                     } label: {
                         Image(systemName: "trash")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 16, height: 16)
+                            .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
                             .modifier(CompactControlTarget(size: compactControlSize))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
+                    if let celebration = model.lastSolveCelebration {
+                        Button {
+                            // A replay during the delay also satisfies the first playback.
+                            _ = model.takeAutomaticCelebration()
+                            playCelebration(celebration)
+                        } label: {
+                            Image(systemName: "party.popper")
+                                .font(.system(size: 16))
+                                .foregroundStyle(Color.secondary)
+                                .modifier(CompactControlTarget(size: compactControlSize))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(language.text("重播庆祝", "Replay celebration"))
+                        .accessibilityIdentifier("timer.celebration-replay")
+                    }
                 }
             } else {
                 Color.clear
@@ -1126,6 +1231,64 @@ struct ContentView: View {
         }
     }
 
+    private func playCelebration(_ record: SolveCelebration) {
+        showsCelebrationToast = false
+        celebrationScoreMotion = .rest
+        confettiBurst = TimerConfettiBurst(record: record)
+    }
+
+    private func stopCelebration() {
+        showsCelebrationToast = false
+        celebrationScoreMotion = .rest
+        confettiBurst = nil
+    }
+
+    @ViewBuilder
+    private var celebrationConfetti: some View {
+        if let confettiBurst, isTimerActive, !showsTimingLayout {
+            confettiBurst.view(reduceMotion: reduceMotion)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private var celebrationToasts: some View {
+        if let confettiBurst, showsCelebrationToast, isTimerActive, !showsTimingLayout {
+            VStack(spacing: celebrationPillSpacing) {
+                ForEach(confettiBurst.record.achievements, id: \.kind) { celebrationPill($0.kind) }
+            }
+            .padding(.horizontal, 12)
+            .allowsHitTesting(false)
+            .transition(reduceMotion ? .identity : .opacity)
+        }
+    }
+
+    private func celebrationPill(_ kind: SolveCelebration.Kind) -> some View {
+        let title = kind.title(in: language)
+        return Label {
+            Text(title)
+                .lineLimit(1)
+        } icon: {
+            Image(systemName: "trophy.fill")
+                .foregroundStyle(.secondary)
+        }
+        .font(.footnote.weight(.semibold))
+        .padding(.horizontal, 11)
+        .padding(.vertical, celebrationPillPadding)
+        .background(.thickMaterial, in: .capsule)
+        .background {
+            Capsule()
+                .fill(.black.opacity(0.04))
+                .blur(radius: 5)
+                .offset(y: 3)
+        }
+        .glassEffect(.regular, in: .capsule)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("timer.celebration-toast.\(kind)")
+    }
+
     private var assistButton: some View {
         Button {
             guard let algorithm = model.scramble?.algorithm else { return }
@@ -1153,6 +1316,83 @@ struct ContentView: View {
     private var canShowAssist: Bool {
         !AssistMethod.available(for: model.event).isEmpty
             && model.scramble != nil && !model.busy && !showsTimingLayout
+    }
+}
+
+private extension SolveCelebration.Kind {
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .first: language.text("首次成绩", "First result")
+        case .single: language.text("单次 PB", "Single PB")
+        case .ao5: language.text("Ao5 PB", "Ao5 PB")
+        case .ao12: language.text("Ao12 PB", "Ao12 PB")
+        }
+    }
+}
+
+private struct TimerConfettiBurst {
+    static let duration = 1.2
+    private static let colors: [Color] = [
+        .pink, .orange, .yellow, .green, .cyan, .blue, .purple
+    ]
+
+    private struct Particle {
+        let side: CGFloat
+        let inwardReach: CGFloat
+        let riseHeight: CGFloat
+        let spin: Double
+        let phase: Double
+        let width: CGFloat
+        let color: Color
+    }
+
+    let record: SolveCelebration
+    let start = ContinuousClock.now
+
+    private let particles = (0..<64).map { index in
+        Particle(
+            side: index.isMultiple(of: 2) ? -1 : 1,
+            inwardReach: .random(in: 0.22...0.64),
+            riseHeight: .random(in: 0.48...0.72),
+            spin: .random(in: -12...12),
+            phase: .random(in: 0...(2 * .pi)),
+            width: .random(in: 4...8),
+            color: Self.colors[index % Self.colors.count]
+        )
+    }
+
+    @ViewBuilder
+    func view(reduceMotion: Bool) -> some View {
+        if reduceMotion {
+            paper(at: 0.40)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 60)) { _ in
+                paper(at: start.duration(to: .now) / .seconds(1))
+            }
+        }
+    }
+
+    private func paper(at elapsed: Double) -> some View {
+        Canvas { context, size in
+            guard elapsed < Self.duration else { return }
+            let opacity = min(1, max(0, (Self.duration - elapsed) / 0.28))
+            let rise = 1 - exp(-7 * elapsed)
+            let drift = 1 - exp(-3.5 * elapsed)
+            let fallTime = max(0, elapsed - 0.26)
+            let fall = 0.30 * fallTime * fallTime
+            for particle in particles {
+                let inwardTravel = particle.inwardReach * drift
+                let x = size.width * (0.5 + particle.side * (0.5 - inwardTravel))
+                let y = size.height * (1 - particle.riseHeight * rise + fall)
+                let width = particle.width * max(0.22, abs(cos(particle.phase + 11 * elapsed)))
+                let shape = CGRect(x: -width / 2, y: -particle.width * 0.75, width: width, height: particle.width * 1.5)
+                var piece = context
+                piece.opacity = opacity
+                piece.translateBy(x: x, y: y)
+                piece.rotate(by: .radians(particle.phase + particle.spin * elapsed))
+                piece.fill(Path(roundedRect: shape, cornerRadius: 1), with: .color(particle.color))
+            }
+        }
     }
 }
 
@@ -1185,7 +1425,9 @@ private struct CompactControlTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .frame(width: size, height: size)
+            .padding(.horizontal, 10)
+            .frame(minWidth: size)
+            .frame(height: size)
             .contentShape(Rectangle())
     }
 }
@@ -1297,12 +1539,38 @@ private struct TimerTouchSurface: UIViewRepresentable {
     }
 }
 
+private struct CelebrationScoreMotion {
+    let emphasis: CGFloat
+    let sway: CGFloat
+
+    static let rest = Self(emphasis: 0, sway: 0)
+    static let steps: [(motion: Self, milliseconds: Int)] = [
+        (Self(emphasis: 1, sway: -1), 180),
+        (Self(emphasis: 1, sway: 1), 160),
+        (Self(emphasis: 1, sway: -0.72), 160),
+        (Self(emphasis: 1, sway: 0.56), 160),
+        (.rest, 260)
+    ]
+}
+
+private struct ScoreCelebration {
+    let record: SolveCelebration
+    let motion: CelebrationScoreMotion
+
+    func motion(for kind: SolveCelebration.Kind) -> CelebrationScoreMotion? {
+        record.achievements.contains { $0.kind == kind } ? motion : nil
+    }
+}
+
 private struct TimerSummary: View {
     let model: TimerModel
     let height: CGFloat
+    let scoreCelebration: ScoreCelebration?
     var twoColumns = false
     var usesLargeType = false
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .footnote) private var preferredFontSize: CGFloat = 13
     @ScaledMetric(relativeTo: .title3) private var largeFontSize: CGFloat = 20
 
@@ -1363,8 +1631,13 @@ private struct TimerSummary: View {
         let rolling = VStack(spacing: 0) {
             ForEach(Self.averageKinds.filter { recent.count >= $0.count }, id: \.self) { kind in
                 let value = kind.summarize(recent.prefix(kind.count)).mean.map(TimerModel.format) ?? "DNF"
+                let motion: CelebrationScoreMotion? = switch kind {
+                case .ao5: scoreCelebration?.motion(for: .ao5)
+                case .ao12: scoreCelebration?.motion(for: .ao12)
+                default: nil
+                }
                 row(kind.title, value: value, accessibilityName: kind.title,
-                    id: kind.title, fontSize: fontSize, height: rowHeight)
+                    id: kind.title, fontSize: fontSize, height: rowHeight, celebrationMotion: motion)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1385,13 +1658,23 @@ private struct TimerSummary: View {
     }
 
     private func row(_ title: String?, value: String, accessibilityName: String,
-                     id: String, fontSize: CGFloat, height: CGFloat) -> some View {
-        let text = if let title {
-            Text("\(Text("\(title):").foregroundColor(.secondary)) \(value)")
-        } else {
+                     id: String, fontSize: CGFloat, height: CGFloat,
+                     celebrationMotion: CelebrationScoreMotion? = nil) -> some View {
+        let motion = celebrationMotion ?? .rest
+        let color = celebrationMotion == nil ? Color.primary : resultBestColor(for: colorScheme)
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if let title {
+                Text("\(title):")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
             Text(value)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.18)) { content in
+                    content.foregroundStyle(color)
+                }
+                .scaleEffect(1 + 0.22 * motion.emphasis, anchor: .leading)
+                .offset(x: 2 * motion.sway)
         }
-        return text
             .font(.system(size: fontSize, weight: .medium))
             .monospacedDigit()
             .lineLimit(1)
