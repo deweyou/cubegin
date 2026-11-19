@@ -10,6 +10,7 @@ Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It
 - **Timer display and manual entry** — In **Settings → Timer**, choose real time, whole seconds, or observation only. Finished results still show milliseconds. Choose manual entry to tap the timer page and enter a result, with optional +2 or DNF.
 - **Swipe shortcuts** — While the timer is idle, swipe left to generate a new scramble or swipe right to confirm deletion of the latest result in the current group. In **Settings → Timer → Gestures**, you can reassign either direction to another action, manual entry, or None.
 - **Formula hints** — Tap ✨ on the timer to choose a solution method for the current puzzle. Each event and solve group remembers its last method and the order of alternative solutions. Training hints are available for Easy Cross, Easy XCross and F2L.
+- **Record celebrations** — Celebrate the first valid result and new single, Ao5, and Ao12 personal bests in the current solve group. Tap the celebration button next to the solve controls to replay while the result still qualifies.
 - **Results and statistics** — Organize solves into groups, apply +2 or DNF, and review individual attempts, rolling averages, trend charts and time distributions.
 - **Settings** — Choose the app language and theme, adjust the timer start delay, and turn timer haptics on or off.
 - **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.

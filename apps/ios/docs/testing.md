@@ -22,6 +22,12 @@ App 单测位于 `CubeginTests/`，通过正式工程的 `CubeginApp` scheme 执
 在支持触感的真机上，开启「计时触感」，分别用零启动延迟和非零启动延迟长按，确认松手提示出现时和停表时各触发一次重档触感。检查提示出现前松手、滑入取消区或启用 WCA 观察时不触发就绪触感。关闭设置后重复长按和停表，确认两处都无触感。
 计时页统计在分组零把时隐藏。第一把后显示次数，有有效成绩时显示总平均和最好单次。窗口满后才显示对应滚动平均，结果为 DNF 的窗口也要显示。
 
+成绩庆祝以当前项目的当前分组为准。保存首次有效成绩或严格打破已有单次、Ao5、Ao12 纪录时，先显示成绩，等待 0.2 秒后自动播放。同一条成绩命中多项纪录时合并展示一次，首次有效 Ao5 或 Ao12 和追平纪录均不触发。单测覆盖手动保存、分组隔离、判罚后部分纪录仍成立，以及恢复判罚后自动播放去重。
+
+符合条件的最新成绩在 +2、DNF 和删除之后显示礼花按钮。点按立即重播，在等候自动播放时点按也只播一次。改判罚后没有任何纪录时隐藏，改回来时恢复按钮。界面用例验证首次停表自动播放、改为 DNF、恢复后只允许手动重播，以及删除后入口消失。
+
+彩纸从屏幕底部左右两角贴边喷出。每项纪录在计时页底部居中显示一颗单行的系统玻璃胶囊，多项时竖排，提示淡入后再淡出。单次和首次成绩让计时读数放大、轻微左右晃动，Ao5、Ao12 的动画应用在概要里对应的数字上。首次播放后，对应数字持续使用成绩列表的最佳成绩绿色，重播时保持绿色。更换最新成绩或判罚使某项纪录失效时，按当前成绩重新判断。普通 iPhone 的胶囊紧贴底部导航上方，Duo 半折竖屏时，提示显示在上半屏底部，按钮下方空间不足时靠右避让成绩和操作区。彩纸从上半屏的底部两角喷出。动画期间仍可点按计时页控件。UI 测试覆盖同次刷新三项纪录时胶囊的顺序、对齐和自动消失。开启系统「减少动态效果」后检查成绩保持静态。
+
 计时显示需覆盖实时、到秒和仅观察。检查 WCA 观察读数和停表后的三位小数，并确认切到手动后轻点计时区直接打开录入。手动录入覆盖分格从左到右输入、高亮当前格、点选改单格、非零时可提前保存、秒位校验、+2、空时间 DNF、取消和保存失败重试。只有保存成功才推进打乱。成绩详情的无惩罚、+2 和 DNF 始终单选。零秒 DNF 在详情及计时页均不可修改判罚。iPhone 竖屏录入时对照键盘弹出前后的截图，确认底部面板贴着键盘，背后的计时页保持原位。检查小窗口和横屏键盘弹出后，判罚和保存操作仍可到达。
 
 手势单测验证默认左扫生成新打乱、右扫删除上一条成绩，已保存的选项优先。界面用例从「设置 → 计时 → 手势」分别设置左右轻扫，重启后验证生成新打乱和单次手动录入。保存后仍可继续计时。删除快捷操作弹出确认框，确认后更新读数。选「无」时轻扫不执行操作。横向位移超过 10 pt 会退出按住状态，达到 44 pt 且方向明确才会触发快捷操作。检查两阈值之间的短拖动、长按后的横向拖动和观察期间的上滑取消。
@@ -51,9 +57,11 @@ swift test --package-path ../..
 在上述 `xcodebuild test` 命令加上 `-only-testing:CubeginUITests`。
 
 [仓库 CI](../../../.github/workflows/apple.yml) 在 PR、推送到 `main`、合并队列及手动触发时运行。
-CI 使用 arm64 macOS 和 Xcode 26.2，从同一 checkout 构建 XCFramework，再并行执行无签名 iOS Release 构建、iPhone 17 Pro（iOS 26.2）App 单测和 XCUITest。模拟器测试会按需安装 iOS 26.2 runtime 或创建对应机型。测试结果
-`AppTests.xcresult` 生成后保留 14 天。设备构建用于验证编译和链接，安装及交互见下方。
-合入前应通过该检查。GitHub 将其设为必需状态检查需要单独配置仓库规则。
+CI 使用 arm64 macOS 和 Xcode 26.2。iOS Release 和模拟器测试构建复用同一份 XCFramework。
+两组 iPhone 17 Pro 模拟器检查下载同一份 App 和测试产物，在各自 runner 上串行执行组内用例。
+需要时安装 iOS 26.2 runtime 或创建对应机型。测试结果分别以
+`app-test-results-simulator-a` 和 `app-test-results-simulator-b` 上传，保留 14 天。
+设备构建用于验证编译和链接，安装及交互见下方。分组、重跑及计时见[CI 验收](../../../docs/ci.md#ios-模拟器分组)。
 
 ## 界面一致性与布局必验清单
 
@@ -133,18 +141,31 @@ Duo 多显示器截图要明确选择当前屏幕，不能默认读取外屏：�
 
 ## 本地真机安装
 
-Xcode 需登录开发者账号并完成 Apple 要求的协议更新，手机需配对并启用开发者模式。
-`xcrun devicectl list devices` 获取物理设备 UDID。可用命令行覆盖签名团队和版本，
-避免将个人签名配置写进工程：
+本地调试默认安装 **Cubegin Dev**。独立的 Bundle ID `io.github.deweyou.cubegin.dev`
+为它创建单独的成绩和设置容器。App 仅在正式版 Bundle ID 下启用 iCloud 设置同步。
+
+Xcode 需登录开发者账号并完成 Apple 要求的协议更新，设备需配对并启用开发者模式。
+用 `xcrun devicectl list devices` 获取 UDID。在 `apps/ios/` 下将命令中的
+`<UDID>` 和 `<TEAM_ID>` 替换为实际值，然后构建：
 
 ```sh
 xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
   -destination 'platform=iOS,id=<UDID>' -configuration Debug \
-  -derivedDataPath /tmp/cubegin-ios-device -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM=<TEAM_ID> CURRENT_PROJECT_VERSION=1 MARKETING_VERSION=0.1.0 build
-xcrun devicectl device install app --device <UDID> \
-  /tmp/cubegin-ios-device/Build/Products/Debug-iphoneos/cubegin.app
-xcrun devicectl device process launch --device <UDID> io.github.deweyou.cubegin
+  -derivedDataPath /tmp/cubegin-ios-device-dev -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM=<TEAM_ID> \
+  PRODUCT_BUNDLE_IDENTIFIER=io.github.deweyou.cubegin.dev \
+  'INFOPLIST_KEY_CFBundleDisplayName=Cubegin Dev' CODE_SIGN_ENTITLEMENTS= build
 ```
 
-签名构建、安装返回成功、启动返回成功与真机画面/交互验收应分开记录。
+安装前核对实际产物的 Bundle ID 和显示名称。两项分别是
+`io.github.deweyou.cubegin.dev` 和 `Cubegin Dev` 时，再安装并启动：
+
+```sh
+dev_app=/tmp/cubegin-ios-device-dev/Build/Products/Debug-iphoneos/cubegin.app
+test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io.github.deweyou.cubegin.dev &&
+  test "$(plutil -extract CFBundleDisplayName raw -o - "$dev_app/Info.plist")" = 'Cubegin Dev' &&
+  xcrun devicectl device install app --device <UDID> "$dev_app" &&
+  xcrun devicectl device process launch --device <UDID> io.github.deweyou.cubegin.dev
+```
+
+签名构建、安装成功、启动成功与真机画面或交互验收应分开记录。

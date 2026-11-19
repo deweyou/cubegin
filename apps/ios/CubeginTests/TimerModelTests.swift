@@ -6,6 +6,111 @@ import Testing
 @MainActor
 struct TimerModelTests {
     @Test
+    func celebratesFirstValidResultOncePerSolveAndScopesRecordsToTheSelectedGroup() async throws {
+        try await withFixture { fixture in
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+            var context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 10_000, penalty: .dnf, context: context) == nil)
+            #expect(model.lastSolveCelebration == nil)
+            let first = try #require(model.lastSolve)
+            #expect(model.setPenalty(nil, for: first.id))
+            #expect(model.celebratedLastSolve == nil)
+            #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .first, result: "10.000")])
+            #expect(model.celebratedLastSolve?.solveID == first.id)
+            #expect(model.setPenalty(.dnf, for: first.id))
+            #expect(model.lastSolveCelebration == nil)
+            #expect(model.celebratedLastSolve == nil)
+            #expect(model.setPenalty(nil, for: first.id))
+            #expect(model.lastSolveCelebration?.solveID == first.id)
+            #expect(model.takeAutomaticCelebration() == nil)
+            #expect(model.celebratedLastSolve?.solveID == first.id)
+
+            #expect(model.saveGroup(name: "Other group", isDefault: false))
+            #expect(model.lastSolveCelebration == nil)
+            #expect(model.celebratedLastSolve == nil)
+            try await waitForGeneration(model)
+            context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 30_000, penalty: .plusTwo, context: context) == nil)
+            #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .first, result: "32.000+")])
+            let other = try #require(model.lastSolve)
+            #expect(model.deleteSolve(other.id))
+            #expect(model.lastSolveCelebration == nil)
+        }
+    }
+
+    @Test
+    func reevaluatesSingleAo5AndAo12AfterPenaltyWithoutReplayingAutomatically() async throws {
+        try await withFixture { fixture in
+            let history = [9.0, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11].enumerated().map { index, time in
+                Solve(seconds: time, event: "333", scramble: "R U",
+                      date: Date(timeIntervalSinceReferenceDate: Double(-index)))
+            }
+            try JSONEncoder().encode(history).write(to: fixture.storage)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 8_000, penalty: nil, context: context) == nil)
+            let solve = try #require(model.lastSolve)
+            #expect(model.takeAutomaticCelebration()?.achievements == [
+                .init(kind: .single, result: "8.000"),
+                .init(kind: .ao5, result: "9.666"),
+                .init(kind: .ao12, result: "10.500")
+            ])
+            #expect(model.setPenalty(.plusTwo, for: solve.id))
+            #expect(model.celebratedLastSolve?.achievements == [.init(kind: .ao12, result: "10.600")])
+            #expect(model.takeAutomaticCelebration() == nil)
+            #expect(model.setPenalty(.dnf, for: solve.id))
+            #expect(model.lastSolveCelebration == nil)
+            #expect(model.setPenalty(nil, for: solve.id))
+            #expect(model.celebratedLastSolve?.achievements.count == 3)
+            #expect(model.takeAutomaticCelebration() == nil)
+            try await waitForGeneration(model)
+            let nextContext = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 20_000, penalty: nil, context: nextContext) == nil)
+            #expect(model.celebratedLastSolve == nil)
+        }
+    }
+
+    @Test
+    func includesFutureDatedHistoryAndMatchesTheDisplayedRollingWindows() async throws {
+        try await withFixture { fixture in
+            let tomorrow = Date().addingTimeInterval(86_400)
+            let history = (0..<12).map { index in
+                Solve(seconds: 8 + Double(index) * 0.25, event: "333", scramble: "R U",
+                      date: tomorrow.addingTimeInterval(Double(-index)))
+            }
+            try JSONEncoder().encode(history).write(to: fixture.storage)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+
+            var context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 10_000, penalty: nil, context: context) == nil)
+            #expect(model.lastSolveCelebration == nil)
+
+            try await waitForGeneration(model)
+            context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 7_000, penalty: nil, context: context) == nil)
+            #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .single, result: "7.000")])
+        }
+    }
+
+    @Test
+    func firstAveragesAndDisplayedTiesDoNotQualify() {
+        let history = (0..<11).map { _ in Solve(seconds: 10.0009, event: "333", scramble: "R U") }
+        let solve = Solve(seconds: 10.0001, event: "333", scramble: "R U")
+        #expect(SolveCelebration(solve: solve, history: Array(history.prefix(4))) == nil)
+        #expect(SolveCelebration(solve: solve, history: history) == nil)
+        let invalidBaseline = (0..<12).map { _ in
+            Solve(seconds: 10, event: "333", scramble: "R U", penalty: .dnf)
+        }
+        #expect(SolveCelebration(solve: solve, history: invalidBaseline)?.achievements.map(\.kind) == [.first])
+    }
+
+    @Test
     func swipeDefaultsApplyOnlyWithoutAValidSavedAction() async throws {
         try await withFixture { fixture in
             let left = TimerSwipeDirection.left
