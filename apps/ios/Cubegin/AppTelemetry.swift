@@ -32,7 +32,6 @@ enum FailureImpact: String {
 
 struct OperationFailure {
     static let eventName = "operation_failed"
-    static let schemaVersion = "1"
 
     let operation: FailedOperation
     let reason: FailureReason
@@ -42,8 +41,7 @@ struct OperationFailure {
         [
             "operation": operation.rawValue,
             "reason": reason.rawValue,
-            "impact": impact.rawValue,
-            "schema_version": Self.schemaVersion
+            "impact": impact.rawValue
         ]
     }
 }

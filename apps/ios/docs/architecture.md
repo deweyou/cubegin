@@ -32,14 +32,13 @@ UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设
 App 数据后会重新生成。
 
 用户开启「共享故障诊断」后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
-GA4 的 `operation_failed` 与 Sentry 手动诊断共用四个字符串字段。
+GA4 的 `operation_failed` 与 Sentry 手动诊断共用三个字符串字段。
 
 | 字段 | 含义 |
 | --- | --- |
 | `operation` | 发生故障的操作 |
 | `reason` | 固定的失败原因 |
 | `impact` | `blocked` 表示操作被阻断，`degraded` 表示主要流程仍可用 |
-| `schema_version` | 当前字段契约版本 `1` |
 
 GA4 失败事件另外带有字符串参数 `app_build`，值取自当前 App 的 `CFBundleVersion`。
 可以结合 GA4 自动采集的 `app_version` 对比同一版本的不同构建。Sentry 在 App 上下文中采集构建号。

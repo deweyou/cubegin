@@ -51,8 +51,7 @@ struct TimerModelTests {
         #expect(failure.fields == [
             "operation": "render_diagram",
             "reason": "web_content_terminated",
-            "impact": "degraded",
-            "schema_version": "1"
+            "impact": "degraded"
         ])
     }
 
