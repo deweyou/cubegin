@@ -163,8 +163,7 @@ struct AppTabsView: View {
                 tabs(sideNavigationInset: nil)
             }
         }
-        .task(id: isActive ? model.event : nil) {
-            guard isActive else { return }
+        .task(id: model.event) {
             model.refresh()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -176,7 +175,7 @@ struct AppTabsView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
-        .alert(language.text("提示", "Notice"), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+        .alert(language.text("提示", "Notice"), isPresented: Binding(get: { isActive && model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button(language.text("好", "OK")) { model.error = nil }
         } message: {
             Text(model.error ?? "")

@@ -33,6 +33,14 @@ struct ContentView: View {
     @State private var solveToDelete: Solve?
     @State private var manualContext: ManualSolveContext?
     @State private var showsGenerating = false
+    @State private var displayedDiagram: String?
+    private var isScrambleReady: Bool {
+        guard let svg = model.scramble?.svg else { return false }
+        return displayedDiagram == svg
+    }
+    private var isPreparingScramble: Bool {
+        model.busy || (model.scramble != nil && !isScrambleReady)
+    }
     @State private var confettiBurst: TimerConfettiBurst?
     @State private var showsCelebrationToast = false
     @State private var celebrationScoreMotion = CelebrationScoreMotion.rest
@@ -125,6 +133,7 @@ struct ContentView: View {
         .focused($hasTimerKeyboardFocus)
         .onKeyPress(.space, phases: [.down, .up, .repeat]) { press in
             guard canUseTimerInput else { return .ignored }
+            if press.phase == .down, !isTiming, !isScrambleReady { return .ignored }
             if entryMethod == .manual, !isTiming {
                 if press.phase == .up { openManualEntry() }
                 return .handled
@@ -213,12 +222,12 @@ struct ContentView: View {
                 model.deleteSolve(solve.id)
             }
         }
-        .task(id: model.busy) {
+        .task(id: isPreparingScramble) {
             showsGenerating = false
-            guard model.busy else { return }
+            guard isPreparingScramble else { return }
             do { try await Task.sleep(for: .milliseconds(250)) }
             catch { return }
-            if model.busy { showsGenerating = true }
+            if isPreparingScramble { showsGenerating = true }
         }
         .onChange(of: hasTimerKeyboardFocus) { _, focused in
             if !focused { model.cancelPress(.keyboard) }
@@ -504,8 +513,8 @@ struct ContentView: View {
             .font(isTiming ? .title3 : .title2.weight(.medium))
             .multilineTextAlignment(.center)
             .foregroundStyle(foldedTimerFeedbackColor ?? .secondary)
-            .opacity(model.busy || model.scramble == nil ? 0 : 1)
-            .accessibilityHidden(prompt.isEmpty || model.busy || model.scramble == nil)
+            .opacity(isScrambleReady ? 1 : 0)
+            .accessibilityHidden(prompt.isEmpty || !isScrambleReady)
             .accessibilityIdentifier("timer.folded-prompt")
     }
 
@@ -811,7 +820,7 @@ struct ContentView: View {
     }
 
     private func openManualEntry() {
-        guard canUseTimerTouch else { return }
+        guard canUseTimerTouch, isScrambleReady else { return }
         setManualContext(model.manualSolveContext())
     }
 
@@ -828,7 +837,7 @@ struct ContentView: View {
     private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
             onDown: { feedback in
-                guard canUseTimerTouch else { return }
+                guard canUseTimerTouch, isTiming || isScrambleReady else { return }
                 guard entryMethod == .timer || isTiming else { return }
                 if usesTimerHaptics, !model.usesInspection {
                     feedback.prepare()
@@ -877,7 +886,7 @@ struct ContentView: View {
 
     private func currentScramble(width: CGFloat, fontScale: CGFloat = 1) -> some View {
         Group {
-            if model.busy {
+            if isPreparingScramble {
                 if showsGenerating {
                     Text(language.text("生成中…", "Generating…"))
                         .foregroundStyle(.secondary)
@@ -890,10 +899,14 @@ struct ContentView: View {
     }
 
     private func scrambleDiagram(alignment: SVGView.ContentAlignment = .bottomTrailing) -> some View {
-        SVGView(svg: model.scramble?.svg, nextSVG: model.nextScramble?.svg, alignment: alignment)
+        SVGView(svg: model.scramble?.svg, nextSVG: model.nextScramble?.svg, alignment: alignment,
+                displayedSVG: $displayedDiagram)
+            .opacity(isScrambleReady ? 1 : 0)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(language.text("当前打乱状态图", "Current scramble diagram"))
             .accessibilityIdentifier("timer.scramble-diagram")
+            .accessibilityHidden(!isScrambleReady)
+            .onDisappear { displayedDiagram = nil }
     }
 
     private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5,
@@ -1004,7 +1017,7 @@ struct ContentView: View {
                 .accessibilityAction {
                     if entersManually {
                         openManualEntry()
-                    } else {
+                    } else if isTiming || isScrambleReady {
                         model.activateAccessibleTimer()
                     }
                 }
@@ -1327,7 +1340,7 @@ struct ContentView: View {
 
     private var canShowAssist: Bool {
         !AssistMethod.available(for: model.event).isEmpty
-            && model.scramble != nil && !model.busy && !showsTimingLayout
+            && isScrambleReady && !showsTimingLayout
     }
 }
 
@@ -1710,15 +1723,21 @@ struct SVGView: UIViewRepresentable {
     let svg: String?
     let nextSVG: String?
     var alignment: ContentAlignment = .bottomTrailing
+    var displayedSVG: Binding<String?>?
 
     func makeUIView(context: Context) -> UIView { UIView() }
 
     func updateUIView(_ view: UIView, context: Context) {
         context.coordinator.setAlignment(alignment)
+        context.coordinator.displayedSVG = displayedSVG
         context.coordinator.update(in: view, svg: svg, nextSVG: nextSVG)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+        coordinator.displayedSVG = nil
+    }
 
     // Keep the visible diagram intact while the other WebView loads its replacement.
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -1750,6 +1769,7 @@ struct SVGView: UIViewRepresentable {
         private var slots: [Slot] = []
         private var visible: Slot?
         private var desiredSVG: String?
+        var displayedSVG: Binding<String?>?
 
         func update(in container: UIView, svg: String?, nextSVG: String?) {
             desiredSVG = svg
@@ -1764,6 +1784,7 @@ struct SVGView: UIViewRepresentable {
             if let nextSVG, nextSVG != visible?.svg {
                 load(nextSVG, in: container)
             }
+            reportDisplayedSVG()
         }
 
         private func load(_ svg: String, in container: UIView) {
@@ -1801,11 +1822,25 @@ struct SVGView: UIViewRepresentable {
             visible = slot
         }
 
+        private func reportDisplayedSVG() {
+            guard let svg = desiredSVG, visible?.svg == svg,
+                  let displayedSVG, displayedSVG.wrappedValue != svg else { return }
+            // Cached diagrams can be selected during updateUIView. Publish after that update.
+            Task { @MainActor [weak self] in
+                guard let self, self.desiredSVG == svg, self.visible?.svg == svg,
+                      let displayedSVG = self.displayedSVG else { return }
+                displayedSVG.wrappedValue = svg
+            }
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard let slot = slots.first(where: { $0.view === webView }),
                   slot.navigation === navigation else { return }
             slot.ready = true
-            if let desiredSVG, slot.svg == desiredSVG { show(slot) }
+            if let desiredSVG, slot.svg == desiredSVG {
+                show(slot)
+                reportDisplayedSVG()
+            }
         }
     }
 }

@@ -410,6 +410,9 @@ struct TimerModelTests {
             model.refresh()
             try await waitForGeneration(model)
             let original = try #require(model.scramble)
+            try await waitForPrefetch(model)
+            let prefetched = try #require(model.nextScramble)
+            #expect(prefetched.algorithm != original.algorithm)
             #expect(model.saveGroup(name: "Practice", isDefault: false))
             let group = try #require(model.currentGroup)
 
@@ -426,10 +429,6 @@ struct TimerModelTests {
             #expect(model.started == nil)
             model.release(.keyboard)
             #expect(model.started == now)
-            try await waitForPrefetch(model)
-            let prefetched = try #require(model.nextScramble)
-            #expect(prefetched.algorithm != original.algorithm)
-
             now += .milliseconds(12_345)
             model.press(.touch, delayTenths: 2)
             #expect(model.started == nil)
@@ -439,7 +438,9 @@ struct TimerModelTests {
             #expect(solve.groupID == group.id)
             #expect(solve.scramble == original.algorithm)
             #expect(model.scramble?.algorithm == prefetched.algorithm)
-            #expect(model.nextScramble == nil)
+            #expect(model.scramble?.svg == prefetched.svg)
+            try await waitForPrefetch(model)
+            #expect(model.nextScramble?.algorithm != prefetched.algorithm)
             #expect(fixture.model().solves == [solve])
         }
     }
@@ -460,9 +461,10 @@ struct TimerModelTests {
             model.activateAccessibleTimer()
             #expect(model.started != nil)
             try await waitForPrefetch(model)
+            let prefetched = try #require(model.nextScramble)
             model.interrupt()
             #expect(model.started == nil)
-            #expect(model.nextScramble == nil)
+            #expect(model.nextScramble?.algorithm == prefetched.algorithm)
             #expect(model.error != nil)
             #expect(model.solves.isEmpty)
             #expect(!FileManager.default.fileExists(atPath: fixture.storage.path))
@@ -482,6 +484,8 @@ struct TimerModelTests {
             model.refresh()
             try await waitForGeneration(model)
             #expect(model.scramble?.algorithm.hasPrefix("222:") == true)
+            try await waitForPrefetch(model)
+            #expect(model.nextScramble?.algorithm.hasPrefix("222:") == true)
             #expect(model.lastSolve == nil)
 
             model.mode = .training
@@ -891,7 +895,7 @@ struct TimerModelTests {
 
         func generate(_ event: String) -> Scramble {
             count += 1
-            return Scramble(algorithm: "\(event):\(count)", svg: "")
+            return Scramble(algorithm: "\(event):\(count)", svg: "<svg id=\"\(count)\"/>")
         }
     }
 }
