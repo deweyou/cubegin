@@ -191,7 +191,9 @@ struct AssistFormulaView: View {
             guard self.method == method else { return }
             search = .solutions(preferences.ordered(solutions, for: method))
         } catch {
-            if !Task.isCancelled { search = .failed }
+            guard !Task.isCancelled, !(error is CancellationError), self.method == method else { return }
+            AppTelemetry.record(.loadAssist, error is DecodingError ? .decodeFailed : .engineFailed)
+            search = .failed
         }
     }
 

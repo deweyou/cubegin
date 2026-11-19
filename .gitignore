@@ -19,3 +19,5 @@ local.properties
 /examples/android/.gradle/
 
 /sdk/web/SDK.json
+
+/apps/ios/TelemetryConfig/

@@ -4,6 +4,38 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testDeviceIDIsAvailableToCopyAndSurvivesRelaunch() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en"]
+
+        func openDeviceID() -> XCUIElement {
+            app.launch()
+            let settings = app.tabBars.buttons["Settings"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 20))
+            settings.tap()
+            let row = app.descendants(matching: .any)["settings.deviceID"]
+            for _ in 0..<4 where !row.isHittable {
+                app.swipeUp()
+            }
+            XCTAssertTrue(row.isHittable)
+            return row
+        }
+
+        let row = openDeviceID()
+        let label = row.label
+        XCTAssertTrue(label.contains("Device ID"))
+        XCTAssertNotNil(label.range(of: "[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}", options: .regularExpression))
+        row.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Copy device ID"].waitForExistence(timeout: 5))
+        app.buttons["Copy device ID"].tap()
+        app.terminate()
+        XCTAssertEqual(openDeviceID().label, label)
+    }
+
+    @MainActor
     func testCelebrationReplaysOnlyWhileTheLatestSolveQualifies() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

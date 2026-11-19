@@ -6,6 +6,37 @@ import Testing
 @MainActor
 struct TimerModelTests {
     @Test
+    func createsOneInstallationIDPerDefaultsStore() throws {
+        let firstSuite = "installation-test.\(UUID())"
+        let secondSuite = "installation-test.\(UUID())"
+        let first = try #require(UserDefaults(suiteName: firstSuite))
+        let second = try #require(UserDefaults(suiteName: secondSuite))
+        defer {
+            first.removePersistentDomain(forName: firstSuite)
+            second.removePersistentDomain(forName: secondSuite)
+        }
+        let id = AppTelemetry.installationID(in: first)
+        #expect(UUID(uuidString: id) != nil)
+        let reopened = try #require(UserDefaults(suiteName: firstSuite))
+        #expect(AppTelemetry.installationID(in: reopened) == id)
+        #expect(AppTelemetry.installationID(in: second) != id)
+    }
+
+    @Test
+    func sendsOnlyUnexpectedErrorsToSentry() {
+        #expect(FailureReason.writeFailed.needsDiagnostic(for: .saveSolve))
+        #expect(FailureReason.writeFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.decodeFailed.needsDiagnostic(for: .loadResults))
+        #expect(FailureReason.engineFailed.needsDiagnostic(for: .generateScramble))
+        #expect(!FailureReason.engineFailed.needsDiagnostic(for: .loadDiagram))
+        #expect(!FailureReason.readFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(!FailureReason.invalidBackup.needsDiagnostic(for: .importDCTimer))
+        let diskFull = CocoaError(.fileWriteOutOfSpace)
+        #expect(FailureReason.writingResults(diskFull) == .diskFull)
+        #expect(!FailureReason.writingResults(diskFull).needsDiagnostic(for: .saveSolve))
+    }
+
+    @Test
     func celebratesFirstValidResultOncePerSolveAndScopesRecordsToTheSelectedGroup() async throws {
         try await withFixture { fixture in
             let model = fixture.model()

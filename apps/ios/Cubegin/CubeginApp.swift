@@ -3,6 +3,7 @@ import UIKit
 
 @main
 struct CubeginApp: App {
+    @UIApplicationDelegateAdaptor(CubeginAppDelegate.self) private var delegate
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @State private var hasFinishedLaunch = false
@@ -28,6 +29,13 @@ struct CubeginApp: App {
                     }
                 }
         }
+    }
+}
+
+final class CubeginAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        AppTelemetry.startFromPreferences()
+        return true
     }
 }
 

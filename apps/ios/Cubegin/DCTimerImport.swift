@@ -27,6 +27,14 @@ struct DCTimerBackup: Sendable {
         case invalidResult
         case noResults
 
+        var telemetryReason: FailureReason {
+            switch self {
+            case .invalidBackup: .invalidBackup
+            case .invalidResult: .invalidResult
+            case .noResults: .emptyBackup
+            }
+        }
+
         var errorDescription: String? {
             let language = AppLanguage.saved
             switch self {
@@ -267,7 +275,10 @@ struct ResultsImportView: View {
         .fileImporter(isPresented: $isPicking, allowedContentTypes: [.item]) { selection in
             switch selection {
             case .success(let url): read(url)
-            case .failure:
+            case .failure(let error):
+                guard (error as NSError).domain != NSCocoaErrorDomain
+                    || (error as NSError).code != NSUserCancelledError else { return }
+                AppTelemetry.record(.importDCTimer, .openFailed)
                 noticeIcon = "exclamationmark.circle"
                 notice = language.text("无法打开文件，请重试。", "Couldn’t open the file. Try again.")
             }
@@ -360,8 +371,11 @@ struct ResultsImportView: View {
                     return try DCTimerImportPlan(backup: DCTimerBackup.read(url), validate: Engine.acceptsImportedScramble)
                 }.value
             } catch let error as DCTimerBackup.Failure {
+                AppTelemetry.record(.importDCTimer, error.telemetryReason)
                 notice = error.localizedDescription
             } catch {
+                guard !Task.isCancelled, !(error is CancellationError) else { return }
+                AppTelemetry.record(.importDCTimer, .readFailed)
                 notice = language.text("无法读取备份，请重新选择文件。", "Couldn’t read the backup. Select the file again.")
             }
         }

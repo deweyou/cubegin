@@ -81,7 +81,7 @@ struct AppTabsView: View {
     private var showsTimingLayout: Bool {
         model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
     }
-    @State private var selection = Destination.home
+    @State private var selection = Destination.initial
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false
     @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
@@ -94,6 +94,10 @@ struct AppTabsView: View {
 
     private enum Destination: String, CaseIterable {
         case home, results, settings
+
+        @MainActor static var initial: Self {
+            SettingsView.opensDeviceIDForQA ? .settings : .home
+        }
 
         func title(in language: AppLanguage) -> String {
             switch self {
@@ -1309,6 +1313,7 @@ private struct SolveDetailsView: View {
                 svg = diagram
             } catch {
                 guard !Task.isCancelled else { return }
+                if !(error is CancellationError) { AppTelemetry.record(.loadDiagram, .engineFailed) }
                 diagramError = language.text("打乱图加载失败", "Could not load scramble diagram")
             }
         }
@@ -1839,11 +1844,21 @@ extension CardSection where Header == EmptyView {
 }
 
 private struct SettingsView: View {
+    static var opensDeviceIDForQA: Bool {
+#if DEBUG
+        return Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+            && ProcessInfo.processInfo.arguments.contains("-cubegin-show-device-id")
+#else
+        return false
+#endif
+    }
+
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
     private enum Page: Hashable { case gestures, imports, clearResults }
     @State private var path: [Page] = []
+    @AppStorage(AppTelemetry.consentKey) private var diagnosticsEnabled = false
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
@@ -1922,6 +1937,25 @@ private struct SettingsView: View {
         }
     }
 
+    private var deviceIDRow: some View {
+        let id = AppTelemetry.installationID
+        let copyTitle = language.text("复制设备 ID", "Copy device ID")
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(language.text("设备 ID", "Device ID"))
+            Text(id)
+                .font(.footnote.monospaced())
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(copyTitle, systemImage: "doc.on.doc") { UIPasteboard.general.string = id }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: Text(copyTitle)) { UIPasteboard.general.string = id }
+        .accessibilityIdentifier("settings.deviceID")
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             Form {
@@ -1987,8 +2021,26 @@ private struct SettingsView: View {
                 }
                 CardSection(language.text("关于", "About")) {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
+                    if AppTelemetry.showsDiagnosticsPreference {
+                        Toggle(isOn: Binding(
+                            get: { diagnosticsEnabled },
+                            set: { enabled in
+                                diagnosticsEnabled = enabled
+                                AppTelemetry.setEnabled(enabled)
+                            }
+                        )) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(language.text("共享故障诊断", "Share diagnostics"))
+                                Text(language.text("发送崩溃、操作失败和设备 ID。", "Send crashes, failed operations, and the device ID."))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    deviceIDRow
                 }
             }
+            .defaultScrollAnchor(Self.opensDeviceIDForQA ? .bottom : nil, for: .initialOffset)
             .navigationDestination(for: Page.self) { page in
                 switch page {
                 case .gestures: TimerGestureSettingsView()
@@ -2152,7 +2204,7 @@ private struct ClearResultsView: View {
                     language: language,
                     onCancel: { request = nil }
                 ) {
-                    guard model.deleteSolves(pending.solveIDs) else { return false }
+                    guard model.deleteSolves(pending.solveIDs, operation: .clearResults) else { return false }
                     selection.removeAll()
                     deletedCount = pending.solveIDs.count
                     request = nil

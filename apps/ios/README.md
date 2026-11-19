@@ -22,3 +22,5 @@ Optional WCA inspection includes 8- and 12-second voice calls and automatic insp
 On a partially folded iPhone Duo in portrait, read the scramble and time above the fold and use the lower half to start or stop the timer.
 
 App settings sync across devices signed into the same iCloud account when the app is signed with the iCloud key-value storage capability.
+
+In **Settings → About**, touch and hold the device ID to copy it. Use **Share diagnostics** to send crash reports and failed operations with this installation ID. Results stay on the device.

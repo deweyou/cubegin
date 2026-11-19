@@ -339,6 +339,7 @@ struct ManualSolveContext: Identifiable {
             let fileError = error as NSError
             if fileError.domain != NSCocoaErrorDomain || fileError.code != NSFileReadNoSuchFileError {
                 storageReadFailed = true
+                AppTelemetry.record(.loadResults, error is DecodingError ? .decodeFailed : .readFailed)
                 self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription
             }
         }
@@ -388,7 +389,7 @@ struct ManualSolveContext: Identifiable {
         } else {
             updated.append(SolveGroup(id: groupID, event: event, name: name, isDefault: isDefault))
         }
-        guard save(solves, groups: updated) else { return false }
+        guard save(solves, operation: .saveGroup, groups: updated) else { return false }
         groups = updated
         if id == nil && selectNewGroup { selectGroup(groupID) }
         return true
@@ -416,7 +417,7 @@ struct ManualSolveContext: Identifiable {
         for index in updated.indices where ids.contains(updated[index].id) {
             updated[index].groupID = targetID
         }
-        guard save(updated) else { return false }
+        guard save(updated, operation: .moveSolves) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
         return true
@@ -440,7 +441,7 @@ struct ManualSolveContext: Identifiable {
         var updated = groups
         let positions = groups.indices.filter { groups[$0].event == event }
         for (position, group) in zip(positions, reordered) { updated[position] = group }
-        guard save(solves, groups: updated) else { return false }
+        guard save(solves, operation: .reorderGroups, groups: updated) else { return false }
         groups = updated
         return true
     }
@@ -454,7 +455,7 @@ struct ManualSolveContext: Identifiable {
         let updatedSolves = solves.filter {
             $0.event != event || ($0.groupID ?? SolveGroup.initialID(for: $0.event)) != id
         }
-        guard save(updatedSolves, groups: updatedGroups) else { return false }
+        guard save(updatedSolves, operation: .deleteGroup, groups: updatedGroups) else { return false }
         groups = updatedGroups
         solves = updatedSolves
         if selectedGroupID == id { selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id }
@@ -504,6 +505,7 @@ struct ManualSolveContext: Identifiable {
                 self.busy = false
             } catch {
                 guard !Task.isCancelled, let self, self.event == event else { return }
+                if !(error is CancellationError) { AppTelemetry.record(.generateScramble, .engineFailed) }
                 self.error = error.localizedDescription
                 self.busy = false
             }
@@ -615,7 +617,7 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
                           penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
-        let saved = save([solve] + solves)
+        let saved = save([solve] + solves, operation: .saveSolve)
         finishSolve(solve, saved: saved)
     }
 
@@ -639,7 +641,7 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: Double(milliseconds) / 1_000, event: context.event, scramble: context.scramble,
                           penalty: penalty, groupID: context.groupID)
         let previousError = error
-        if !save([solve] + solves) {
+        if !save([solve] + solves, operation: .saveSolve) {
             let message = error
             error = previousError
             return message ?? language.text("成绩保存失败。", "Could not save the result.")
@@ -673,7 +675,7 @@ struct ManualSolveContext: Identifiable {
         cancelPress()
         var updated = solves
         updated[index].penalty = penalty
-        guard save(updated) else { return false }
+        guard save(updated, operation: .editPenalty) else { return false }
         if id == lastSolveID { lastSolveWasSaved = true }
         solves = updated
         return true
@@ -685,11 +687,11 @@ struct ManualSolveContext: Identifiable {
     }
 
     @discardableResult
-    func deleteSolves(_ ids: Set<Solve.ID>) -> Bool {
+    func deleteSolves(_ ids: Set<Solve.ID>, operation: FailedOperation = .deleteSolves) -> Bool {
         guard started == nil, !ids.isEmpty, solves.contains(where: { ids.contains($0.id) }) else { return false }
         cancelPress()
         let updated = solves.filter { !ids.contains($0.id) }
-        guard save(updated) else { return false }
+        guard save(updated, operation: operation) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
         return true
@@ -746,7 +748,8 @@ struct ManualSolveContext: Identifiable {
 
         guard !imported.isEmpty else { return 0 }
         let updated = (solves + imported).sorted(by: Solve.newestFirst)
-        guard save(updated, groups: updatedGroups, importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
+        guard save(updated, operation: .importDCTimer, groups: updatedGroups,
+                   importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
             throw CocoaError(.fileWriteUnknown)
         }
         solves = updated
@@ -756,12 +759,12 @@ struct ManualSolveContext: Identifiable {
 
     func undoLastImport() -> Int? {
         let count = lastImportCount
-        guard deleteSolves(lastImportedSolveIDs) else { return nil }
+        guard deleteSolves(lastImportedSolveIDs, operation: .undoImport) else { return nil }
         return count
     }
 
-    private func save(_ results: [Solve], groups: [SolveGroup]? = nil, importedIDs: Set<Solve.ID>? = nil,
-                      importedAt: Date? = nil) -> Bool {
+    private func save(_ results: [Solve], operation: FailedOperation, groups: [SolveGroup]? = nil,
+                      importedIDs: Set<Solve.ID>? = nil, importedAt: Date? = nil) -> Bool {
         guard !storageReadFailed else {
             error = AppLanguage.saved.text(
                 "无法读取已有成绩。请恢复成绩文件后重新打开 Cubegin。",
@@ -774,12 +777,17 @@ struct ManualSolveContext: Identifiable {
         let store = ResultsStore(solves: results, groups: groups ?? self.groups,
                                  lastImportedSolveIDs: remaining.isEmpty ? nil : remaining,
                                  lastImportDate: remaining.isEmpty ? nil : (importedAt ?? lastImportDate))
+        var failureReason = FailureReason.encodeFailed
         do {
-            try JSONEncoder().encode(store).write(to: storage, options: .atomic)
+            let encoded = try JSONEncoder().encode(store)
+            failureReason = .writeFailed
+            try encoded.write(to: storage, options: .atomic)
             lastImportedSolveIDs = remaining
             lastImportDate = store.lastImportDate
             return true
         } catch {
+            if failureReason == .writeFailed { failureReason = .writingResults(error) }
+            AppTelemetry.record(operation, failureReason)
             self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription
             return false
         }

@@ -169,3 +169,30 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 ```
 
 签名构建、安装成功、启动成功与真机画面或交互验收应分开记录。
+
+## 真机验证故障诊断
+
+在忽略提交的 `apps/ios/TelemetryConfig/` 中放置配置，也可通过
+`CUBEGIN_TELEMETRY_CONFIG_DIR` 指定目录。Dev 和正式版使用独立的 Firebase 项目、
+GA4 属性和 Sentry 项目。
+
+| 构建 | Firebase 配置文件 | Sentry DSN 文件 |
+| --- | --- | --- |
+| 真机 Debug（Cubegin Dev） | `io.github.deweyou.cubegin.dev.plist` | `io.github.deweyou.cubegin.dev.sentry-dsn.txt` |
+| 真机 Release（Cubegin） | `io.github.deweyou.cubegin.plist` | `io.github.deweyou.cubegin.sentry-dsn.txt` |
+
+构建脚本按构建类型和 Bundle ID 选择配置，模拟器构建不打包配置。指定配置目录时，
+匹配的两个文件都必须存在。发布时设置实际的 App 版本和构建号。
+
+按[本地真机安装](#本地真机安装)安装 Debug 版后，显式开启该次启动的诊断并启用 GA DebugView。
+
+```sh
+xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
+  io.github.deweyou.cubegin.dev -cubegin-telemetry-qa -FIRDebugEnabled
+```
+
+导入无效备份，在 GA4 DebugView 确认 `operation_failed`。用测试数据验证写入失败，
+确认 GA4 同时记录失败，Sentry 的 `device_qa` 环境收到对应的非致命诊断。
+在专用验证构建中触发测试崩溃后重启，确认 Sentry 收到崩溃。发布归档保留并上传匹配的 dSYM，
+上传令牌配置在发布环境中。核对诊断中的设备 ID 与设置页一致，再检查上报只包含预期字段。
+发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
