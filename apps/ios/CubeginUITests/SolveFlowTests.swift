@@ -9,6 +9,8 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        // On hosted simulators, accessibility snapshots can outlast the normal toast.
+        app.launchEnvironment["CUBEGIN_UI_TEST_EXTENDED_CELEBRATION"] = "1"
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
                                 "-timer.entryMethod", "timer", "-timer.startDelayTenths", "0", "-timer.wcaInspection", "NO"]
         app.launch()
@@ -32,7 +34,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(toast.wait(for: \.label, toEqual: "First result", timeout: 2))
         let toastFrame = toast.frame
         captureScreen("First result toast")
-        XCTAssertTrue(toast.waitForNonExistence(timeout: 4))
+        XCTAssertTrue(toast.waitForNonExistence(timeout: 12))
         XCTAssertEqual(toastFrame.midX, readout.frame.midX, accuracy: 2)
         XCTAssertGreaterThan(toastFrame.minY, readout.frame.maxY)
         let delete = app.buttons["Delete this solve"]
@@ -61,6 +63,8 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        // On hosted simulators, accessibility snapshots can outlast the normal toast.
+        app.launchEnvironment["CUBEGIN_UI_TEST_EXTENDED_CELEBRATION"] = "1"
         app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
                                 "-timer.entryMethod", "timer", "-timer.startDelayTenths", "0", "-timer.wcaInspection", "NO"]
@@ -106,7 +110,7 @@ final class SolveFlowTests: XCTestCase {
                 XCTAssertLessThan(tabBar.frame.minY - ao12Frame.maxY, 32)
             }
         }
-        XCTAssertTrue(ao12.waitForNonExistence(timeout: 4))
+        XCTAssertTrue(ao12.waitForNonExistence(timeout: 12))
         XCTAssertEqual(readout.frame.midY, readoutCenterY, accuracy: 2)
         XCTAssertTrue(app.buttons["timer.celebration-replay"].exists)
         captureScreen("Record scores after the toast fades")

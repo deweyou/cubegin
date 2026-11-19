@@ -330,7 +330,7 @@ struct ContentView: View {
                         try await Task.sleep(for: .milliseconds(milliseconds))
                     }
                 }
-                try await Task.sleep(for: .milliseconds(reduceMotion ? 1500 : 580))
+                try await Task.sleep(for: celebrationToastHoldDuration)
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.34)) {
                     showsCelebrationToast = false
                 }
@@ -338,6 +338,18 @@ struct ContentView: View {
                 stopCelebration()
             } catch { return }
         }
+    }
+
+    private var celebrationToastHoldDuration: Duration {
+        let milliseconds = reduceMotion ? 1500 : 580
+#if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["CUBEGIN_UI_TEST_EXTENDED_CELEBRATION"] == "1",
+           let session = environment["CUBEGIN_UI_TEST_SESSION"], UUID(uuidString: session) != nil {
+            return .milliseconds(milliseconds + 5000)
+        }
+#endif
+        return .milliseconds(milliseconds)
     }
 
     private func horizontalFold(in geometry: GeometryProxy) -> CGRect? {
