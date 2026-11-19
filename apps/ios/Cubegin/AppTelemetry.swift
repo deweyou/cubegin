@@ -164,11 +164,17 @@ enum AppTelemetry {
 #endif
     }
 
+    static func analyticsParameters(_ fields: [String: String]) -> [String: String] {
+        var parameters = fields
+        parameters["app_build"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return parameters
+    }
+
     static func record(_ operation: FailedOperation, _ reason: FailureReason, impact: FailureImpact = .blocked) {
 #if CUBEGIN_TELEMETRY
         let failure = OperationFailure(operation: operation, reason: reason, impact: impact)
         if analyticsEnabled {
-            Analytics.logEvent(OperationFailure.eventName, parameters: failure.fields)
+            Analytics.logEvent(OperationFailure.eventName, parameters: analyticsParameters(failure.fields))
         }
         guard sentryEnabled, reason.needsDiagnostic(for: operation) else { return }
         let key = "\(operation.rawValue).\(reason.rawValue)"

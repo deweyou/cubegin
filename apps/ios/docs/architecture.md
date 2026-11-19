@@ -41,6 +41,9 @@ GA4 的 `operation_failed` 与 Sentry 手动诊断共用四个字符串字段。
 | `impact` | `blocked` 表示操作被阻断，`degraded` 表示主要流程仍可用 |
 | `schema_version` | 当前字段契约版本 `1` |
 
+GA4 失败事件另外带有字符串参数 `app_build`，值取自当前 App 的 `CFBundleVersion`。
+可以结合 GA4 自动采集的 `app_version` 对比同一版本的不同构建。Sentry 在 App 上下文中采集构建号。
+
 Sentry 自动捕获崩溃。手动诊断按操作与原因聚合，同类每次运行最多每分钟发送一次，GA4
 仍按操作记录。P0–P2 由排障时根据实际影响范围分级。
 

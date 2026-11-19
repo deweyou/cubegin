@@ -57,6 +57,16 @@ struct TimerModelTests {
     }
 
     @Test
+    func addsTheInstalledBuildNumberToAnalyticsParameters() throws {
+        let buildNumber = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+        #expect(!buildNumber.isEmpty)
+        let failure = OperationFailure(operation: .loadResults, reason: .readFailed, impact: .blocked)
+        var expected = failure.fields
+        expected["app_build"] = buildNumber
+        #expect(AppTelemetry.analyticsParameters(failure.fields) == expected)
+    }
+
+    @Test
     func retriesOnlyTheRequestedDiagramAndReportsTerminalFailureOnce() {
         var recovery = SVGView.RenderRecovery()
         recovery.request("current")
