@@ -75,6 +75,30 @@ struct TimerModelTests {
     }
 
     @Test
+    func includesFutureDatedHistoryAndMatchesTheDisplayedRollingWindows() async throws {
+        try await withFixture { fixture in
+            let tomorrow = Date().addingTimeInterval(86_400)
+            let history = (0..<12).map { index in
+                Solve(seconds: 8 + Double(index) * 0.25, event: "333", scramble: "R U",
+                      date: tomorrow.addingTimeInterval(Double(-index)))
+            }
+            try JSONEncoder().encode(history).write(to: fixture.storage)
+            let model = fixture.model()
+            model.refresh()
+            try await waitForGeneration(model)
+
+            var context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 10_000, penalty: nil, context: context) == nil)
+            #expect(model.lastSolveCelebration == nil)
+
+            try await waitForGeneration(model)
+            context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 7_000, penalty: nil, context: context) == nil)
+            #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .single, result: "7.000")])
+        }
+    }
+
+    @Test
     func firstAveragesAndDisplayedTiesDoNotQualify() {
         let history = (0..<11).map { _ in Solve(seconds: 10.0009, event: "333", scramble: "R U") }
         let solve = Solve(seconds: 10.0001, event: "333", scramble: "R U")

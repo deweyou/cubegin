@@ -283,7 +283,7 @@ struct ManualSolveContext: Identifiable {
             lastSolveCelebration = nil
             return
         }
-        let history = groupSolves.filter { Solve.newestFirst(solve, $0) }.sorted(by: Solve.newestFirst)
+        let history = groupSolves.filter { $0.id != solve.id }.sorted(by: Solve.newestFirst)
         lastSolveCelebration = SolveCelebration(solve: solve, history: history)
     }
     private var storageReadFailed = false
@@ -996,7 +996,8 @@ struct SolveCelebration: Equatable {
             }
         }
 
-        let latest = [solve] + history.prefix(SolveAverage.ao12.count - 1)
+        // Match the timer summary even when a saved result has a later timestamp.
+        let latest = ([solve] + history.prefix(SolveAverage.ao12.count)).sorted(by: Solve.newestFirst)
         for (average, kind) in [(SolveAverage.ao5, Kind.ao5), (.ao12, .ao12)] {
             if let mean = Self.recordMean(average, latest: latest, history: history) {
                 achievements.append(Achievement(kind: kind, result: TimerModel.format(mean)))
