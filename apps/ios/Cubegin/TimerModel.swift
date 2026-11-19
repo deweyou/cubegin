@@ -152,6 +152,19 @@ struct ManualSolveContext: Identifiable {
     let groupID: String?
 }
 
+private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
+    let inspectionID = UUID()
+    private let onDecodeError: @MainActor @Sendable (UUID) -> Void
+
+    init(onDecodeError: @escaping @MainActor @Sendable (UUID) -> Void) {
+        self.onDecodeError = onDecodeError
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_: AVAudioPlayer, error _: Error?) {
+        Task { @MainActor [onDecodeError, inspectionID] in onDecodeError(inspectionID) }
+    }
+}
+
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
     static let defaultStartDelayTenths = 0
@@ -174,6 +187,8 @@ struct ManualSolveContext: Identifiable {
     private(set) var inspectionStarted: ContinuousClock.Instant?
     private var inspectionPenalty: SolvePenalty?
     @ObservationIgnored private var inspectionPlayers: [AVAudioPlayer] = []
+    @ObservationIgnored private var reportedInspectionAudioFailure = false
+    @ObservationIgnored private var inspectionAudioDelegate: InspectionAudioDelegate?
 
     static func penalty(forInspection duration: Duration) -> SolvePenalty? {
         if duration >= .seconds(17) { return .dnf }
@@ -183,25 +198,61 @@ struct ManualSolveContext: Identifiable {
 
     private func beginInspection(at instant: ContinuousClock.Instant) {
         inspectionStarted = instant
+        reportedInspectionAudioFailure = false
         let voice = InspectionVoice(rawValue: defaults.string(forKey: Self.inspectionVoiceKey) ?? "") ?? .off
         guard voice != .off else { return }
+        inspectionAudioDelegate = InspectionAudioDelegate { [weak self] id in
+            guard let self, self.inspectionAudioDelegate?.inspectionID == id else { return }
+            self.reportInspectionAudioFailure(.audioDecodeFailed)
+        }
         let language = AppLanguage.saved == .english ? "en" : "zh"
+        var firstFailure: FailureReason?
         for seconds in [8, 12] {
             let name = "\(language)-\(voice.rawValue)-\(seconds)"
-            guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio"),
-                  let player = try? AVAudioPlayer(contentsOf: url), player.prepareToPlay() else { continue }
-            let remaining = now().duration(to: instant.advanced(by: .seconds(seconds))).components
-            let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
-            let session = AVAudioSession.sharedInstance()
-            // Account for the small preroll left in the clips and the current audio route.
-            let lead = 0.03 + session.outputLatency + session.ioBufferDuration
-            player.play(atTime: player.deviceCurrentTime + max(0, delay - lead))
-            inspectionPlayers.append(player)
+            if let failure = scheduleInspectionPrompt(name, at: instant.advanced(by: .seconds(seconds))),
+               firstFailure == nil || failure.needsDiagnostic(for: .playInspectionAudio) {
+                firstFailure = failure
+            }
         }
+        if let firstFailure { reportInspectionAudioFailure(firstFailure) }
+    }
+
+    private func scheduleInspectionPrompt(_ name: String, at instant: ContinuousClock.Instant) -> FailureReason? {
+        let player: AVAudioPlayer
+        do {
+            guard let loaded = try loadInspectionPlayer(name) else { return .audioResourceMissing }
+            player = loaded
+        } catch {
+            return .audioDecodeFailed
+        }
+        player.delegate = inspectionAudioDelegate
+        guard player.prepareToPlay() else { return .audioPrepareFailed }
+        let remaining = now().duration(to: instant).components
+        let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+        let session = AVAudioSession.sharedInstance()
+        // Account for the small preroll left in the clips and the current audio route.
+        let lead = 0.03 + session.outputLatency + session.ioBufferDuration
+        guard player.play(atTime: player.deviceCurrentTime + max(0, delay - lead)) else { return .audioScheduleFailed }
+        inspectionPlayers.append(player)
+        return nil
+    }
+
+    private func reportInspectionAudioFailure(_ reason: FailureReason) {
+        guard inspectionStarted != nil, !reportedInspectionAudioFailure else { return }
+        reportedInspectionAudioFailure = true
+        onInspectionAudioFailure(reason)
+    }
+
+    static func bundledInspectionPlayer(_ name: String) throws -> AVAudioPlayer? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio") else {
+            return nil
+        }
+        return try AVAudioPlayer(contentsOf: url)
     }
 
     func endInspection() {
         inspectionStarted = nil
+        inspectionAudioDelegate = nil
         for player in inspectionPlayers { player.stop() }
         inspectionPlayers.removeAll()
     }
@@ -290,6 +341,8 @@ struct ManualSolveContext: Identifiable {
     private let storage: URL
     private let defaults: UserDefaults
     private let now: () -> ContinuousClock.Instant
+    private let loadInspectionPlayer: @MainActor (String) throws -> AVAudioPlayer?
+    private let onInspectionAudioFailure: @MainActor (FailureReason) -> Void
     private let generateScramble: @Sendable (String) async throws -> Scramble
 
 #if DEBUG
@@ -314,11 +367,17 @@ struct ManualSolveContext: Identifiable {
         storage: URL = URL.documentsDirectory.appending(path: "solves.json"),
         defaults: UserDefaults = .standard,
         now: @escaping () -> ContinuousClock.Instant = { .now },
+        loadInspectionPlayer: @escaping @MainActor (String) throws -> AVAudioPlayer? = TimerModel.bundledInspectionPlayer,
+        onInspectionAudioFailure: @escaping @MainActor (FailureReason) -> Void = {
+            AppTelemetry.record(.playInspectionAudio, $0, impact: .degraded)
+        },
         generateScramble: @escaping @Sendable (String) async throws -> Scramble = Engine.scramble
     ) {
         self.storage = storage
         self.defaults = defaults
         self.now = now
+        self.loadInspectionPlayer = loadInspectionPlayer
+        self.onInspectionAudioFailure = onInspectionAudioFailure
         self.generateScramble = generateScramble
         self.standardEvent = ScrambleCatalog.restored("scramble.standard", training: false, defaults: defaults)
         self.trainingEvent = ScrambleCatalog.restored("scramble.training", training: true, defaults: defaults)

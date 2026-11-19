@@ -21,6 +21,31 @@ enum FailedOperation: String {
     case generateScramble = "generate_scramble"
     case loadAssist = "load_assist"
     case loadDiagram = "load_diagram"
+    case renderDiagram = "render_diagram"
+    case playInspectionAudio = "play_inspection_audio"
+}
+
+enum FailureImpact: String {
+    case blocked
+    case degraded
+}
+
+struct OperationFailure {
+    static let eventName = "operation_failed"
+    static let schemaVersion = "1"
+
+    let operation: FailedOperation
+    let reason: FailureReason
+    let impact: FailureImpact
+
+    var fields: [String: String] {
+        [
+            "operation": operation.rawValue,
+            "reason": reason.rawValue,
+            "impact": impact.rawValue,
+            "schema_version": Self.schemaVersion
+        ]
+    }
 }
 
 enum FailureReason: String {
@@ -35,12 +60,21 @@ enum FailureReason: String {
     case emptyBackup = "empty_backup"
     case incompatibleBackup = "incompatible_backup"
     case engineFailed = "engine_failed"
+    case validationFailed = "validation_failed"
+    case webNavigationFailed = "web_navigation_failed"
+    case webContentTerminated = "web_content_terminated"
+    case audioResourceMissing = "audio_resource_missing"
+    case audioDecodeFailed = "audio_decode_failed"
+    case audioPrepareFailed = "audio_prepare_failed"
+    case audioScheduleFailed = "audio_schedule_failed"
 
     func needsDiagnostic(for operation: FailedOperation) -> Bool {
         if operation == .loadDiagram || (operation == .importDCTimer && self == .readFailed) { return false }
         return switch self {
-        case .readFailed, .decodeFailed, .encodeFailed, .writeFailed, .engineFailed: true
-        case .diskFull, .openFailed, .invalidBackup, .invalidResult, .emptyBackup, .incompatibleBackup: false
+        case .readFailed, .decodeFailed, .encodeFailed, .writeFailed, .engineFailed, .validationFailed,
+             .webNavigationFailed, .webContentTerminated, .audioResourceMissing, .audioDecodeFailed: true
+        case .diskFull, .openFailed, .invalidBackup, .invalidResult, .emptyBackup, .incompatibleBackup,
+             .audioPrepareFailed, .audioScheduleFailed: false
         }
     }
 
@@ -130,12 +164,11 @@ enum AppTelemetry {
 #endif
     }
 
-    static func record(_ operation: FailedOperation, _ reason: FailureReason) {
+    static func record(_ operation: FailedOperation, _ reason: FailureReason, impact: FailureImpact = .blocked) {
 #if CUBEGIN_TELEMETRY
+        let failure = OperationFailure(operation: operation, reason: reason, impact: impact)
         if analyticsEnabled {
-            Analytics.logEvent("operation_failed", parameters: [
-                "operation": operation.rawValue, "reason": reason.rawValue
-            ])
+            Analytics.logEvent(OperationFailure.eventName, parameters: failure.fields)
         }
         guard sentryEnabled, reason.needsDiagnostic(for: operation) else { return }
         let key = "\(operation.rawValue).\(reason.rawValue)"
@@ -148,8 +181,7 @@ enum AppTelemetry {
             NSLocalizedDescriptionKey: key
         ])
         SentrySDK.capture(error: error) { scope in
-            scope.setTag(value: operation.rawValue, key: "operation")
-            scope.setTag(value: reason.rawValue, key: "reason")
+            scope.setTags(failure.fields)
             scope.setFingerprint([key])
         }
 #endif

@@ -154,6 +154,8 @@ struct DCTimerBackup: Sendable {
 }
 
 struct DCTimerImportPlan: Identifiable, Sendable {
+    struct ValidationFailure: Error {}
+
     struct Session: Identifiable, Sendable {
         let id: Int64
         let name: String
@@ -192,7 +194,14 @@ struct DCTimerImportPlan: Identifiable, Sendable {
             for entry in source.entries {
                 let trimmed = entry.scramble.trimmingCharacters(in: .whitespacesAndNewlines)
                 let scramble = event == "clock" ? Self.normalizeClock(trimmed) : trimmed
-                guard !scramble.isEmpty, try validate(event, scramble) else { continue }
+                guard !scramble.isEmpty else { continue }
+                do {
+                    guard try validate(event, scramble) else { continue }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    throw ValidationFailure()
+                }
                 if scramble != trimmed { converted += 1 }
                 solves.append(Solve(id: entry.id, seconds: Double(entry.milliseconds) / 1000, event: event,
                                     scramble: scramble, date: entry.date, penalty: entry.penalty))
@@ -383,6 +392,10 @@ struct ResultsImportView: View {
                 guard !Task.isCancelled else { return }
                 AppTelemetry.record(.importDCTimer, error.telemetryReason)
                 notice = error.localizedDescription
+            } catch is DCTimerImportPlan.ValidationFailure {
+                guard !Task.isCancelled else { return }
+                AppTelemetry.record(.importDCTimer, .validationFailed)
+                notice = language.text("无法校验备份中的打乱，请重试。", "Couldn’t validate scrambles in the backup. Try again.")
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
                 AppTelemetry.record(.importDCTimer, .readFailed)

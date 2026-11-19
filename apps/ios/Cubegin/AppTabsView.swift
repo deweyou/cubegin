@@ -1302,7 +1302,7 @@ private struct SolveDetailsView: View {
                 svg = diagram
             } catch {
                 guard !Task.isCancelled else { return }
-                if !(error is CancellationError) { AppTelemetry.record(.loadDiagram, .engineFailed) }
+                if !(error is CancellationError) { AppTelemetry.record(.loadDiagram, .engineFailed, impact: .degraded) }
                 diagramError = language.text("打乱图加载失败", "Could not load scramble diagram")
             }
         }

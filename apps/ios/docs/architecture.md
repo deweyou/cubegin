@@ -32,9 +32,23 @@ UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设
 App 数据后会重新生成。
 
 用户开启「共享故障诊断」后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
-GA4 用 `operation_failed` 记录操作及固定失败原因。DCTimer 备份有成绩但整份不兼容时，
-每次读取在 GA4 记录一次 `incompatible_backup`。Sentry 自动捕获崩溃，并按操作与原因
-记录非预期错误。同类非致命诊断每次运行最多每分钟发送一次，GA4 仍按操作记录。
+GA4 的 `operation_failed` 与 Sentry 手动诊断共用四个字符串字段。
+
+| 字段 | 含义 |
+| --- | --- |
+| `operation` | 发生故障的操作 |
+| `reason` | 固定的失败原因 |
+| `impact` | `blocked` 表示操作被阻断，`degraded` 表示主要流程仍可用 |
+| `schema_version` | 当前字段契约版本 `1` |
+
+Sentry 自动捕获崩溃。手动诊断按操作与原因聚合，同类每次运行最多每分钟发送一次，GA4
+仍按操作记录。P0–P2 由排障时根据实际影响范围分级。
+
+- 打乱图只在当前显示请求重试后仍失败时上报，未展示的预加载故障不计。
+- WCA 语音每次观察至多上报一次。资源缺失和解码失败同时上报 Sentry。
+- DCTimer 整份不兼容记 `incompatible_backup`。校验过程的内部异常中止导入，并向两端记录
+  `validation_failed`。无效打乱仍按不兼容处理。
+
 App 发送固定分类和脱敏诊断。原始错误文本、文件内容及成绩明细保存在设备。
 常规开发构建、预览、模拟器和测试关闭云端上报。真机验证用独立 Dev Bundle ID、Firebase 项目及 Sentry 项目。
 [真机验收](testing.md#真机验证故障诊断)

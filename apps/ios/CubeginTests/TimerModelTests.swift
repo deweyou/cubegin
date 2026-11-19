@@ -1,6 +1,8 @@
 import Foundation
 import SQLite3
 import Testing
+import UIKit
+import WebKit
 @testable import CubeginApp
 
 @MainActor
@@ -32,9 +34,81 @@ struct TimerModelTests {
         #expect(!FailureReason.readFailed.needsDiagnostic(for: .importDCTimer))
         #expect(!FailureReason.invalidBackup.needsDiagnostic(for: .importDCTimer))
         #expect(!FailureReason.incompatibleBackup.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.validationFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.webContentTerminated.needsDiagnostic(for: .renderDiagram))
+        #expect(FailureReason.audioResourceMissing.needsDiagnostic(for: .playInspectionAudio))
+        #expect(FailureReason.audioDecodeFailed.needsDiagnostic(for: .playInspectionAudio))
+        #expect(!FailureReason.audioScheduleFailed.needsDiagnostic(for: .playInspectionAudio))
         let diskFull = CocoaError(.fileWriteOutOfSpace)
         #expect(FailureReason.writingResults(diskFull) == .diskFull)
         #expect(!FailureReason.writingResults(diskFull).needsDiagnostic(for: .saveSolve))
+    }
+
+    @Test
+    func serializesTheSharedFailureSchema() {
+        let failure = OperationFailure(operation: .renderDiagram, reason: .webContentTerminated, impact: .degraded)
+        #expect(OperationFailure.eventName == "operation_failed")
+        #expect(failure.fields == [
+            "operation": "render_diagram",
+            "reason": "web_content_terminated",
+            "impact": "degraded",
+            "schema_version": "1"
+        ])
+    }
+
+    @Test
+    func retriesOnlyTheRequestedDiagramAndReportsTerminalFailureOnce() {
+        var recovery = SVGView.RenderRecovery()
+        recovery.request("current")
+        #expect(recovery.failed("prefetched") == .ignore)
+        #expect(recovery.failed("current") == .retry)
+        recovery.displayed()
+        #expect(recovery.failed("current") == .retry)
+        #expect(recovery.failed("current") == .report)
+        #expect(recovery.exhausted)
+        #expect(recovery.failed("current") == .ignore)
+        recovery.request("next")
+        #expect(!recovery.exhausted)
+        #expect(recovery.failed("current") == .ignore)
+        #expect(recovery.failed("next") == .retry)
+    }
+
+    @Test
+    func reportsRepeatedWebContentTerminationFromTheCurrentDiagram() throws {
+        var captured: [FailureReason] = []
+        let coordinator = SVGView.Coordinator { captured.append($0) }
+        let container = UIView()
+        coordinator.update(in: container, svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", nextSVG: nil)
+        let webView = try #require(container.subviews.first as? WKWebView)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        #expect(captured.isEmpty)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        #expect(captured == [.webContentTerminated])
+        coordinator.stop()
+    }
+
+    @Test
+    func reportsOneAudioFailurePerObservationAndStillAllowsTiming() async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            fixture.defaults.set(InspectionVoice.female.rawValue, forKey: TimerModel.inspectionVoiceKey)
+            var captured: [FailureReason] = []
+            let model = TimerModel(storage: fixture.storage, defaults: fixture.defaults,
+                                   loadInspectionPlayer: { _ in nil }, onInspectionAudioFailure: { captured.append($0) },
+                                   generateScramble: { _ in Scramble(algorithm: "R", svg: "") })
+            model.refresh()
+            try await waitForGeneration(model)
+            model.activateAccessibleTimer()
+            #expect(model.inspectionStarted != nil)
+            #expect(captured == [.audioResourceMissing])
+            model.activateAccessibleTimer()
+            #expect(model.started != nil)
+            model.interrupt()
+            #expect(captured == [.audioResourceMissing])
+            model.activateAccessibleTimer()
+            #expect(captured == [.audioResourceMissing, .audioResourceMissing])
+        }
     }
 
     @Test
@@ -713,6 +787,20 @@ struct TimerModelTests {
         }
     }
 
+    @Test func separatesUnexpectedDCTimerValidationErrorsFromInvalidScrambles() async throws {
+        struct InternalEngineError: Error {}
+        try await withFixture { fixture in
+            let backup = try dctimerImportFixture(in: fixture.directory)
+            #expect(try !Engine.acceptsImportedScramble(event: "333", algorithm: "invalid"))
+            #expect(throws: DCTimerImportPlan.ValidationFailure.self) {
+                try DCTimerImportPlan(backup: backup) { _, _ in throw InternalEngineError() }
+            }
+            #expect(throws: CancellationError.self) {
+                try DCTimerImportPlan(backup: backup) { _, _ in throw CancellationError() }
+            }
+        }
+    }
+
     @Test func importsDCTimerToEitherDestinationAndDeduplicatesAfterReload() async throws {
         for destination in DCTimerImportDestination.allCases {
             try await withFixture { fixture in
@@ -927,9 +1015,9 @@ struct TimerModelTests {
 
         @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now }) -> TimerModel {
             let generator = ScrambleGenerator()
-            return TimerModel(storage: storage, defaults: defaults, now: now) { event in
+            return TimerModel(storage: storage, defaults: defaults, now: now, generateScramble: { event in
                 await generator.generate(event)
-            }
+            })
         }
     }
 
