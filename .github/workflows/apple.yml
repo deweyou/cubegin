@@ -172,13 +172,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  ios:
+  ios_release:
     needs: apple_build
-    name: iOS App (${{ matrix.check }})
-    strategy:
-      fail-fast: false
-      matrix:
-        check: [release, simulator-a, simulator-b]
+    name: iOS App (release)
     runs-on: macos-15
     timeout-minutes: 30
     env:
@@ -190,14 +186,66 @@ jobs:
           name: apple-build-input
       - run: tar -xf apple-build-input.tar
       - name: Build Release app for iOS
-        if: matrix.check == 'release'
         working-directory: apps/ios
         run: |
           xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
             -destination 'generic/platform=iOS' -configuration Release \
             -derivedDataPath DerivedData/release CODE_SIGNING_ALLOWED=NO build
+
+  ios_simulator_build:
+    needs: apple_build
+    name: iOS Simulator test build
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apple-build-input
+      - run: tar -xf apple-build-input.tar
+      - name: Build App and tests
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData/app-tests ARCHS=arm64 \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build-for-testing
+      - name: Archive simulator test products
+        working-directory: apps/ios/DerivedData/app-tests/Build/Products
+        run: |
+          tar -czf "$GITHUB_WORKSPACE/ios-simulator-test-products.tar.gz" ./*.xctestrun \
+            Debug-iphonesimulator/cubegin.app Debug-iphonesimulator/CubeginUITests-Runner.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-test-products
+          path: ios-simulator-test-products.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+
+  ios_simulator_tests:
+    needs: ios_simulator_build
+    name: iOS App (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [simulator-a, simulator-b]
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-simulator-test-products
+      - name: Extract simulator test products
+        run: |
+          mkdir -p apps/ios/DerivedData/test-products
+          tar -xzf ios-simulator-test-products.tar.gz -C apps/ios/DerivedData/test-products
       - name: Prepare iPhone simulator
-        if: matrix.check != 'release'
         id: simulator
         run: |
           runtime=com.apple.CoreSimulator.SimRuntime.iOS-26-2
@@ -213,32 +261,26 @@ jobs:
           fi
           xcrun simctl bootstatus "$simulator" -b
           echo "id=$simulator" >> "$GITHUB_OUTPUT"
-      - name: Build App and tests
-        if: matrix.check != 'release'
-        working-directory: apps/ios
-        env:
-          SIMULATOR: ${{ steps.simulator.outputs.id }}
-        run: |
-          xcodebuild -project Cubegin.xcodeproj -scheme CubeginApp \
-            -destination "platform=iOS Simulator,id=$SIMULATOR" \
-            -derivedDataPath DerivedData/app-tests \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build-for-testing
       - name: Run assigned App tests
-        if: matrix.check != 'release'
         working-directory: apps/ios
         env:
-          SHARD: ${{ matrix.check }}
+          SHARD: ${{ matrix.shard }}
           SIMULATOR: ${{ steps.simulator.outputs.id }}
         run: |
+          shopt -s nullglob
+          plans=(DerivedData/test-products/*.xctestrun)
+          if [[ "${#plans[@]}" != 1 ]]; then
+            echo 'Expected exactly one .xctestrun in the simulator test products' >&2
+            exit 1
+          fi
           bash ../../scripts/test-ios-simulator.sh "$SHARD" \
-            -project Cubegin.xcodeproj -scheme CubeginApp \
+            -xctestrun "${plans[0]}" \
             -destination "platform=iOS Simulator,id=$SIMULATOR" \
-            -derivedDataPath DerivedData/app-tests \
             -resultBundlePath "DerivedData/AppTests-$SHARD.xcresult"
       - name: Upload App test results
-        if: ${{ !cancelled() && matrix.check != 'release' && hashFiles(format('apps/ios/DerivedData/AppTests-{0}.xcresult/Info.plist', matrix.check)) != '' }}
+        if: ${{ !cancelled() && hashFiles(format('apps/ios/DerivedData/AppTests-{0}.xcresult/Info.plist', matrix.shard)) != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: app-test-results-${{ matrix.check }}
-          path: apps/ios/DerivedData/AppTests-${{ matrix.check }}.xcresult
+          name: app-test-results-${{ matrix.shard }}
+          path: apps/ios/DerivedData/AppTests-${{ matrix.shard }}.xcresult
           retention-days: 14

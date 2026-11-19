@@ -18,10 +18,12 @@
 
 ## iOS 模拟器分组
 
-`iOS App (simulator-a)` 和 `iOS App (simulator-b)` 在 Apple SDK 构建完成后分别
-启动。各自在 macOS runner 上准备独立的 iPhone 17 Pro 模拟器，构建 App 和测试，再以
-`-parallel-testing-enabled NO` 执行本组。两个 runner 复用 XCFramework 和生成绑定，
-各自生成测试构建产物。
+`iOS Simulator test build` 使用 Apple SDK 构建产物，对 arm64 通用模拟器目标执行一次
+`build-for-testing`，把 `.xctestrun` 与 App、测试包一起上传为
+`ios-simulator-test-products`。`iOS App (simulator-a)` 和 `iOS App (simulator-b)`
+下载并解包同一份产物，各自在独立的 macOS runner 和 iPhone 17 Pro 模拟器上使用
+`test-without-building` 执行本组，组内保留 `-parallel-testing-enabled NO`。
+iOS Release 和 SDK 打包直接使用 Apple SDK 构建产物，可与测试构建并行。
 
 [测试分组脚本](../scripts/test-ios-simulator.sh)用指定用例运行 A 组。B 组执行 App 单测
 和其余 UI 用例，并排除 A 组清单中的用例。新增测试会自动进入 B 组。根据 GitHub
@@ -35,8 +37,8 @@ B 组算上单测和设备跳过约 5 分 47 秒。这些估算只覆盖测试�
 
 失败时在 GitHub Actions 单独重跑对应 job。每组上传 `app-test-results-simulator-a`
 或 `app-test-results-simulator-b`，包含各自的 `.xcresult`。比较吞吐量时，分别记录
-从 SDK 完成到 runner 启动的等待时间，以及准备模拟器、构建、运行测试和 runner 的用时。
-合计等待时间以 SDK 完成至较晚结束的模拟器 job 通过为准。
+共享测试构建的等候、编译和上传时间，以及各组的等候、下载解包、模拟器准备、
+测试和 runner 用时。合计等待时间以 SDK 完成至较晚结束的模拟器 job 通过为准。
 
 `main` 当前规则集未配置必需的检查名称。若之后需要把模拟器测试设为必需检查，
 在分支保护中同时要求 `iOS App (simulator-a)` 和 `iOS App (simulator-b)`。

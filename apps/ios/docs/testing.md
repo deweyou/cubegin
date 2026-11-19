@@ -57,8 +57,8 @@ swift test --package-path ../..
 在上述 `xcodebuild test` 命令加上 `-only-testing:CubeginUITests`。
 
 [仓库 CI](../../../.github/workflows/apple.yml) 在 PR、推送到 `main`、合并队列及手动触发时运行。
-CI 使用 arm64 macOS 和 Xcode 26.2。iOS Release 和两组 iPhone 17 Pro 模拟器检查复用
-同一份 XCFramework。每组在各自的 runner 上构建 App 和测试，随后串行执行组内用例。
+CI 使用 arm64 macOS 和 Xcode 26.2。iOS Release 和模拟器测试构建复用同一份 XCFramework。
+两组 iPhone 17 Pro 模拟器检查下载同一份 App 和测试产物，在各自 runner 上串行执行组内用例。
 需要时安装 iOS 26.2 runtime 或创建对应机型。测试结果分别以
 `app-test-results-simulator-a` 和 `app-test-results-simulator-b` 上传，保留 14 天。
 设备构建用于验证编译和链接，安装及交互见下方。分组、重跑及计时见[CI 验收](../../../docs/ci.md#ios-模拟器分组)。
