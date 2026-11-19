@@ -33,13 +33,14 @@ enum FailureReason: String {
     case invalidBackup = "invalid_backup"
     case invalidResult = "invalid_result"
     case emptyBackup = "empty_backup"
+    case incompatibleBackup = "incompatible_backup"
     case engineFailed = "engine_failed"
 
     func needsDiagnostic(for operation: FailedOperation) -> Bool {
         if operation == .loadDiagram || (operation == .importDCTimer && self == .readFailed) { return false }
         return switch self {
         case .readFailed, .decodeFailed, .encodeFailed, .writeFailed, .engineFailed: true
-        case .diskFull, .openFailed, .invalidBackup, .invalidResult, .emptyBackup: false
+        case .diskFull, .openFailed, .invalidBackup, .invalidResult, .emptyBackup, .incompatibleBackup: false
         }
     }
 

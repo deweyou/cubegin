@@ -31,6 +31,7 @@ struct TimerModelTests {
         #expect(!FailureReason.engineFailed.needsDiagnostic(for: .loadDiagram))
         #expect(!FailureReason.readFailed.needsDiagnostic(for: .importDCTimer))
         #expect(!FailureReason.invalidBackup.needsDiagnostic(for: .importDCTimer))
+        #expect(!FailureReason.incompatibleBackup.needsDiagnostic(for: .importDCTimer))
         let diskFull = CocoaError(.fileWriteOutOfSpace)
         #expect(FailureReason.writingResults(diskFull) == .diskFull)
         #expect(!FailureReason.writingResults(diskFull).needsDiagnostic(for: .saveSolve))
@@ -679,6 +680,7 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let backup = try dctimerImportFixture(in: fixture.directory)
             let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
+            #expect(plan.compatibilityFailure == nil)
             let clock = try #require(plan.sessions.first { $0.id == 1 })
             #expect(clock.event == "clock")
             #expect(clock.converted == 1)
@@ -695,6 +697,19 @@ struct TimerModelTests {
             let unknown = try #require(plan.sessions.first { $0.id == 3 })
             #expect(unknown.event == nil)
             #expect(unknown.skipped == 1)
+        }
+    }
+
+    @Test func classifiesDCTimerBackupsWithNoCompatibleResults() async throws {
+        try await withFixture { fixture in
+            let backup = try dctimerImportFixture(in: fixture.directory)
+            let rejectedScrambles = try DCTimerImportPlan(backup: backup) { _, _ in false }
+            #expect(rejectedScrambles.compatibilityFailure == .incompatibleBackup)
+
+            let unsupportedGroups = DCTimerBackup(sessions: backup.sessions.filter { $0.id == 2 || $0.id == 3 })
+            let unsupportedPlan = try DCTimerImportPlan(backup: unsupportedGroups, validate: Engine.acceptsImportedScramble)
+            #expect(!unsupportedPlan.sessions.isEmpty)
+            #expect(unsupportedPlan.compatibilityFailure == .incompatibleBackup)
         }
     }
 
@@ -718,6 +733,7 @@ struct TimerModelTests {
 
                 let reread = try DCTimerBackup.read(fixture.directory.appending(path: "spdcube.sqlite"))
                 let newPlan = try DCTimerImportPlan(backup: reread, validate: Engine.acceptsImportedScramble)
+                #expect(newPlan.compatibilityFailure == nil)
                 let otherDestination: DCTimerImportDestination = destination == .defaultGroups ? .originalSessions : .defaultGroups
                 #expect(try reopened.importDCTimer(newPlan, destination: otherDestination, language: .english) == 0)
                 #expect(reopened.solves.count == 3)

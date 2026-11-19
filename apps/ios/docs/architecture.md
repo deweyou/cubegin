@@ -1,6 +1,6 @@
 # App 架构
 
-CubeginApp 是 SwiftUI 入口；LaunchRootView 叠加一次性冷启动动画；AppTabsView 拥有
+CubeginApp 是 SwiftUI 入口；LaunchRootView 叠加一次性冷启动动画并创建计时模型；AppTabsView 拥有
 首页、成绩和设置导航，ContentView 负责首页响应式布局、系统玻璃控件和计时交互。
 TimerModel 是 MainActor 上的 Observable 产品状态，Engine 是后台 SDK 适配层。
 
@@ -32,7 +32,8 @@ UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设
 App 数据后会重新生成。
 
 用户开启「共享故障诊断」后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
-GA4 用 `operation_failed` 记录操作及固定失败原因。Sentry 自动捕获崩溃，并按操作与原因
+GA4 用 `operation_failed` 记录操作及固定失败原因。DCTimer 备份有成绩但整份不兼容时，
+每次读取在 GA4 记录一次 `incompatible_backup`。Sentry 自动捕获崩溃，并按操作与原因
 记录非预期错误。同类非致命诊断每次运行最多每分钟发送一次，GA4 仍按操作记录。
 App 发送固定分类和脱敏诊断。原始错误文本、文件内容及成绩明细保存在设备。
 常规开发构建、预览、模拟器和测试关闭云端上报。真机验证用独立 Dev Bundle ID、Firebase 项目及 Sentry 项目。

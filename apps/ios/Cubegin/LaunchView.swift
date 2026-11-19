@@ -3,7 +3,7 @@ import SwiftUI
 struct LaunchRootView: View {
     @Binding var hasFinishedLaunch: Bool
     @Environment(\.scenePhase) private var scenePhase
-    @State private var shouldPrepareTimer = false
+    @State private var timerModel: TimerModel?
     @State private var timerIsReady = false
 
     private var holdsLaunchScreen: Bool {
@@ -17,8 +17,8 @@ struct LaunchRootView: View {
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            if shouldPrepareTimer || hasFinishedLaunch {
-                AppTabsView(isActive: hasFinishedLaunch)
+            if let timerModel {
+                AppTabsView(isActive: hasFinishedLaunch, model: timerModel)
                     .onAppear { timerIsReady = true }
                     .disabled(!hasFinishedLaunch)
                     .accessibilityHidden(!hasFinishedLaunch)
@@ -29,10 +29,13 @@ struct LaunchRootView: View {
                     LaunchView(
                         holdsLaunchScreen: holdsLaunchScreen,
                         timerIsReady: timerIsReady,
-                        prepareTimer: { shouldPrepareTimer = true },
+                        prepareTimer: prepareTimer,
                         finish: { hasFinishedLaunch = true }
                     )
                 }
+            }
+            .onChange(of: hasFinishedLaunch, initial: true) { _, finished in
+                if finished { prepareTimer() }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background, !holdsLaunchScreen {
@@ -40,6 +43,22 @@ struct LaunchRootView: View {
                 }
             }
 
+    }
+
+    private func prepareTimer() {
+        guard timerModel == nil else { return }
+        timerModel = TimerModel(storage: Self.resultsStorage)
+    }
+
+    private static var resultsStorage: URL {
+#if DEBUG
+        // A UI test uses the same temporary file across both app launches.
+        if let value = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"],
+           let session = UUID(uuidString: value) {
+            return URL.temporaryDirectory.appending(path: "ui-test-solves-\(session.uuidString).json")
+        }
+#endif
+        return URL.documentsDirectory.appending(path: "solves.json")
     }
 }
 

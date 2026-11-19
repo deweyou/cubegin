@@ -166,6 +166,10 @@ struct DCTimerImportPlan: Identifiable, Sendable {
     let id = UUID()
     let sessions: [Session]
 
+    var compatibilityFailure: FailureReason? {
+        sessions.contains { !$0.solves.isEmpty } ? nil : .incompatibleBackup
+    }
+
     // WCA IDs follow DCTimer-Android's Scrambler table. Positive IDs below
     // follow the categories and subsets in DCTimer-iOS's Scrambler table.
     private static let events: [Int64: String] = [
@@ -366,11 +370,17 @@ struct ResultsImportView: View {
         Task {
             defer { isReading = false }
             do {
-                plan = try await Task.detached(priority: .userInitiated) {
+                let loadedPlan = try await Task.detached(priority: .userInitiated) {
                     defer { if removeAfterRead { try? FileManager.default.removeItem(at: url) } }
                     return try DCTimerImportPlan(backup: DCTimerBackup.read(url), validate: Engine.acceptsImportedScramble)
                 }.value
+                guard !Task.isCancelled else { return }
+                if let reason = loadedPlan.compatibilityFailure {
+                    AppTelemetry.record(.importDCTimer, reason)
+                }
+                plan = loadedPlan
             } catch let error as DCTimerBackup.Failure {
+                guard !Task.isCancelled else { return }
                 AppTelemetry.record(.importDCTimer, error.telemetryReason)
                 notice = error.localizedDescription
             } catch {

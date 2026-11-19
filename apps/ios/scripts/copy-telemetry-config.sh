@@ -16,7 +16,12 @@ esac
 
 firebase_config="$config_dir/$PRODUCT_BUNDLE_IDENTIFIER.plist"
 sentry_dsn="$config_dir/$PRODUCT_BUNDLE_IDENTIFIER.sentry-dsn.txt"
-if [ ! -e "$firebase_config" ] && [ ! -e "$sentry_dsn" ] && [ -z "${CUBEGIN_TELEMETRY_CONFIG_DIR:-}" ]; then
+production_archive=false
+if [ "$PRODUCT_BUNDLE_IDENTIFIER" = "$production_bundle" ] && [ "${ACTION:-}" = install ]; then
+    production_archive=true
+fi
+if [ "$production_archive" = false ] && [ -z "${CUBEGIN_TELEMETRY_CONFIG_DIR:-}" ] &&
+    [ ! -e "$firebase_config" ] && [ ! -e "$sentry_dsn" ]; then
     exit 0
 fi
 if [ ! -s "$firebase_config" ] || [ ! -s "$sentry_dsn" ]; then

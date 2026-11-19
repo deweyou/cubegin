@@ -181,8 +181,9 @@ GA4 属性和 Sentry 项目。
 | 真机 Debug（Cubegin Dev） | `io.github.deweyou.cubegin.dev.plist` | `io.github.deweyou.cubegin.dev.sentry-dsn.txt` |
 | 真机 Release（Cubegin） | `io.github.deweyou.cubegin.plist` | `io.github.deweyou.cubegin.sentry-dsn.txt` |
 
-构建脚本按构建类型和 Bundle ID 选择配置，模拟器构建不打包配置。指定配置目录时，
-匹配的两个文件都必须存在。发布时设置实际的 App 版本和构建号。
+构建脚本按构建类型和 Bundle ID 选择配置，模拟器构建不打包配置。正式 Release 归档
+或显式指定配置目录时，匹配的两个文件缺一都会中止。普通 Release 编译检查可以省略两份配置。
+发布时设置实际的 App 版本和构建号。
 
 按[本地真机安装](#本地真机安装)安装 Debug 版后，显式开启该次启动的诊断并启用 GA DebugView。
 
