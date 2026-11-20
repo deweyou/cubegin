@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Languages } from '@lucide/vue'
+import cubeginDarkLogo from '../../../ios/Design/LegacyIcons/brand/svg/cubegin-lockup-dark.svg?url'
 import cubeginLogo from '../../../ios/Design/LegacyIcons/brand/svg/cubegin-lockup.svg?url'
 import { Button } from '~/components/ui/button'
 
@@ -10,10 +11,13 @@ const languageLabel = computed(() => isEnglish.value ? 'Switch to Simplified Chi
 </script>
 
 <template>
-  <header class="site-header">
+  <header>
     <div class="site-frame header-content">
       <NuxtLink :to="isEnglish ? '/en' : '/'" class="brand">
-        <img :src="cubeginLogo" alt="Cubegin" width="714" height="200" />
+        <picture>
+          <source media="(prefers-color-scheme: dark)" :srcset="cubeginDarkLogo" />
+          <img :src="cubeginLogo" alt="Cubegin" width="714" height="200" />
+        </picture>
       </NuxtLink>
       <Button as-child variant="ghost" size="icon" class="size-11">
         <NuxtLink

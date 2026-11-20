@@ -17,20 +17,17 @@ function renderPolicy(source: string) {
 
   const environment = {}
   const tokens = markdown.parse(body.slice(titleLine[0].length), environment)
-  const sections: { id: string; label: string }[] = []
+  let sectionNumber = 0
 
-  for (const [index, token] of tokens.entries()) {
-    const heading = tokens[index + 1]
-    if (token.type !== 'heading_open' || token.tag !== 'h2' || !heading?.content) continue
-
-    const id = 'section-' + (sections.length + 1)
-    token.attrSet('id', id)
-    sections.push({ id, label: heading.content })
+  for (const token of tokens) {
+    if (token.type === 'heading_open' && token.tag === 'h2') {
+      sectionNumber += 1
+      token.attrSet('id', 'section-' + sectionNumber)
+    }
   }
 
   return {
     title: titleLine[1],
-    sections,
     html: markdown.renderer.render(tokens, markdown.options, environment),
   }
 }

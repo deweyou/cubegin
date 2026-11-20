@@ -1,22 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  --canvas: #f7f8f6;
   --background: #ffffff;
-  --foreground: #172522;
-  --muted-foreground: #4e605a;
-  --border: #dce3df;
-  --primary: #176753;
+  --foreground: #16171d;
+  --muted-foreground: #373940;
+  --border: #d7dbe5;
+  --primary: #0755a2;
   --primary-foreground: #ffffff;
-  --accent: #eaf5f0;
-  --accent-foreground: #15483b;
-  --secondary: #edf0ee;
-  --secondary-foreground: #253b33;
+  --accent: #e5ebf3;
+  --accent-foreground: #171b25;
+  --secondary: #eef1f6;
+  --secondary-foreground: #292e39;
   --destructive: #a42838;
-  --ring: #27876d;
+  --ring: #2067b2;
   --input: var(--border);
   --radius: 0.625rem;
+  --gradient-cyan: #32ade6;
+  --gradient-indigo: #5856d6;
   color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --foreground: #f5f5fa;
+    --muted-foreground: #ccd0da;
+    --border: #393d47;
+    --primary: #93c9ff;
+    --primary-foreground: #071422;
+    --accent: #252a36;
+    --accent-foreground: #f5f5fa;
+    --secondary: #1c202a;
+    --secondary-foreground: #e1e4ed;
+    --destructive: #ff8996;
+    --ring: #80baff;
+    --gradient-cyan: #64d2ff;
+    --gradient-indigo: #5e5ce6;
+    color-scheme: dark;
+  }
 }
 
 @theme inline {
@@ -36,32 +57,42 @@
 }
 
 body {
+  isolation: isolate;
   min-height: 100vh;
-  background: var(--canvas);
+  background: var(--background);
   color: var(--foreground);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
 }
 
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--gradient-cyan) 14%, var(--background)),
+    var(--background),
+    color-mix(in srgb, var(--gradient-indigo) 12%, var(--background))
+  );
+  content: "";
+  pointer-events: none;
+}
+
 a:focus-visible {
   outline: 2px solid var(--ring);
-  outline-offset: 4px;
+  outline-offset: 3px;
 }
 
 .site-frame {
-  width: min(70rem, calc(100% - 3rem));
+  width: min(46rem, calc(100% - 2.5rem));
   margin-inline: auto;
-}
-
-.site-header {
-  background: var(--background);
-  border-bottom: 1px solid var(--border);
 }
 
 .header-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 4.5rem;
+  min-height: 4.25rem;
 }
 
 .brand {
@@ -74,105 +105,43 @@ a:focus-visible {
 }
 
 .policy-page {
-  padding-block: clamp(2rem, 6vw, 5rem);
+  padding-block: clamp(1.5rem, 5vw, 3.5rem) 4rem;
 }
 
-.policy-heading {
-  padding-bottom: clamp(1.5rem, 4vw, 2.75rem);
-  border-bottom: 1px solid var(--border);
-}
-
-.policy-heading h1 {
-  font-size: clamp(1.875rem, 5vw, 3.375rem);
+.policy-page h1 {
+  margin-bottom: clamp(1.75rem, 4vw, 2.75rem);
+  font-size: clamp(1.875rem, 4.6vw, 2.75rem);
   font-weight: 750;
-  letter-spacing: -0.04em;
-  line-height: 1.13;
-}
-
-.policy-layout {
-  display: grid;
-  grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
-  align-items: start;
-  gap: clamp(1.25rem, 4vw, 3rem);
-  margin-top: 2rem;
-}
-
-.policy-nav {
-  position: sticky;
-  top: 1.5rem;
-  padding-block: 0.75rem;
-  color: var(--muted-foreground);
-}
-
-.policy-nav p {
-  margin-bottom: 0.625rem;
-  color: var(--foreground);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.policy-nav a {
-  display: block;
-  padding-block: 0.4rem;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-}
-
-.policy-nav a:hover {
-  color: var(--primary);
-  text-decoration: underline;
+  letter-spacing: -0.035em;
+  line-height: 1.18;
 }
 
 .policy-body {
-  padding: clamp(1.25rem, 5vw, 3.375rem);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--background);
-  font-size: 1rem;
-  line-height: 1.8;
+  color: var(--muted-foreground);
+  font-size: 1.0625rem;
+  line-height: 1.75;
   overflow-wrap: anywhere;
 }
 
 .policy-body h2 {
-  scroll-margin-top: 1.5rem;
-  margin-bottom: 0.625rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
   font-size: 1.25rem;
   font-weight: 700;
   line-height: 1.4;
+  scroll-margin-top: 1.5rem;
 }
 
 .policy-body h2:not(:first-child) {
   margin-top: 2rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--border);
 }
 
 .policy-body p + p {
-  margin-top: 0.875rem;
+  margin-top: 0.75rem;
 }
 
 .policy-body a {
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 0.16em;
-}
-
-@media (max-width: 42rem) {
-  .site-frame {
-    width: calc(100% - 2rem);
-  }
-
-  .header-content {
-    min-height: 3.75rem;
-  }
-
-  .policy-layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
-    margin-top: 1rem;
-  }
-
-  .policy-nav {
-    position: static;
-  }
 }
