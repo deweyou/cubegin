@@ -21,3 +21,6 @@ local.properties
 /sdk/web/SDK.json
 
 /apps/ios/TelemetryConfig/
+/apps/web/.nuxt/
+/apps/web/.output/
+/apps/web/dist
