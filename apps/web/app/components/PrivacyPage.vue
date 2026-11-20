@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Button } from '~/components/ui/button'
 import { policies, type PolicyLanguage } from '~/lib/privacy'
 
 const props = defineProps<{ language: PolicyLanguage }>()
@@ -16,15 +15,6 @@ useHead(() => ({
   <main class="site-frame policy-page">
     <div class="policy-heading">
       <h1>{{ policy.title }}</h1>
-      <Button as-child variant="outline" size="sm" class="language-switch">
-        <NuxtLink
-          :to="isEnglish ? '/privacy' : '/en/privacy'"
-          :lang="isEnglish ? 'zh-Hans' : 'en'"
-          :hreflang="isEnglish ? 'zh-Hans' : 'en'"
-        >
-          {{ isEnglish ? '简体中文' : 'English' }}
-        </NuxtLink>
-      </Button>
     </div>
 
     <div class="policy-layout">
