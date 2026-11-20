@@ -8,6 +8,21 @@ import WebKit
 @MainActor
 struct TimerModelTests {
     @Test
+    func savesAnExplicitSharingChoicePerInstallation() throws {
+        let suite = "sharing-choice-test.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(true, forKey: "telemetry.diagnosticsEnabled")
+        #expect(AppTelemetry.sharingChoice(in: defaults) == .undecided)
+        AppTelemetry.chooseSharing(.declined, in: defaults)
+        #expect(AppTelemetry.sharingChoice(in: defaults) == .declined)
+        AppTelemetry.chooseSharing(.allowed, in: defaults)
+        let reopened = try #require(UserDefaults(suiteName: suite))
+        #expect(AppTelemetry.sharingChoice(in: reopened) == .allowed)
+    }
+
+    @Test
     func createsOneInstallationIDPerDefaultsStore() throws {
         let firstSuite = "installation-test.\(UUID())"
         let secondSuite = "installation-test.\(UUID())"

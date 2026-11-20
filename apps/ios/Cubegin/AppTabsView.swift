@@ -1847,7 +1847,9 @@ private struct SettingsView: View {
     let isSelected: Bool
     private enum Page: Hashable { case gestures, imports, clearResults }
     @State private var path: [Page] = []
-    @AppStorage(AppTelemetry.consentKey) private var diagnosticsEnabled = false
+    @AppStorage(AppTelemetry.sharingChoiceKey, store: AppTelemetry.sharingDefaults)
+    private var sharingChoice = AppTelemetry.SharingChoice.undecided
+    @State private var showsPrivacyPolicy = false
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
@@ -2010,22 +2012,30 @@ private struct SettingsView: View {
                 }
                 CardSection(language.text("关于", "About")) {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
-                    if AppTelemetry.showsDiagnosticsPreference {
+                    if AppTelemetry.showsSharingPreference {
                         Toggle(isOn: Binding(
-                            get: { diagnosticsEnabled },
-                            set: { enabled in
-                                diagnosticsEnabled = enabled
-                                AppTelemetry.setEnabled(enabled)
-                            }
+                            get: { sharingChoice == .allowed },
+                            set: { AppTelemetry.chooseSharing($0 ? .allowed : .declined) }
                         )) {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(language.text("共享故障诊断", "Share diagnostics"))
-                                Text(language.text("发送崩溃、操作失败和设备 ID。", "Send crashes, failed operations, and the device ID."))
+                                Text(language.text("共享诊断和使用数据", "Share diagnostics and usage data"))
+                                Text(language.text(
+                                    "共享崩溃报告、操作失败和功能使用情况。",
+                                    "Share crash reports, failed operations, and feature usage."
+                                ))
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .accessibilityIdentifier("settings.telemetry.sharing")
                     }
+                    cardRowButton {
+                        showsPrivacyPolicy = true
+                    } label: {
+                        settingsLinkLabel(language.text("隐私政策", "Privacy Policy"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.privacyPolicy")
                     deviceIDRow
                 }
             }
@@ -2053,6 +2063,7 @@ private struct SettingsView: View {
             .appBackground()
             .toolbar(.hidden, for: .navigationBar)
         }
+        .sheet(isPresented: $showsPrivacyPolicy) { PrivacyPolicyView() }
         .onChange(of: isSelected) { _, selected in
             if !selected { path.removeAll() }
         }

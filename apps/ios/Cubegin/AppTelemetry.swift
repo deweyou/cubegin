@@ -86,8 +86,23 @@ enum FailureReason: String {
 
 @MainActor
 enum AppTelemetry {
-    static let consentKey = "telemetry.diagnosticsEnabled"
+    enum SharingChoice: String {
+        case undecided, declined, allowed
+    }
+
+    static let sharingChoiceKey = "telemetry.diagnosticsAndUsageChoice"
     private static let installationIDKey = "telemetry.installationID"
+
+    static let sharingDefaults: UserDefaults = {
+#if DEBUG && targetEnvironment(simulator)
+        if previewsSharingConsent,
+           let session = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"].flatMap(UUID.init(uuidString:)),
+           let defaults = UserDefaults(suiteName: "telemetry.consent-preview.\(session.uuidString)") {
+            return defaults
+        }
+#endif
+        return .standard
+    }()
 
     static var installationID: String { installationID(in: .standard) }
 
@@ -100,15 +115,35 @@ enum AppTelemetry {
         return id
     }
 
-    static var showsDiagnosticsPreference: Bool {
+    static var showsSharingPreference: Bool {
 #if DEBUG
-        return false
+        return previewsSharingConsent
 #else
         return supportsReporting && (
             Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil
                 || Bundle.main.url(forResource: "sentry-dsn", withExtension: "txt") != nil
         )
 #endif
+    }
+
+#if DEBUG
+    private static var previewsSharingConsent: Bool {
+#if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-cubegin-show-telemetry-consent")
+#else
+        false
+#endif
+    }
+#endif
+
+    static func sharingChoice(in defaults: UserDefaults = sharingDefaults) -> SharingChoice {
+        guard let stored = defaults.string(forKey: sharingChoiceKey) else { return .undecided }
+        return SharingChoice(rawValue: stored) ?? .undecided
+    }
+
+    static func chooseSharing(_ choice: SharingChoice, in defaults: UserDefaults = sharingDefaults) {
+        defaults.set(choice.rawValue, forKey: sharingChoiceKey)
+        setEnabled(choice == .allowed)
     }
 
     private static var supportsReporting: Bool {
@@ -137,11 +172,11 @@ enum AppTelemetry {
 #if DEBUG
         setEnabled(isDeviceQA)
 #else
-        setEnabled(UserDefaults.standard.bool(forKey: consentKey))
+        setEnabled(sharingChoice() == .allowed)
 #endif
     }
 
-    static func setEnabled(_ enabled: Bool) {
+    private static func setEnabled(_ enabled: Bool) {
 #if CUBEGIN_TELEMETRY
         guard supportsReporting else { return }
         if enabled {

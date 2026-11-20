@@ -346,6 +346,47 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testFirstLaunchSharingChoiceAndPrivacySettings() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-cubegin-show-telemetry-consent"]
+        app.launch()
+
+        let prompt = app.alerts["Help improve Cubegin"]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 20))
+        XCTAssertTrue(prompt.buttons["Share data"].exists)
+        prompt.buttons["Don’t share"].tap()
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        XCTAssertFalse(prompt.exists)
+        settings.tap()
+        let sharing = app.switches["settings.telemetry.sharing"]
+        for _ in 0..<4 where !sharing.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertEqual(sharing.value as? String, "0")
+        let sharingControl = sharing.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        sharingControl.tap()
+        XCTAssertEqual(sharing.value as? String, "1")
+        sharingControl.tap()
+        XCTAssertEqual(sharing.value as? String, "0")
+
+        let privacyPolicy = app.buttons["settings.privacyPolicy"]
+        if !privacyPolicy.isHittable { app.swipeUp() }
+        privacyPolicy.tap()
+        XCTAssertTrue(app.navigationBars["Privacy Policy"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Results and settings"].exists)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(sharing.exists)
+    }
+
+    @MainActor
     func testClearingResultsRequiresCountdownAndResetsSettingsNavigation() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

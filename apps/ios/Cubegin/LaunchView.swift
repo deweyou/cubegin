@@ -3,8 +3,12 @@ import SwiftUI
 struct LaunchRootView: View {
     @Binding var hasFinishedLaunch: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.locale) private var locale
     @State private var timerModel: TimerModel?
     @State private var timerIsReady = false
+    @State private var showsSharingPrompt = false
+
+    private var language: AppLanguage { locale.appLanguage }
 
     private var holdsLaunchScreen: Bool {
         #if DEBUG
@@ -35,12 +39,25 @@ struct LaunchRootView: View {
                 }
             }
             .onChange(of: hasFinishedLaunch, initial: true) { _, finished in
-                if finished { prepareTimer() }
+                guard finished else { return }
+                prepareTimer()
+                if AppTelemetry.showsSharingPreference, AppTelemetry.sharingChoice() == .undecided {
+                    showsSharingPrompt = true
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background, !holdsLaunchScreen {
                     hasFinishedLaunch = true
                 }
+            }
+            .alert(language.text("帮助改进 Cubegin", "Help improve Cubegin"), isPresented: $showsSharingPrompt) {
+                Button(language.text("同意共享", "Share data")) { AppTelemetry.chooseSharing(.allowed) }
+                Button(language.text("暂不共享", "Don’t share"), role: .cancel) { AppTelemetry.chooseSharing(.declined) }
+            } message: {
+                Text(language.text(
+                    "是否共享崩溃报告、操作失败和功能使用情况，帮助我们修复问题、改进计时体验？",
+                    "Share crash reports, failed operations, and feature usage to help us fix issues and improve the timer?"
+                ))
             }
 
     }

@@ -199,3 +199,5 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 在专用验证构建中触发测试崩溃后重启，确认 Sentry 收到崩溃。发布归档保留并上传匹配的 dSYM，
 上传令牌配置在发布环境中。核对诊断中的设备 ID 与设置页一致，再检查上报只包含预期字段。
 发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
+
+首次共享提示、设置开关和离线隐私政策由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。
