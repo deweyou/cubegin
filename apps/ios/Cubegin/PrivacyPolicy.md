@@ -6,7 +6,7 @@ Cubegin 在设备上保存计时成绩、分组和打乱记录。从文件导入
 
 ## 可选的诊断和使用数据
 
-当你选择「同意共享」后，Cubegin 会使用两项服务修复问题并了解功能使用情况：
+当你选择「同意」后，Cubegin 会使用两项服务修复问题并了解功能使用情况：
 
 **Google Analytics for Firebase** 接收固定分类的操作失败事件，例如导入失败及其原因，以及应用构建号。它也记录首次打开、应用版本、会话、前台活跃时长和设备信息等基础统计。如版本包含产品埋点，这些事件用于统计哪些功能被使用。
 
@@ -30,7 +30,7 @@ Cubegin stores solve times, groups, and scrambles on your device. DCTimer result
 
 ## Optional diagnostics and usage data
 
-If you choose **Share data**, Cubegin uses two services to fix issues and understand how features are used:
+If you choose **Agree**, Cubegin uses two services to fix issues and understand how features are used:
 
 **Google Analytics for Firebase** receives categorized failures, such as a failed import and its reason, along with the app build number. It also records basic statistics such as first opens, app versions, sessions, time in the foreground, and device information. When a version includes feature usage events, those events measure which features people use.
 

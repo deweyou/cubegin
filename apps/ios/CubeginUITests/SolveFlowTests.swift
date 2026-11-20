@@ -356,7 +356,7 @@ final class SolveFlowTests: XCTestCase {
 
         let prompt = app.alerts["Help improve Cubegin"]
         XCTAssertTrue(prompt.waitForExistence(timeout: 20))
-        XCTAssertTrue(prompt.buttons["Share data"].exists)
+        XCTAssertTrue(prompt.buttons["Agree"].exists)
         prompt.buttons["Don’t share"].tap()
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))

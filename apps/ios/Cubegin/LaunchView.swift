@@ -51,7 +51,8 @@ struct LaunchRootView: View {
                 }
             }
             .alert(language.text("帮助改进 Cubegin", "Help improve Cubegin"), isPresented: $showsSharingPrompt) {
-                Button(language.text("同意共享", "Share data")) { AppTelemetry.chooseSharing(.allowed) }
+                Button(language.text("同意", "Agree")) { AppTelemetry.chooseSharing(.allowed) }
+                    .keyboardShortcut(.defaultAction)
                 Button(language.text("暂不共享", "Don’t share"), role: .cancel) { AppTelemetry.chooseSharing(.declined) }
             } message: {
                 Text(language.text(
