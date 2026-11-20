@@ -3,6 +3,7 @@ import { policies, type PolicyLanguage } from '~/lib/privacy'
 
 const props = defineProps<{ language: PolicyLanguage }>()
 const policy = computed(() => policies[props.language])
+const heading = computed(() => policy.value.title.replace(/^Cubegin\s+/, ''))
 
 useHead(() => ({
   title: policy.value.title,
@@ -12,7 +13,7 @@ useHead(() => ({
 
 <template>
   <main class="site-frame policy-page">
-    <h1>{{ policy.title }}</h1>
+    <h1>{{ heading }}</h1>
     <article class="policy-body" v-html="policy.html" />
   </main>
 </template>
