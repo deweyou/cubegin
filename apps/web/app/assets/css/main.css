@@ -1,43 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #16171d;
-  --muted-foreground: #373940;
-  --border: #d7dbe5;
-  --primary: #0755a2;
-  --primary-foreground: #ffffff;
-  --accent: #e5ebf3;
-  --accent-foreground: #171b25;
-  --secondary: #eef1f6;
-  --secondary-foreground: #292e39;
-  --destructive: #a42838;
-  --ring: #2067b2;
+  color-scheme: light dark;
+  --background: light-dark(#ffffff, #000000);
+  --foreground: light-dark(#16171d, #f5f5fa);
+  --muted-foreground: light-dark(#373940, #ccd0da);
+  --border: light-dark(#d7dbe5, #393d47);
+  --primary: light-dark(#0755a2, #93c9ff);
+  --primary-foreground: light-dark(#ffffff, #071422);
+  --accent: light-dark(#e5ebf3, #252a36);
+  --accent-foreground: light-dark(#171b25, #f5f5fa);
+  --secondary: light-dark(#eef1f6, #1c202a);
+  --secondary-foreground: light-dark(#292e39, #e1e4ed);
+  --destructive: light-dark(#a42838, #ff8996);
+  --ring: light-dark(#2067b2, #80baff);
   --input: var(--border);
   --radius: 0.625rem;
-  --gradient-cyan: #32ade6;
-  --gradient-indigo: #5856d6;
+  --gradient-cyan: light-dark(#32ade6, #64d2ff);
+  --gradient-indigo: light-dark(#5856d6, #5e5ce6);
+}
+
+:root[data-theme="light"] {
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #000000;
-    --foreground: #f5f5fa;
-    --muted-foreground: #ccd0da;
-    --border: #393d47;
-    --primary: #93c9ff;
-    --primary-foreground: #071422;
-    --accent: #252a36;
-    --accent-foreground: #f5f5fa;
-    --secondary: #1c202a;
-    --secondary-foreground: #e1e4ed;
-    --destructive: #ff8996;
-    --ring: #80baff;
-    --gradient-cyan: #64d2ff;
-    --gradient-indigo: #5e5ce6;
-    color-scheme: dark;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -102,6 +90,25 @@ a:focus-visible {
 .brand img {
   width: auto;
   height: 2.25rem;
+}
+
+.brand-dark,
+:root[data-theme="dark"] .brand-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .brand-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .brand-light {
+    display: none;
+  }
+
+  :root:not([data-theme]) .brand-dark {
+    display: block;
+  }
 }
 
 .policy-page {
