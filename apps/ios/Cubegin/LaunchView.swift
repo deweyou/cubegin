@@ -88,6 +88,8 @@ private struct LaunchView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var blueRotation = 0.0
     @State private var opacity = 1.0
+    @State private var rotationIsFinished = false
+    private var canRevealTimer: Bool { timerIsReady && rotationIsFinished }
 
     var body: some View {
         ZStack {
@@ -120,19 +122,20 @@ private struct LaunchView: View {
             }
             if reduceMotion {
                 blueRotation = 18
-                prepareTimer()
+                rotationIsFinished = true
             } else {
                 // Match the original CSS: 0 → 378°, 1.1s, cubic-bezier(.16,.67,.27,1).
                 withAnimation(.timingCurve(0.16, 0.67, 0.27, 1, duration: 1.1)) {
                     blueRotation = 378
                 } completion: {
-                    prepareTimer()
+                    rotationIsFinished = true
                 }
             }
+            prepareTimer()
         }
-        .task(id: timerIsReady) {
-            guard timerIsReady, !holdsLaunchScreen else { return }
-            // Mount and lay out the timer under the stationary final logo before fading.
+        .task(id: canRevealTimer) {
+            guard canRevealTimer else { return }
+            // Hold the final logo briefly before fading, independently of scramble loading.
             do {
                 try await Task.sleep(for: .milliseconds(80))
             } catch {

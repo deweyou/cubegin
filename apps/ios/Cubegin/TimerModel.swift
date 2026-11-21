@@ -542,6 +542,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             scramble = nextScramble
             self.nextScramble = nil
             busy = false
+            prefetchNextScramble()
             return
         }
 
@@ -562,6 +563,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                 self.scramble = generated
                 self.nextScramble = nil
                 self.busy = false
+                self.prefetchNextScramble()
             } catch {
                 guard !Task.isCancelled, let self, self.event == event else { return }
                 if !(error is CancellationError) { AppTelemetry.record(.generateScramble, .engineFailed) }
@@ -580,12 +582,15 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
 #else
         started = instant
 #endif
+    }
+
+    private func prefetchNextScramble() {
         guard prefetchTask == nil else { return }
         let event = self.event
         prefetchTask = Task { [weak self, generateScramble] in
             let generated = try await generateScramble(event)
             try Task.checkCancellation()
-            if let self, self.event == event, self.started != nil {
+            if let self, self.event == event, !self.busy {
                 self.nextScramble = generated
             }
             return generated
@@ -649,9 +654,6 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         endInspection()
         guard started != nil else { return }
         started = nil
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        nextScramble = nil
         error = AppLanguage.saved.text("计时因 App 进入后台或中断而取消，未保存成绩。", "Timing was interrupted. The solve was not saved.")
     }
 

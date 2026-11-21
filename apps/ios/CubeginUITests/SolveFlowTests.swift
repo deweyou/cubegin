@@ -1301,6 +1301,7 @@ final class SolveFlowTests: XCTestCase {
 
         let scramble = app.descendants(matching: .any)["timer.scramble"]
         let readout = app.descendants(matching: .any)["timer.readout"]
+        let diagram = app.descendants(matching: .any)["timer.scramble-diagram"]
         let gestures = app.buttons["settings.timer.gestures"]
         let form = app.scrollViews.firstMatch
         let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -1357,6 +1358,7 @@ final class SolveFlowTests: XCTestCase {
             predicate: NSPredicate(format: "exists == YES AND label != %@", originalScramble), object: scramble
         )
         XCTAssertEqual(XCTWaiter.wait(for: [newScramble], timeout: 20), .completed)
+        XCTAssertTrue(diagram.exists)
         swipe(to: left)
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("0012345")
@@ -1365,6 +1367,7 @@ final class SolveFlowTests: XCTestCase {
         expectResult("12.345")
         XCTAssertEqual(readout.label, "Start timer")
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
+        XCTAssertTrue(diagram.exists)
 
         openGestures()
         select("Delete last result", for: "right")
