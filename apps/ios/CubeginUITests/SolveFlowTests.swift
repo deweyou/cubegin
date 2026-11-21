@@ -4,35 +4,36 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
-    func testDeviceIDIsAvailableToCopyAndSurvivesRelaunch() {
+    func testVersionCopiesHiddenDeviceIDOnFifthTap() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments = ["-app.language", "en"]
 
-        func openDeviceID() -> XCUIElement {
-            app.launch()
-            let settings = app.tabBars.buttons["Settings"]
-            XCTAssertTrue(settings.waitForExistence(timeout: 20))
-            settings.tap()
-            let row = app.descendants(matching: .any)["settings.deviceID"]
-            for _ in 0..<4 where !row.isHittable {
-                app.swipeUp()
-            }
-            XCTAssertTrue(row.isHittable)
-            return row
+        app.launch()
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let version = app.buttons["settings.about.version"]
+        for _ in 0..<4 where !version.isHittable {
+            app.swipeUp()
         }
-
-        let row = openDeviceID()
-        let label = row.label
-        XCTAssertTrue(label.contains("Device ID"))
-        XCTAssertNotNil(label.range(of: "[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}", options: .regularExpression))
-        row.press(forDuration: 1)
-        XCTAssertTrue(app.buttons["Copy device ID"].waitForExistence(timeout: 5))
-        app.buttons["Copy device ID"].tap()
-        app.terminate()
-        XCTAssertEqual(openDeviceID().label, label)
+        XCTAssertTrue(version.isHittable)
+        let privacy = app.buttons["settings.about.privacy"]
+        let importResults = app.buttons["settings.results.import"]
+        let clearResults = app.buttons["settings.results.clear"]
+        let includeDNF = app.switches["settings.results.includeDNFInWorst"]
+        XCTAssertTrue(privacy.exists && importResults.exists && clearResults.exists && includeDNF.exists)
+        XCTAssertLessThan(privacy.frame.midY, version.frame.midY)
+        XCTAssertLessThan(importResults.frame.midY, clearResults.frame.midY)
+        XCTAssertLessThan(clearResults.frame.midY, includeDNF.frame.midY)
+        XCTAssertFalse(app.descendants(matching: .any)["settings.deviceID"].exists)
+        let copied = app.descendants(matching: .any)["settings.deviceID.copied"].firstMatch
+        for _ in 0..<4 { version.tap() }
+        XCTAssertFalse(copied.exists)
+        version.tap()
+        XCTAssertTrue(copied.waitForExistence(timeout: 2))
     }
 
     @MainActor
@@ -351,14 +352,14 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "-cubegin-show-telemetry-consent"]
+        app.launchArguments += ["-app.language", "zh-Hans", "-cubegin-show-telemetry-consent"]
         app.launch()
 
-        let prompt = app.alerts["Help improve Cubegin"]
+        let prompt = app.alerts["帮助改进 Cubegin"]
         XCTAssertTrue(prompt.waitForExistence(timeout: 20))
-        XCTAssertTrue(prompt.buttons["Agree"].exists)
-        prompt.buttons["Don’t share"].tap()
-        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(prompt.buttons["同意"].exists)
+        prompt.buttons["暂不共享"].tap()
+        let settings = app.tabBars.buttons["设置"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
 
         app.terminate()
@@ -366,23 +367,36 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         XCTAssertFalse(prompt.exists)
         settings.tap()
-        let sharing = app.switches["settings.telemetry.sharing"]
-        for _ in 0..<4 where !sharing.isHittable {
+        let privacy = app.buttons["settings.about.privacy"]
+        for _ in 0..<4 where !privacy.isHittable {
             app.swipeUp()
         }
+        privacy.tap()
+        XCTAssertTrue(app.navigationBars["隐私"].waitForExistence(timeout: 5))
+        let sharing = app.switches["settings.telemetry.sharing"]
         XCTAssertEqual(sharing.value as? String, "0")
-        let sharingControl = sharing.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        let policyText = app.descendants(matching: .any)["settings.privacyPolicy"].firstMatch
+        XCTAssertTrue(policyText.label.contains("开启后会发送崩溃报告"))
+        XCTAssertTrue(policyText.label.contains("查看隐私政策"))
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Privacy settings (zh-Hans)"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let sharingControl = sharing.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
         sharingControl.tap()
         XCTAssertEqual(sharing.value as? String, "1")
         sharingControl.tap()
         XCTAssertEqual(sharing.value as? String, "0")
 
-        let privacyPolicy = app.buttons["settings.privacyPolicy"]
-        if !privacyPolicy.isHittable { app.swipeUp() }
-        privacyPolicy.tap()
-        XCTAssertTrue(app.navigationBars["Privacy Policy"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Results and settings"].exists)
-        app.buttons["Done"].tap()
+        let privacyPolicy = app.links["查看隐私政策"].firstMatch
+        if privacyPolicy.isHittable {
+            privacyPolicy.tap()
+        } else {
+            policyText.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.76)).tap()
+        }
+        XCTAssertTrue(app.navigationBars["隐私政策"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["成绩和设置"].exists)
+        app.buttons["完成"].tap()
         XCTAssertTrue(sharing.exists)
     }
 

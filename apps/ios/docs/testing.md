@@ -197,7 +197,7 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 核对两端手动错误都带有 `operation`、`reason` 和 `impact`。
 核对 GA4 事件参数 `app_build` 与安装包的 `CFBundleVersion` 一致。
 在专用验证构建中触发测试崩溃后重启，确认 Sentry 收到崩溃。发布归档保留并上传匹配的 dSYM，
-上传令牌配置在发布环境中。核对诊断中的设备 ID 与设置页一致，再检查上报只包含预期字段。
+上传令牌配置在发布环境中。核对诊断中的设备 ID 与连点五次「版本」复制的值一致，再检查上报只包含预期字段。
 发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
 
-首次共享提示、设置开关和离线隐私政策由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。
+首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。设备 ID 复制入口由 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 验证。

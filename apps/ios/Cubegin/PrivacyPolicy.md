@@ -12,13 +12,13 @@ Cubegin 在设备上保存计时成绩、分组和打乱记录。从文件导入
 
 **Sentry** 接收崩溃报告和部分需要排查的非致命错误。报告可能包含调用栈、系统及 App 版本、设备型号和错误分类。
 
-Cubegin 会生成一个随机安装 ID，用来关联同一次安装在这两项服务中的记录。设置页将它显示为「设备 ID」。它不同于硬件序列号或广告标识符。诊断和使用数据用于改进 Cubegin。
+Cubegin 会生成一个随机安装 ID，用来关联同一次安装在这两项服务中的记录。如需联系支持，可在「设置 → 关于」连点五次「版本」复制这个设备 ID。它不同于硬件序列号或广告标识符。诊断和使用数据用于改进 Cubegin。
 
 更多信息见 [Google 如何处理合作伙伴应用的数据](https://policies.google.com/technologies/partner-sites)和 [Sentry 隐私政策](https://sentry.io/privacy/)。
 
 ## 管理共享与联系
 
-你可以在「设置 → 关于 → 共享诊断和使用数据」随时开启或关闭。关闭后，Cubegin 停止发送新的诊断和使用数据。已发送的记录按各服务的保留设置保存。若对隐私有疑问，或希望请求删除此前的上报记录，可以通过 App Store 产品页的「App 支持」入口联系 Cubegin。安装 ID 可用于查找相关记录。
+你可以在「设置 → 关于 → 隐私 → 帮助改进 Cubegin」随时开启或关闭。关闭后，Cubegin 停止发送新的诊断和使用数据。已发送的记录按各服务的保留设置保存。若对隐私有疑问，或希望请求删除此前的上报记录，可以通过 App Store 产品页的「App 支持」入口联系 Cubegin。安装 ID 可用于查找相关记录。
 
 <!-- English -->
 
@@ -36,10 +36,10 @@ If you choose **Agree**, Cubegin uses two services to fix issues and understand 
 
 **Sentry** receives crash reports and certain nonfatal errors for troubleshooting. These reports may include stack traces, OS and app versions, device models, and error categories.
 
-Cubegin generates a random installation ID to associate records from the same installation across the two services. You can find it under **Device ID** in Settings. It is separate from your hardware serial number and advertising identifier. Cubegin uses diagnostics and usage data to improve the app.
+Cubegin generates a random installation ID to associate records from the same installation across the two services. If you need to contact support, tap **Version** five times under **Settings → About** to copy this device ID. It is separate from your hardware serial number and advertising identifier. Cubegin uses diagnostics and usage data to improve the app.
 
 See [how Google uses data from partner apps](https://policies.google.com/technologies/partner-sites) and the [Sentry privacy policy](https://sentry.io/privacy/).
 
 ## Manage sharing and contact us
 
-You can change your choice under **Settings → About → Share diagnostics and usage data**. Turning it off stops Cubegin from sending new diagnostics and usage data. Each service retains previously sent records according to its retention settings. For privacy questions or to request deletion of data already sent, contact Cubegin using **App Support** on the App Store listing. Your installation ID can help locate those records.
+You can change your choice under **Settings → About → Privacy → Help improve Cubegin**. Turning it off stops Cubegin from sending new diagnostics and usage data. Each service retains previously sent records according to its retention settings. For privacy questions or to request deletion of data already sent, contact Cubegin using **App Support** on the App Store listing. Your installation ID can help locate those records.

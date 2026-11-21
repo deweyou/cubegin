@@ -27,11 +27,11 @@ iPhone Duo 内屏半展开竖屏时，布局通过系统折痕区域分隔。待
 
 ## 故障诊断
 
-设置底部显示设备 ID，长按可复制。它是 App 首次需要时生成的随机 UUID，保存在本地
+在「设置 → 关于」连点五次「版本」可以复制设备 ID。它是 App 首次需要时生成的随机 UUID，保存在本地
 UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设置同步，清除
 App 数据后会重新生成。
 
-正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于」提供开关和[隐私政策](../Cubegin/PrivacyPolicy.md)。同意后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
+正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于 → 隐私」提供「帮助改进 Cubegin」开关和[隐私政策](../Cubegin/PrivacyPolicy.md)。同意后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
 GA4 的 `operation_failed` 与 Sentry 手动诊断共用三个字符串字段。
 
 | 字段 | 含义 |

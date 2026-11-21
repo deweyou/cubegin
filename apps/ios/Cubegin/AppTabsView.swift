@@ -85,7 +85,7 @@ struct AppTabsView: View {
         case home, results, settings
 
         @MainActor static var initial: Self {
-            SettingsView.opensDeviceIDForQA ? .settings : .home
+            SettingsView.opensAboutForQA ? .settings : .home
         }
 
         func title(in language: AppLanguage) -> String {
@@ -1832,8 +1832,20 @@ extension CardSection where Header == EmptyView {
     }
 }
 
+@MainActor
+private func settingsLinkLabel(_ title: String) -> some View {
+    HStack {
+        Text(title)
+        Spacer()
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+}
+
 private struct SettingsView: View {
-    static var opensDeviceIDForQA: Bool {
+    static var opensAboutForQA: Bool {
 #if DEBUG
         return Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
             && ProcessInfo.processInfo.arguments.contains("-cubegin-show-device-id")
@@ -1845,11 +1857,10 @@ private struct SettingsView: View {
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case gestures, imports, clearResults }
+    private enum Page: Hashable { case gestures, imports, clearResults, privacy }
     @State private var path: [Page] = []
-    @AppStorage(AppTelemetry.sharingChoiceKey, store: AppTelemetry.sharingDefaults)
-    private var sharingChoice = AppTelemetry.SharingChoice.undecided
-    @State private var showsPrivacyPolicy = false
+    @State private var versionTapCount = 0
+    @State private var copiedDeviceIDAt: ContinuousClock.Instant?
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
@@ -1917,34 +1928,13 @@ private struct SettingsView: View {
         SettingsSync.binding($startDelayTenths, key: TimerModel.startDelayKey) { $0 }
     }
 
-    private func settingsLinkLabel(_ title: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Image(systemName: "chevron.forward")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var deviceIDRow: some View {
-        let id = AppTelemetry.installationID
-        let copyTitle = language.text("复制设备 ID", "Copy device ID")
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(language.text("设备 ID", "Device ID"))
-            Text(id)
-                .font(.footnote.monospaced())
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button(copyTitle, systemImage: "doc.on.doc") { UIPasteboard.general.string = id }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAction(named: Text(copyTitle)) { UIPasteboard.general.string = id }
-        .accessibilityIdentifier("settings.deviceID")
+    private func tapVersion() {
+        versionTapCount += 1
+        guard versionTapCount == 5 else { return }
+        versionTapCount = 0
+        UIPasteboard.general.string = AppTelemetry.installationID
+        copiedDeviceIDAt = ContinuousClock.now
+        AccessibilityNotification.Announcement(language.text("已复制设备 ID", "Device ID copied")).post()
     }
 
     var body: some View {
@@ -1993,8 +1983,6 @@ private struct SettingsView: View {
                     .accessibilityIdentifier("settings.timer.gestures")
                 }
                 CardSection(language.text("成绩", "Results")) {
-                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
-                        .accessibilityIdentifier("settings.results.includeDNFInWorst")
                     cardRowButton {
                         path.append(.imports)
                     } label: {
@@ -2009,42 +1997,33 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
+                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
+                        .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
                 CardSection(language.text("关于", "About")) {
-                    LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
-                    if AppTelemetry.showsSharingPreference {
-                        Toggle(isOn: Binding(
-                            get: { sharingChoice == .allowed },
-                            set: { AppTelemetry.chooseSharing($0 ? .allowed : .declined) }
-                        )) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(language.text("共享诊断和使用数据", "Share diagnostics and usage data"))
-                                Text(language.text(
-                                    "共享崩溃报告、操作失败和功能使用情况。",
-                                    "Share crash reports, failed operations, and feature usage."
-                                ))
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .accessibilityIdentifier("settings.telemetry.sharing")
-                    }
                     cardRowButton {
-                        showsPrivacyPolicy = true
+                        path.append(.privacy)
                     } label: {
-                        settingsLinkLabel(language.text("隐私政策", "Privacy Policy"))
+                        settingsLinkLabel(language.text("隐私", "Privacy"))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.privacyPolicy")
-                    deviceIDRow
+                    .accessibilityIdentifier("settings.about.privacy")
+                    cardRowButton {
+                        tapVersion()
+                    } label: {
+                        LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.version")
                 }
             }
-            .defaultScrollAnchor(Self.opensDeviceIDForQA ? .bottom : nil, for: .initialOffset)
+            .defaultScrollAnchor(Self.opensAboutForQA ? .bottom : nil, for: .initialOffset)
             .navigationDestination(for: Page.self) { page in
                 switch page {
                 case .gestures: TimerGestureSettingsView()
                 case .imports: ResultsImportView(model: model)
                 case .clearResults: ClearResultsView(model: model)
+                case .privacy: PrivacySettingsView()
                 }
             }
             .pinnedScrollHeader {
@@ -2062,11 +2041,85 @@ private struct SettingsView: View {
             .padding(.trailing, contentInsets?.containerTrailing ?? 0)
             .appBackground()
             .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .bottom) {
+                if copiedDeviceIDAt != nil {
+                    Label(language.text("已复制设备 ID", "Device ID copied"), systemImage: "checkmark.circle.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(.black, in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.24)))
+                        .padding()
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("settings.deviceID.copied")
+                }
+            }
         }
-        .sheet(isPresented: $showsPrivacyPolicy) { PrivacyPolicyView() }
+        .task(id: copiedDeviceIDAt) {
+            guard copiedDeviceIDAt != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(2))
+                copiedDeviceIDAt = nil
+            } catch {}
+        }
         .onChange(of: isSelected) { _, selected in
-            if !selected { path.removeAll() }
+            if !selected {
+                path.removeAll()
+                versionTapCount = 0
+                copiedDeviceIDAt = nil
+            }
         }
+    }
+}
+
+private struct PrivacySettingsView: View {
+    @AppStorage(AppTelemetry.sharingChoiceKey, store: AppTelemetry.sharingDefaults)
+    private var sharingChoice = AppTelemetry.SharingChoice.undecided
+    @State private var showsPrivacyPolicy = false
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+
+    private static let policyURL = URL(string: "cubegin://privacy-policy")
+
+    private func policyText(includeDescription: Bool) -> some View {
+        let description = includeDescription ? language.text(
+            "开启后会发送崩溃报告、操作失败和功能使用情况，帮助我们修复问题、改进计时体验。",
+            "When enabled, Cubegin sends crash reports, failed operations, and feature usage to help us fix issues and improve the timer. "
+        ) : ""
+        var link = AttributedString(language.text("查看隐私政策", "View privacy policy"))
+        link.link = Self.policyURL
+        return Text(AttributedString(description) + link)
+            .tint(Color(uiColor: .link))
+            .environment(\.openURL, OpenURLAction { url in
+                guard url == Self.policyURL else { return .discarded }
+                showsPrivacyPolicy = true
+                return .handled
+            })
+            .accessibilityIdentifier("settings.privacyPolicy")
+    }
+
+    var body: some View {
+        Form {
+            if AppTelemetry.showsSharingPreference {
+                CardSection {
+                    Toggle(language.text("帮助改进 Cubegin", "Help improve Cubegin"), isOn: Binding(
+                        get: { sharingChoice == .allowed },
+                        set: { AppTelemetry.chooseSharing($0 ? .allowed : .declined) }
+                    ))
+                    .accessibilityIdentifier("settings.telemetry.sharing")
+                } footer: {
+                    policyText(includeDescription: true)
+                }
+            } else {
+                policyText(includeDescription: false).listRowBackground(Color.clear)
+            }
+        }
+        .appBackground()
+        .navigationTitle(language.text("隐私", "Privacy"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .sheet(isPresented: $showsPrivacyPolicy) { PrivacyPolicyView() }
     }
 }
 

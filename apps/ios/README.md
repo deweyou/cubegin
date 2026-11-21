@@ -23,4 +23,4 @@ On a partially folded iPhone Duo in portrait, read the scramble and time above t
 
 App settings sync across devices signed into the same iCloud account when the app is signed with the iCloud key-value storage capability.
 
-In **Settings → About**, touch and hold the device ID to copy it. Choose whether to share diagnostics and usage data on first launch. Change your choice or open the [privacy policy](Cubegin/PrivacyPolicy.md#cubegin-privacy-policy) under **Settings → About**. Results stay on the device.
+To copy the installation ID for troubleshooting, tap **Version** five times under **Settings → About**. Choose whether to share diagnostics and usage data on first launch. Change your choice or open the [privacy policy](Cubegin/PrivacyPolicy.md#cubegin-privacy-policy) under **Settings → About → Privacy**. Results stay on the device.
