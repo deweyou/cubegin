@@ -1869,6 +1869,8 @@ private struct SettingsView: View {
     }
 
     @ViewBuilder private var timerSettings: some View {
+        Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
+            .accessibilityIdentifier("settings.timer.haptics")
         HStack(spacing: 8) {
             let title = language.text("启动延迟", "Start delay")
             let value = (Double(startDelayTenths) / 10).formatted(.number.precision(.fractionLength(1))) + " s"
@@ -1899,11 +1901,6 @@ private struct SettingsView: View {
             }
             .accessibilityIdentifier("settings.startDelay")
         }
-        Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
-            .accessibilityIdentifier("settings.timer.haptics")
-    }
-
-    @ViewBuilder private var inspectionSettings: some View {
         Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
             .accessibilityIdentifier("settings.inspection.enabled")
         if usesInspection {
@@ -1934,12 +1931,11 @@ private struct SettingsView: View {
     private var deviceIDRow: some View {
         let id = AppTelemetry.installationID
         let copyTitle = language.text("复制设备 ID", "Copy device ID")
-        return LabeledContent {
-            Text("…\(id.suffix(8))")
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(language.text("设备 ID", "Device ID"))
+            Text(id)
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)
-        } label: {
-            Text(language.text("设备 ID", "Device ID"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -1971,25 +1967,22 @@ private struct SettingsView: View {
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {
-                    Picker(language.text("成绩录入", "Result entry"), selection: SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }) {
+                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
+                        .accessibilityIdentifier("settings.timer.keepScreenOn")
+                    Picker(language.text("成绩产生方式", "Result entry"), selection: SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }) {
                         ForEach(SolveEntryMethod.allCases, id: \.self) { method in
                             Text(method.title(in: language)).tag(method)
                         }
                     }
                     .accessibilityIdentifier("settings.timer.entryMethod")
                     if entryMethod == .timer {
-                        Picker(language.text("计时显示", "Timer display"), selection: SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }) {
+                        Picker(language.text("计时器的时间显示", "Timer display"), selection: SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }) {
                             ForEach(TimerDisplay.allCases, id: \.self) { display in
                                 Text(display.title(in: language)).tag(display)
                             }
                         }
                         .accessibilityIdentifier("settings.timer.display")
                         timerSettings
-                    }
-                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
-                        .accessibilityIdentifier("settings.timer.keepScreenOn")
-                    if entryMethod == .timer {
-                        inspectionSettings
                     }
                     cardRowButton {
                         path.append(.gestures)

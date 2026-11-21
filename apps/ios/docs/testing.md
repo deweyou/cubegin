@@ -200,4 +200,4 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 上传令牌配置在发布环境中。核对诊断中的设备 ID 与设置页一致，再检查上报只包含预期字段。
 发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
 
-首次共享提示、设置开关、离线隐私政策和设备 ID 的简短显示及长按菜单由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。
+首次共享提示、设置开关和离线隐私政策由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。
