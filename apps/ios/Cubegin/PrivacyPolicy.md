@@ -18,7 +18,7 @@ Cubegin 会生成一个随机安装 ID，用来关联同一次安装在这两项
 
 ## 管理共享与联系
 
-你可以在「设置 → 隐私 → 共享诊断和使用数据」随时开启或关闭。关闭后，Cubegin 停止发送新的诊断和使用数据。已发送的记录按各服务的保留设置保存。若对隐私有疑问，或希望请求删除此前的上报记录，可以通过 App Store 产品页的「App 支持」入口联系 Cubegin。安装 ID 可用于查找相关记录。
+你可以在「设置 → 关于 → 共享诊断和使用数据」随时开启或关闭。关闭后，Cubegin 停止发送新的诊断和使用数据。已发送的记录按各服务的保留设置保存。若对隐私有疑问，或希望请求删除此前的上报记录，可以通过 App Store 产品页的「App 支持」入口联系 Cubegin。安装 ID 可用于查找相关记录。
 
 <!-- English -->
 
@@ -42,4 +42,4 @@ See [how Google uses data from partner apps](https://policies.google.com/technol
 
 ## Manage sharing and contact us
 
-You can change your choice under **Settings → Privacy → Share diagnostics and usage data**. Turning it off stops Cubegin from sending new diagnostics and usage data. Each service retains previously sent records according to its retention settings. For privacy questions or to request deletion of data already sent, contact Cubegin using **App Support** on the App Store listing. Your installation ID can help locate those records.
+You can change your choice under **Settings → About → Share diagnostics and usage data**. Turning it off stops Cubegin from sending new diagnostics and usage data. Each service retains previously sent records according to its retention settings. For privacy questions or to request deletion of data already sent, contact Cubegin using **App Support** on the App Store listing. Your installation ID can help locate those records.

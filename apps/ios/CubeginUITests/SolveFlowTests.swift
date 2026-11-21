@@ -384,6 +384,15 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Results and settings"].exists)
         app.buttons["Done"].tap()
         XCTAssertTrue(sharing.exists)
+
+        let deviceID = app.descendants(matching: .any)["settings.deviceID"].firstMatch
+        if !deviceID.isHittable { app.swipeUp() }
+        XCTAssertTrue(deviceID.isHittable)
+        let readout = deviceID.label + " " + (deviceID.value as? String ?? "")
+        XCTAssertNotNil(readout.range(of: #"…[0-9a-f]{8}\b"#, options: .regularExpression))
+        XCTAssertNil(readout.range(of: #"[0-9a-f]{8}-[0-9a-f-]{27}"#, options: .regularExpression))
+        deviceID.press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["Copy device ID"].waitForExistence(timeout: 5))
     }
 
     @MainActor

@@ -1934,11 +1934,12 @@ private struct SettingsView: View {
     private var deviceIDRow: some View {
         let id = AppTelemetry.installationID
         let copyTitle = language.text("复制设备 ID", "Copy device ID")
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(language.text("设备 ID", "Device ID"))
-            Text(id)
+        return LabeledContent {
+            Text("…\(id.suffix(8))")
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)
+        } label: {
+            Text(language.text("设备 ID", "Device ID"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -2016,7 +2017,8 @@ private struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
                 }
-                CardSection(language.text("隐私", "Privacy")) {
+                CardSection(language.text("关于", "About")) {
+                    LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
                     if AppTelemetry.showsSharingPreference {
                         Toggle(isOn: Binding(
                             get: { sharingChoice == .allowed },
@@ -2041,9 +2043,6 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.privacyPolicy")
-                }
-                CardSection(language.text("关于", "About")) {
-                    LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
                     deviceIDRow
                 }
             }
