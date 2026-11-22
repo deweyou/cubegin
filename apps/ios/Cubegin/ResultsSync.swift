@@ -32,7 +32,7 @@ struct SyncRecord: Codable, Equatable, Sendable {
     let revision: Int
     let replicaID: UUID
     let solve: Solve?
-    var metadata: SyncedMetadata? = nil
+    var metadata: SyncedMetadata?
 
     private var isDeletion: Bool { metadata?.isGroupDeletion ?? (solve == nil) }
 
