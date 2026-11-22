@@ -19,3 +19,8 @@ local.properties
 /examples/android/.gradle/
 
 /sdk/web/SDK.json
+
+/apps/ios/TelemetryConfig/
+/apps/web/.nuxt/
+/apps/web/.output/
+/apps/web/dist

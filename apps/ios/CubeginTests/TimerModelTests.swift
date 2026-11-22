@@ -1,10 +1,291 @@
 import Foundation
 import SQLite3
 import Testing
+import UIKit
+import WebKit
 @testable import CubeginApp
+
+struct AppLanguageTests {
+    @Test func followsPreferredSystemLanguagesUnlessTheUserChoosesOne() {
+        #expect(AppLanguage.resolve(nil, preferredLanguages: ["zh-Hant-TW", "en"]) == .chinese)
+        #expect(AppLanguage.resolve(AppLanguage.systemPreference, preferredLanguages: ["fr", "en-GB"]) == .english)
+        #expect(AppLanguage.resolve(AppLanguage.systemPreference, preferredLanguages: ["fr"]) == .english)
+        #expect(AppLanguage.resolve("en", preferredLanguages: ["zh-Hans"]) == .english)
+        #expect(AppLanguage.resolve("zh-Hans", preferredLanguages: ["en"]) == .chinese)
+    }
+}
+
+@MainActor
+struct AnalyticsIdentityStartupTests {
+    @Test func usesAnExistingIdentityBeforeStartingWithoutOne() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let id = UUID()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        startup.start(lookup: { .found(id) }, create: { nil }, apply: { continuation.yield($0) })
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(id))
+        startup.cancel()
+    }
+
+    @Test func startsAfterTimeoutAndAttachesAnIdentityThatArrivesLater() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let (lookup, response) = AsyncStream<CloudAnalyticsIdentityLookup>.makeStream()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        startup.start(timeout: .milliseconds(10), lookup: {
+            var responses = lookup.makeAsyncIterator()
+            return await responses.next() ?? .unavailable
+        }, create: { nil }, apply: { continuation.yield($0) })
+
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(nil))
+        let id = UUID()
+        response.yield(.found(id))
+        #expect(await updates.next() == .some(id))
+        startup.cancel()
+    }
+
+    @Test func startsImmediatelyWhenTheRecordIsMissingAndThenAttachesTheCreatedIdentity() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        let id = UUID()
+        startup.start(lookup: { .missing }, create: { id }, apply: { continuation.yield($0) })
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(nil))
+        #expect(await updates.next() == .some(id))
+        startup.cancel()
+    }
+
+    @Test func onlyRecordsTheNewIdentityAfterReplacingAnInFlightLookup() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let (lookup, response) = AsyncStream<CloudAnalyticsIdentityLookup>.makeStream()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        startup.start(lookup: {
+            var responses = lookup.makeAsyncIterator()
+            return await responses.next() ?? .unavailable
+        }, create: { nil }, apply: { continuation.yield($0) })
+        startup.cancel()
+        response.yield(.found(UUID()))
+        let newID = UUID()
+        startup.start(lookup: { .found(newID) }, create: { nil }, apply: { continuation.yield($0) })
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(newID))
+        startup.cancel()
+    }
+}
 
 @MainActor
 struct TimerModelTests {
+    @Test func productEventFieldsUseTheApprovedValues() {
+        #expect(ProductEvent.solveSaved(project: "333.pll", entryMethod: .timer).fields ==
+                ["cube_event": "event_333", "entry_method": "timer"])
+        #expect(ProductEvent.solveSaved(project: "333.unknown", entryMethod: .timer).fields ==
+                ["cube_event": "other", "entry_method": "timer"])
+        #expect(ProductEvent.solveSaved(project: "minx", entryMethod: .manual).fields ==
+                ["cube_event": "event_minx", "entry_method": "manual"])
+        #expect(ProductEvent.wcaInspectionStarted(.off).fields == ["inspection_voice": "off"])
+        #expect(ProductEvent.solveListViewed(includesDNF: false).fields == ["include_dnf_in_worst": "off"])
+        #expect(ProductEvent.statisticsViewed.fields.isEmpty)
+        #expect(ProductEvent.dctimerImportStarted.fields.isEmpty)
+        #expect(ProductEvent.dctimerImportCompleted.fields.isEmpty)
+        let setting = ProductEvent.featureUsed(.settingChanged(from: .swipe(.left, .newScramble), to: .swipe(.left, .none)))
+        #expect(setting.name == "feature_used")
+        #expect(setting.fields == ["feature": "settings", "action": "change", "setting": "swipe_left",
+                                   "previous_value": "newScramble", "setting_value": "none"])
+        #expect(ProductEvent.featureUsed(.assistMethodSelected(.xcross)).fields ==
+                ["feature": "assist_formula", "action": "select_method", "method": "xcross"])
+        #expect(ProductEvent.featureUsed(.chartSelected(.distribution)).fields ==
+                ["feature": "statistics_chart", "action": "select", "chart_type": "distribution"])
+        #expect(ProductEvent.featureUsed(.chartViewed(.trend)).fields ==
+                ["feature": "statistics_chart", "action": "view", "chart_type": "trend"])
+        #expect(ProductEvent.featureUsed(.assistMethodViewed(.cross)).fields ==
+                ["feature": "assist_formula", "action": "view_method", "method": "cross"])
+        #expect(ProductEvent.featureUsed(.resultsMoved(.batch)).fields ==
+                ["feature": "result_group", "action": "move_results", "scope": "batch"])
+        #expect(ProductEvent.featureUsed(.dctimerImportUndone).fields ==
+                ["feature": "dctimer_import", "action": "undo"])
+        #expect(ProductEvent.featureUsed(.resultsCleared(.selectedGroups)).fields ==
+                ["feature": "settings", "action": "clear_results", "scope": "selected_groups"])
+    }
+
+    @Test func recordsGroupCreationAndOnlyChangedOrder() async throws {
+        try await withFixture { fixture in
+            var events: [ProductEvent] = []
+            let model = fixture.model(recordProductEvent: { events.append($0) })
+            #expect(!model.saveGroup(name: " ", isDefault: false))
+            #expect(model.saveGroup(name: "Practice", isDefault: false))
+            let groupID = try #require(model.currentGroup?.id)
+            #expect(model.saveGroup(id: groupID, name: "Edited", isDefault: false))
+            let order = model.eventGroups.map(\.id)
+            #expect(!model.reorderGroups([]))
+            #expect(model.reorderGroups(order))
+            #expect(model.reorderGroups(Array(order.reversed())))
+            #expect(events == [.featureUsed(.groupCreated), .featureUsed(.groupReordered)])
+        }
+    }
+
+    @Test func recordsNewSolvesOnceAfterSavingAndCountsSilentInspection() async throws {
+        try await withFixture { fixture in
+            var events: [ProductEvent] = []
+            let model = fixture.model(recordProductEvent: { events.append($0) })
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: nil, penalty: .dnf, context: context) == nil)
+            let saved = try #require(model.lastSolve)
+            #expect(model.setPenalty(.plusTwo, for: saved.id) == false)
+            #expect(events == [.solveSaved(project: "333", entryMethod: .manual)])
+
+            try await waitForGeneration(model)
+            let second = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 12_000, penalty: nil, context: second) == nil)
+            let editable = try #require(model.lastSolve)
+            #expect(model.setPenalty(.plusTwo, for: editable.id))
+            #expect(events == [.solveSaved(project: "333", entryMethod: .manual), .solveSaved(project: "333", entryMethod: .manual)])
+
+            try await waitForGeneration(model)
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            model.activateAccessibleTimer()
+            #expect(model.inspectionStarted != nil)
+            #expect(events == [.solveSaved(project: "333", entryMethod: .manual), .solveSaved(project: "333", entryMethod: .manual), .wcaInspectionStarted(.off)])
+            model.interrupt()
+        }
+    }
+
+    @Test
+    func savesAnExplicitSharingChoicePerInstallation() throws {
+        let suite = "sharing-choice-test.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(true, forKey: "telemetry.diagnosticsEnabled")
+        #expect(AppTelemetry.sharingChoice(in: defaults) == .undecided)
+        AppTelemetry.chooseSharing(.declined, in: defaults)
+        #expect(AppTelemetry.sharingChoice(in: defaults) == .declined)
+        AppTelemetry.chooseSharing(.allowed, in: defaults)
+        let reopened = try #require(UserDefaults(suiteName: suite))
+        #expect(AppTelemetry.sharingChoice(in: reopened) == .allowed)
+    }
+
+    @Test
+    func createsOneInstallationIDPerDefaultsStore() throws {
+        let firstSuite = "installation-test.\(UUID())"
+        let secondSuite = "installation-test.\(UUID())"
+        let first = try #require(UserDefaults(suiteName: firstSuite))
+        let second = try #require(UserDefaults(suiteName: secondSuite))
+        defer {
+            first.removePersistentDomain(forName: firstSuite)
+            second.removePersistentDomain(forName: secondSuite)
+        }
+        let id = AppTelemetry.deviceID(in: first)
+        #expect(UUID(uuidString: id) != nil)
+        let reopened = try #require(UserDefaults(suiteName: firstSuite))
+        #expect(AppTelemetry.deviceID(in: reopened) == id)
+        #expect(AppTelemetry.deviceID(in: second) != id)
+    }
+
+    @Test func formatsTheDiagnosticClipboardWithAnOptionalUserID() throws {
+        let uid = try #require(UUID(uuidString: "A0B1C2D3-1074-4908-B6C0-96F36B31F36B"))
+        #expect(AppTelemetry.formatSupportIdentifiers(deviceID: "sample", userID: nil) == "did: sample")
+        #expect(AppTelemetry.formatSupportIdentifiers(deviceID: "sample", userID: uid)
+                == "did: sample\nuid: a0b1c2d3-1074-4908-b6c0-96f36b31f36b")
+    }
+
+    @Test
+    func sendsOnlyUnexpectedErrorsToSentry() {
+        #expect(FailureReason.writeFailed.needsDiagnostic(for: .saveSolve))
+        #expect(FailureReason.writeFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.decodeFailed.needsDiagnostic(for: .loadResults))
+        #expect(FailureReason.engineFailed.needsDiagnostic(for: .generateScramble))
+        #expect(!FailureReason.engineFailed.needsDiagnostic(for: .loadDiagram))
+        #expect(!FailureReason.readFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(!FailureReason.invalidBackup.needsDiagnostic(for: .importDCTimer))
+        #expect(!FailureReason.incompatibleBackup.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.validationFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.webContentTerminated.needsDiagnostic(for: .renderDiagram))
+        #expect(FailureReason.audioResourceMissing.needsDiagnostic(for: .playInspectionAudio))
+        #expect(FailureReason.audioDecodeFailed.needsDiagnostic(for: .playInspectionAudio))
+        #expect(!FailureReason.audioScheduleFailed.needsDiagnostic(for: .playInspectionAudio))
+        let diskFull = CocoaError(.fileWriteOutOfSpace)
+        #expect(FailureReason.writingResults(diskFull) == .diskFull)
+        #expect(!FailureReason.writingResults(diskFull).needsDiagnostic(for: .saveSolve))
+    }
+
+    @Test
+    func serializesTheSharedFailureSchema() {
+        let failure = OperationFailure(operation: .renderDiagram, reason: .webContentTerminated, impact: .degraded)
+        #expect(OperationFailure.eventName == "operation_failed")
+        #expect(failure.fields == [
+            "operation": "render_diagram",
+            "reason": "web_content_terminated",
+            "impact": "degraded"
+        ])
+    }
+
+    @Test
+    func addsTheInstalledBuildNumberToAnalyticsParameters() throws {
+        let buildNumber = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+        #expect(!buildNumber.isEmpty)
+        let failure = OperationFailure(operation: .loadResults, reason: .readFailed, impact: .blocked)
+        var expected = failure.fields
+        expected["app_build"] = buildNumber
+        #expect(AppTelemetry.analyticsParameters(failure.fields) == expected)
+    }
+
+    @Test
+    func retriesOnlyTheRequestedDiagramAndReportsTerminalFailureOnce() {
+        var recovery = SVGView.RenderRecovery()
+        recovery.request("current")
+        #expect(recovery.failed("prefetched") == .ignore)
+        #expect(recovery.failed("current") == .retry)
+        recovery.displayed()
+        #expect(recovery.failed("current") == .retry)
+        #expect(recovery.failed("current") == .report)
+        #expect(recovery.exhausted)
+        #expect(recovery.failed("current") == .ignore)
+        recovery.request("next")
+        #expect(!recovery.exhausted)
+        #expect(recovery.failed("current") == .ignore)
+        #expect(recovery.failed("next") == .retry)
+    }
+
+    @Test
+    func reportsRepeatedWebContentTerminationFromTheCurrentDiagram() throws {
+        var captured: [FailureReason] = []
+        let coordinator = SVGView.Coordinator { captured.append($0) }
+        let container = UIView()
+        coordinator.update(in: container, svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", nextSVG: nil)
+        let webView = try #require(container.subviews.first as? WKWebView)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        #expect(captured.isEmpty)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        #expect(captured == [.webContentTerminated])
+        coordinator.stop()
+    }
+
+    @Test
+    func reportsOneAudioFailurePerObservationAndStillAllowsTiming() async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            fixture.defaults.set(InspectionVoice.female.rawValue, forKey: TimerModel.inspectionVoiceKey)
+            var captured: [FailureReason] = []
+            let model = TimerModel(storage: fixture.storage, defaults: fixture.defaults,
+                                   loadInspectionPlayer: { _ in nil }, onInspectionAudioFailure: { captured.append($0) },
+                                   generateScramble: { _ in Scramble(algorithm: "R", svg: "") })
+            model.refresh()
+            try await waitForGeneration(model)
+            model.activateAccessibleTimer()
+            #expect(model.inspectionStarted != nil)
+            #expect(captured == [.audioResourceMissing])
+            model.activateAccessibleTimer()
+            #expect(model.started != nil)
+            model.interrupt()
+            #expect(captured == [.audioResourceMissing])
+            model.activateAccessibleTimer()
+            #expect(captured == [.audioResourceMissing, .audioResourceMissing])
+        }
+    }
+
     @Test
     func celebratesFirstValidResultOncePerSolveAndScopesRecordsToTheSelectedGroup() async throws {
         try await withFixture { fixture in
@@ -115,8 +396,8 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let left = TimerSwipeDirection.left
             let right = TimerSwipeDirection.right
-            #expect(left.action(in: fixture.defaults) == .newScramble)
-            #expect(right.action(in: fixture.defaults) == .deleteLastSolve)
+            #expect(left.action(in: fixture.defaults) == .none)
+            #expect(right.action(in: fixture.defaults) == .none)
 
             fixture.defaults.set(TimerSwipeAction.none.rawValue, forKey: left.preferenceKey)
             fixture.defaults.set(TimerSwipeAction.manualEntry.rawValue, forKey: right.preferenceKey)
@@ -124,7 +405,7 @@ struct TimerModelTests {
             #expect(right.action(in: fixture.defaults) == .manualEntry)
 
             fixture.defaults.set("unknown-action", forKey: right.preferenceKey)
-            #expect(right.action(in: fixture.defaults) == .deleteLastSolve)
+            #expect(right.action(in: fixture.defaults) == .none)
         }
     }
 
@@ -496,10 +777,10 @@ struct TimerModelTests {
             #expect(model.currentGroup?.id == "default:333.oll")
 
             let reopened = fixture.model()
-            #expect(reopened.mode == .standard)
-            #expect(reopened.event == "222")
-            reopened.mode = .training
+            #expect(reopened.mode == .training)
             #expect(reopened.event == "333.oll")
+            reopened.mode = .standard
+            #expect(reopened.event == "222")
         }
     }
 
@@ -509,7 +790,8 @@ struct TimerModelTests {
             let second = Solve(seconds: 15, event: "333", scramble: "F U", date: Date(timeIntervalSince1970: 90))
             let unrelated = Solve(seconds: 8, event: "222", scramble: "R2", date: Date(timeIntervalSince1970: 80))
             try JSONEncoder().encode([first, second, unrelated]).write(to: fixture.storage)
-            let model = fixture.model()
+            var events: [ProductEvent] = []
+            let model = fixture.model(recordProductEvent: { events.append($0) })
             let initial = try #require(model.currentGroup)
             #expect(initial.id == "default:333")
             #expect(model.groupSolves == [first, second])
@@ -525,7 +807,9 @@ struct TimerModelTests {
             model.selectGroup(initial.id)
             #expect(!model.moveSolves([first.id, unrelated.id], toGroup: practice.id))
             #expect(!model.moveSolve(first.id, toGroup: "default:222"))
+            #expect(events == [.featureUsed(.groupCreated), .featureUsed(.groupReordered)])
             #expect(model.moveSolves([first.id, second.id], toGroup: practice.id))
+            #expect(events.last == .featureUsed(.resultsMoved(.batch)))
             #expect(model.groupSolves.isEmpty)
 
             #expect(model.togglePenalty(.plusTwo, for: first.id))
@@ -535,12 +819,13 @@ struct TimerModelTests {
             #expect(model.togglePenalty(.dnf, for: first.id))
             #expect(model.solves.first?.resultSeconds == first.seconds)
 
-            let reopened = fixture.model()
+            let reopened = fixture.model(recordProductEvent: { events.append($0) })
             #expect(reopened.eventGroups.map(\.id) == [practice.id, initial.id])
             #expect(reopened.groupSolves.map(\.id) == [first.id, second.id])
             #expect(reopened.groupSolves.first?.scramble == first.scramble)
             #expect(reopened.groupSolves.first?.date == first.date)
             #expect(reopened.moveSolve(first.id, toGroup: initial.id))
+            #expect(events.last == .featureUsed(.resultsMoved(.single)))
             #expect(reopened.deleteSolves([second.id]))
             #expect(reopened.saveGroup(id: initial.id, name: "Restored", isDefault: true))
             reopened.selectGroup(practice.id)
@@ -652,6 +937,7 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let backup = try dctimerImportFixture(in: fixture.directory)
             let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
+            #expect(plan.compatibilityFailure == nil)
             let clock = try #require(plan.sessions.first { $0.id == 1 })
             #expect(clock.event == "clock")
             #expect(clock.converted == 1)
@@ -671,6 +957,33 @@ struct TimerModelTests {
         }
     }
 
+    @Test func classifiesDCTimerBackupsWithNoCompatibleResults() async throws {
+        try await withFixture { fixture in
+            let backup = try dctimerImportFixture(in: fixture.directory)
+            let rejectedScrambles = try DCTimerImportPlan(backup: backup) { _, _ in false }
+            #expect(rejectedScrambles.compatibilityFailure == .incompatibleBackup)
+
+            let unsupportedGroups = DCTimerBackup(sessions: backup.sessions.filter { $0.id == 2 || $0.id == 3 })
+            let unsupportedPlan = try DCTimerImportPlan(backup: unsupportedGroups, validate: Engine.acceptsImportedScramble)
+            #expect(!unsupportedPlan.sessions.isEmpty)
+            #expect(unsupportedPlan.compatibilityFailure == .incompatibleBackup)
+        }
+    }
+
+    @Test func separatesUnexpectedDCTimerValidationErrorsFromInvalidScrambles() async throws {
+        struct InternalEngineError: Error {}
+        try await withFixture { fixture in
+            let backup = try dctimerImportFixture(in: fixture.directory)
+            #expect(try !Engine.acceptsImportedScramble(event: "333", algorithm: "invalid"))
+            #expect(throws: DCTimerImportPlan.ValidationFailure.self) {
+                try DCTimerImportPlan(backup: backup) { _, _ in throw InternalEngineError() }
+            }
+            #expect(throws: CancellationError.self) {
+                try DCTimerImportPlan(backup: backup) { _, _ in throw CancellationError() }
+            }
+        }
+    }
+
     @Test func importsDCTimerToEitherDestinationAndDeduplicatesAfterReload() async throws {
         for destination in DCTimerImportDestination.allCases {
             try await withFixture { fixture in
@@ -678,10 +991,12 @@ struct TimerModelTests {
                 let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
                 let original = Solve(seconds: 7, event: "333", scramble: "U2")
                 try JSONEncoder().encode([original]).write(to: fixture.storage)
-                let model = fixture.model()
+                var events: [ProductEvent] = []
+                let model = fixture.model(recordProductEvent: { events.append($0) })
                 #expect(try model.importDCTimer(plan, destination: destination, language: .english) == 2)
+                #expect(events == [.dctimerImportCompleted])
 
-                let reopened = fixture.model()
+                let reopened = fixture.model(recordProductEvent: { events.append($0) })
                 #expect(reopened.solves.count == 3)
                 #expect(reopened.solves.contains(original))
                 let clock = try #require(reopened.solves.first { $0.event == "clock" })
@@ -691,8 +1006,10 @@ struct TimerModelTests {
 
                 let reread = try DCTimerBackup.read(fixture.directory.appending(path: "spdcube.sqlite"))
                 let newPlan = try DCTimerImportPlan(backup: reread, validate: Engine.acceptsImportedScramble)
+                #expect(newPlan.compatibilityFailure == nil)
                 let otherDestination: DCTimerImportDestination = destination == .defaultGroups ? .originalSessions : .defaultGroups
                 #expect(try reopened.importDCTimer(newPlan, destination: otherDestination, language: .english) == 0)
+                #expect(events == [.dctimerImportCompleted])
                 #expect(reopened.solves.count == 3)
             }
         }
@@ -741,13 +1058,15 @@ struct TimerModelTests {
             #expect(model.moveSolve(added[0].id, toGroup: SolveGroup.initialID(for: "333")))
             #expect(model.deleteSolve(added[1].id))
 
-            let reopened = fixture.model()
+            var events: [ProductEvent] = []
+            let reopened = fixture.model(recordProductEvent: { events.append($0) })
             #expect(reopened.lastImportCount == 1)
             #expect(reopened.undoLastImport() == 1)
             #expect(reopened.lastImportCount == 0)
             #expect(Set(reopened.solves.map(\.id)) == olderIDs)
             #expect(reopened.groups.contains { $0.id == added[1].groupID })
             #expect(reopened.undoLastImport() == nil)
+            #expect(events == [.featureUsed(.dctimerImportUndone)])
             let reloaded = fixture.model()
             #expect(reloaded.lastImportCount == 0)
             #expect(reloaded.solves == reopened.solves)
@@ -882,11 +1201,12 @@ struct TimerModelTests {
         let defaults: UserDefaults
         var storage: URL { directory.appending(path: "solves.json") }
 
-        @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now }) -> TimerModel {
+        @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now },
+                             recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { _ in }) -> TimerModel {
             let generator = ScrambleGenerator()
-            return TimerModel(storage: storage, defaults: defaults, now: now) { event in
+            return TimerModel(storage: storage, defaults: defaults, now: now, recordProductEvent: recordProductEvent, generateScramble: { event in
                 await generator.generate(event)
-            }
+            })
         }
     }
 

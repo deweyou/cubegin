@@ -16,13 +16,22 @@ struct AssistPreferences {
 
     private var prefix: String { "assist.\(event)/\(groupID)" }
 
+    static func isPreferenceKey(_ key: String) -> Bool {
+        key.hasPrefix("assist.") && (key.hasSuffix(".method") || isOrderKey(key))
+    }
+
+    static func isOrderKey(_ key: String) -> Bool { key.contains(".order.") }
+
     func selectedMethod(from methods: [AssistMethod]) -> AssistMethod? {
         let saved = defaults.string(forKey: prefix + ".method")
         return methods.first { $0.rawValue == saved } ?? methods.first
     }
 
-    func saveMethod(_ method: AssistMethod) {
-        defaults.set(method.rawValue, forKey: prefix + ".method")
+    @discardableResult
+    func saveMethod(_ method: AssistMethod) -> String {
+        let key = prefix + ".method"
+        defaults.set(method.rawValue, forKey: key)
+        return key
     }
 
     func ordered(_ solutions: [AssistSolution], for method: AssistMethod) -> [AssistSolution] {
@@ -33,8 +42,11 @@ struct AssistPreferences {
         return ordered + solutions.filter { !restored.contains($0.id) }
     }
 
-    func saveOrder(_ solutions: [AssistSolution], for method: AssistMethod) {
-        defaults.set(solutions.map(\.id), forKey: orderKey(for: method))
+    @discardableResult
+    func saveOrder(_ solutions: [AssistSolution], for method: AssistMethod) -> String {
+        let key = orderKey(for: method)
+        defaults.set(solutions.map(\.id), forKey: key)
+        return key
     }
 
     private func orderKey(for method: AssistMethod) -> String {
@@ -44,6 +56,7 @@ struct AssistPreferences {
 
 struct AssistFormulaModal: View {
     let scramble: AssistScramble
+    let onPreferencesChanged: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -56,7 +69,7 @@ struct AssistFormulaModal: View {
                     .ignoresSafeArea()
                     .onTapGesture { dismiss() }
                     .accessibilityHidden(true)
-                AssistFormulaView(scramble: scramble)
+                AssistFormulaView(scramble: scramble, onPreferencesChanged: onPreferencesChanged)
                     .frame(width: width, height: height)
                     .clipShape(.rect(cornerRadius: 28))
             }
@@ -73,9 +86,11 @@ struct AssistFormulaView: View {
     @ScaledMetric(relativeTo: .caption2) private var metricFontSize = 10.0
     let methods: [AssistMethod]
     private let preferences: AssistPreferences
+    private let onPreferencesChanged: (String) -> Void
     @State private var method: AssistMethod
     @State private var search: Search = .loading
     @State private var retryCount = 0
+    @State private var viewedMethods: Set<AssistMethod> = []
 
     private enum Search {
         case loading
@@ -83,8 +98,9 @@ struct AssistFormulaView: View {
         case failed
     }
 
-    init(scramble: AssistScramble) {
+    init(scramble: AssistScramble, onPreferencesChanged: @escaping (String) -> Void) {
         self.scramble = scramble
+        self.onPreferencesChanged = onPreferencesChanged
         let methods = AssistMethod.available(for: scramble.event)
         self.methods = methods
         let preferences = AssistPreferences(event: scramble.event, groupID: scramble.groupID)
@@ -128,8 +144,9 @@ struct AssistFormulaView: View {
             .pickerStyle(.menu)
             .accessibilityIdentifier("assist.method")
             .onChange(of: method) { _, selection in
-                preferences.saveMethod(selection)
+                onPreferencesChanged(preferences.saveMethod(selection))
                 search = .loading
+                AppTelemetry.record(.featureUsed(.assistMethodSelected(selection)))
             }
         }
     }
@@ -169,9 +186,12 @@ struct AssistFormulaView: View {
 
     private func moveSolutions(from source: IndexSet, to destination: Int) {
         guard canReorder, case .solutions(var solutions) = search else { return }
+        let previousOrder = solutions.map(\.id)
         solutions.move(fromOffsets: source, toOffset: destination)
-        preferences.saveOrder(solutions, for: method)
+        guard solutions.map(\.id) != previousOrder else { return }
+        onPreferencesChanged(preferences.saveOrder(solutions, for: method))
         search = .solutions(solutions)
+        AppTelemetry.record(.featureUsed(.assistReordered))
     }
 
     private func moveSolution(_ target: String, offset: Int) {
@@ -190,8 +210,13 @@ struct AssistFormulaView: View {
             try Task.checkCancellation()
             guard self.method == method else { return }
             search = .solutions(preferences.ordered(solutions, for: method))
+            if !solutions.isEmpty, viewedMethods.insert(method).inserted {
+                AppTelemetry.record(.featureUsed(.assistMethodViewed(method)))
+            }
         } catch {
-            if !Task.isCancelled { search = .failed }
+            guard !Task.isCancelled, !(error is CancellationError), self.method == method else { return }
+            AppTelemetry.record(.loadAssist, error is DecodingError ? .decodeFailed : .engineFailed, impact: .degraded)
+            search = .failed
         }
     }
 

@@ -21,4 +21,7 @@ Optional WCA inspection includes 8- and 12-second voice calls and automatic insp
 
 On a partially folded iPhone Duo in portrait, read the scramble and time above the fold and use the lower half to start or stop the timer.
 
-App settings sync across devices signed into the same iCloud account when the app is signed with the iCloud key-value storage capability.
+Use Settings → General → Sync to control syncing supported settings across devices signed into the same iCloud account. This requires a build signed with the iCloud key-value storage capability.
+Cubegin Dev builds configured with CloudKit also sync results, result groups, the selected project, and formula hint preferences.
+
+To copy the device ID and the shared user ID when available, tap **Version** five times under **Settings → About**. Choose whether to share diagnostics and usage data on first launch. Change your choice or open the [privacy policy](Cubegin/PrivacyPolicy.md#cubegin-privacy-policy) under **Settings → About → Privacy**.

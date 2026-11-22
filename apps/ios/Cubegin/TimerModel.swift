@@ -36,6 +36,7 @@ struct Solve: Codable, Identifiable, Equatable, Sendable {
 }
 struct SolveGroup: Codable, Identifiable {
     static let maximumNameLength = 16
+    static let cloudPlaceholderName = "iCloud"
 
     static func isValidName(_ name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,12 +109,7 @@ enum TimerSwipeDirection: String, CaseIterable {
 
     var preferenceKey: String { "timer.swipe.\(rawValue)" }
 
-    var defaultAction: TimerSwipeAction {
-        switch self {
-        case .left: .newScramble
-        case .right: .deleteLastSolve
-        }
-    }
+    var defaultAction: TimerSwipeAction { .none }
 
     func action(in defaults: UserDefaults = .standard) -> TimerSwipeAction {
         TimerSwipeAction(rawValue: defaults.string(forKey: preferenceKey) ?? "") ?? defaultAction
@@ -154,6 +150,19 @@ struct ManualSolveContext: Identifiable {
     let groupID: String?
 }
 
+private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
+    let inspectionID = UUID()
+    private let onDecodeError: @MainActor @Sendable (UUID) -> Void
+
+    init(onDecodeError: @escaping @MainActor @Sendable (UUID) -> Void) {
+        self.onDecodeError = onDecodeError
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_: AVAudioPlayer, error _: Error?) {
+        Task { @MainActor [onDecodeError, inspectionID] in onDecodeError(inspectionID) }
+    }
+}
+
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
     static let defaultStartDelayTenths = 0
@@ -176,6 +185,8 @@ struct ManualSolveContext: Identifiable {
     private(set) var inspectionStarted: ContinuousClock.Instant?
     private var inspectionPenalty: SolvePenalty?
     @ObservationIgnored private var inspectionPlayers: [AVAudioPlayer] = []
+    @ObservationIgnored private var reportedInspectionAudioFailure = false
+    @ObservationIgnored private var inspectionAudioDelegate: InspectionAudioDelegate?
 
     static func penalty(forInspection duration: Duration) -> SolvePenalty? {
         if duration >= .seconds(17) { return .dnf }
@@ -185,34 +196,78 @@ struct ManualSolveContext: Identifiable {
 
     private func beginInspection(at instant: ContinuousClock.Instant) {
         inspectionStarted = instant
+        reportedInspectionAudioFailure = false
         let voice = InspectionVoice(rawValue: defaults.string(forKey: Self.inspectionVoiceKey) ?? "") ?? .off
+        recordProductEvent(.wcaInspectionStarted(voice))
         guard voice != .off else { return }
+        inspectionAudioDelegate = InspectionAudioDelegate { [weak self] id in
+            guard let self, self.inspectionAudioDelegate?.inspectionID == id else { return }
+            self.reportInspectionAudioFailure(.audioDecodeFailed)
+        }
         let language = AppLanguage.saved == .english ? "en" : "zh"
+        var firstFailure: FailureReason?
         for seconds in [8, 12] {
             let name = "\(language)-\(voice.rawValue)-\(seconds)"
-            guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio"),
-                  let player = try? AVAudioPlayer(contentsOf: url), player.prepareToPlay() else { continue }
-            let remaining = now().duration(to: instant.advanced(by: .seconds(seconds))).components
-            let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
-            let session = AVAudioSession.sharedInstance()
-            // Account for the small preroll left in the clips and the current audio route.
-            let lead = 0.03 + session.outputLatency + session.ioBufferDuration
-            player.play(atTime: player.deviceCurrentTime + max(0, delay - lead))
-            inspectionPlayers.append(player)
+            if let failure = scheduleInspectionPrompt(name, at: instant.advanced(by: .seconds(seconds))),
+               firstFailure == nil || failure.needsDiagnostic(for: .playInspectionAudio) {
+                firstFailure = failure
+            }
         }
+        if let firstFailure { reportInspectionAudioFailure(firstFailure) }
+    }
+
+    private func scheduleInspectionPrompt(_ name: String, at instant: ContinuousClock.Instant) -> FailureReason? {
+        let player: AVAudioPlayer
+        do {
+            guard let loaded = try loadInspectionPlayer(name) else { return .audioResourceMissing }
+            player = loaded
+        } catch {
+            return .audioDecodeFailed
+        }
+        player.delegate = inspectionAudioDelegate
+        guard player.prepareToPlay() else { return .audioPrepareFailed }
+        let remaining = now().duration(to: instant).components
+        let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+        let session = AVAudioSession.sharedInstance()
+        // Account for the small preroll left in the clips and the current audio route.
+        let lead = 0.03 + session.outputLatency + session.ioBufferDuration
+        guard player.play(atTime: player.deviceCurrentTime + max(0, delay - lead)) else { return .audioScheduleFailed }
+        inspectionPlayers.append(player)
+        return nil
+    }
+
+    private func reportInspectionAudioFailure(_ reason: FailureReason) {
+        guard inspectionStarted != nil, !reportedInspectionAudioFailure else { return }
+        reportedInspectionAudioFailure = true
+        onInspectionAudioFailure(reason)
+    }
+
+    static func bundledInspectionPlayer(_ name: String) throws -> AVAudioPlayer? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio") else {
+            return nil
+        }
+        return try AVAudioPlayer(contentsOf: url)
     }
 
     func endInspection() {
         inspectionStarted = nil
+        inspectionAudioDelegate = nil
         for player in inspectionPlayers { player.stop() }
         inspectionPlayers.removeAll()
     }
-    var mode = ScrambleMode.standard
+    private static let projectModeKey = "scramble.mode"
+    private static let standardEventKey = "scramble.standard"
+    private static let trainingEventKey = "scramble.training"
+    private static let editedPreferenceKeysKey = "icloud.editedPreferenceKeys"
+
+    var mode: ScrambleMode {
+        didSet { storeProjectPreference(mode.rawValue, key: Self.projectModeKey) }
+    }
     var standardEvent: String {
-        didSet { defaults.set(standardEvent, forKey: "scramble.standard") }
+        didSet { storeProjectPreference(standardEvent, key: Self.standardEventKey) }
     }
     var trainingEvent: String {
-        didSet { defaults.set(trainingEvent, forKey: "scramble.training") }
+        didSet { storeProjectPreference(trainingEvent, key: Self.trainingEventKey) }
     }
     var event: String { mode == .standard ? standardEvent : trainingEvent }
     var eventSelection: String {
@@ -293,43 +348,100 @@ struct ManualSolveContext: Identifiable {
     private let storage: URL
     private let defaults: UserDefaults
     private let now: () -> ContinuousClock.Instant
+    private let loadInspectionPlayer: @MainActor (String) throws -> AVAudioPlayer?
+    private let onInspectionAudioFailure: @MainActor (FailureReason) -> Void
     private let generateScramble: @Sendable (String) async throws -> Scramble
+    private let recordProductEvent: @MainActor (ProductEvent) -> Void
 
-    static let cloudSyncKey = "results.icloudSync"
     private static let lastCloudSyncKey = "results.lastSuccessfulCloudSync"
     private(set) var lastSuccessfulCloudSync: Date?
     private(set) var cloudSyncEnabled = false
     private(set) var cloudSyncStatus: CloudSyncStatus = .idle
     enum CloudSyncStatus { case idle, syncing, synced, failed(CloudSyncFailure) }
     @ObservationIgnored private let cloudTransport: (any ResultsCloudTransport)?
-    var supportsCloudSync: Bool { cloudTransport != nil }
+    var supportsResultsSync: Bool { cloudTransport != nil }
+    var supportsCloudSync: Bool { supportsResultsSync || SettingsSync.isAvailable }
     @ObservationIgnored private var cloudState: ResultsSyncReplica.State?
     @ObservationIgnored private var cloudAccount: String?
     @ObservationIgnored private var cloudTask: Task<Void, Never>?
     @ObservationIgnored private var needsCloudSync = false
     @ObservationIgnored private var cloudGeneration = 0
+    @ObservationIgnored private var deferredCloudApply = false
+
+    private func storeProjectPreference(_ value: String, key: String) {
+        guard defaults.string(forKey: key) != value else { return }
+        defaults.set(value, forKey: key)
+        preferenceDidChange(key)
+    }
+
+    func preferenceDidChange(_ key: String) {
+        guard supportsResultsSync, Self.syncsPreference(key) else { return }
+        var edited = editedPreferenceKeys
+        edited.insert(key)
+        defaults.set(edited.sorted(), forKey: Self.editedPreferenceKeysKey)
+        requestCloudSync()
+    }
+
+    private var editedPreferenceKeys: Set<String> {
+        Set(defaults.stringArray(forKey: Self.editedPreferenceKeysKey) ?? [])
+    }
+
+    private static func syncsPreference(_ key: String) -> Bool {
+        key == projectModeKey || key == standardEventKey || key == trainingEventKey || AssistPreferences.isPreferenceKey(key)
+    }
+
+    private var syncedPreferences: [String: [String]] {
+        defaults.dictionaryRepresentation().reduce(into: [:]) { values, entry in
+            guard Self.syncsPreference(entry.key) else { return }
+            if let selection = entry.value as? String { values[entry.key] = [selection] }
+            if let order = entry.value as? [String] { values[entry.key] = order }
+        }
+    }
+
+    private func restoreCloudPreferences(_ metadata: [SyncedMetadata], comparedTo previous: [String: [String]]) {
+        let current = syncedPreferences
+        var projectsChanged = false
+        for entry in metadata {
+            guard case .preference(let key, let values) = entry, Self.syncsPreference(key),
+                  current[key] == previous[key], current[key] != values else { continue }
+            if AssistPreferences.isOrderKey(key) {
+                defaults.set(values, forKey: key)
+            } else if let selection = values.first, values.count == 1 {
+                defaults.set(selection, forKey: key)
+                if !AssistPreferences.isPreferenceKey(key) { projectsChanged = true }
+            }
+        }
+        guard projectsChanged else { return }
+        standardEvent = ScrambleCatalog.restored(Self.standardEventKey, training: false, defaults: defaults)
+        trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
+        mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
+    }
 
     func setCloudSyncEnabled(_ enabled: Bool) {
         guard supportsCloudSync, enabled != cloudSyncEnabled else { return }
         cloudSyncEnabled = enabled
-        defaults.set(enabled, forKey: Self.cloudSyncKey)
+        defaults.set(enabled, forKey: ICloudSyncPreference.key)
         if enabled {
+            SettingsSync.refresh()
             requestCloudSync()
         } else {
             cloudTask?.cancel()
             needsCloudSync = false
+            deferredCloudApply = false
             cloudSyncStatus = .idle
         }
+        AppTelemetry.cloudIdentityDidChange()
     }
 
     func requestCloudSync() {
-        guard cloudSyncEnabled, supportsCloudSync else { return }
+        guard cloudSyncEnabled, supportsResultsSync else { return }
         guard !storageReadFailed else {
             cloudSyncStatus = .failed(.localStorage)
             return
         }
         needsCloudSync = true
         guard cloudTask == nil else { return }
+        cloudSyncStatus = .syncing
         cloudTask = Task { [weak self] in await self?.syncResults() }
     }
 
@@ -340,24 +452,28 @@ struct ManualSolveContext: Identifiable {
         }
         guard cloudSyncEnabled, !Task.isCancelled, let cloudTransport else { return }
         needsCloudSync = false
-        cloudSyncStatus = .syncing
         do {
             let account = try await cloudTransport.accountID()
             try Task.checkCancellation()
             if let cloudAccount, cloudAccount != account { throw CloudSyncFailure.accountChanged }
-            if cloudState == nil || cloudAccount == nil {
-                var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
-                try replica.importSolves(persistedSolves)
-                guard save(persistedSolves, remoteState: (replica.state, account)) else {
+            let generation = cloudGeneration
+            var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
+            // Older builds could save a timed solve without adding it to the sync state.
+            try replica.importSolves(persistedSolves)
+            replica.importGroups(groups)
+            let preferences = syncedPreferences
+            let editedKeys = editedPreferenceKeys
+            for (key, values) in preferences {
+                replica.recordMetadata(.preference(key: key, values: values),
+                                       migrationRevision: editedKeys.contains(key) ? nil : 0)
+            }
+            // A partially successful upload must not let a later edit reuse an uploaded revision.
+            if cloudAccount == nil || cloudState?.records != replica.state.records {
+                guard save(persistedSolves, operation: nil, remoteState: (replica.state, account)) else {
                     cloudSyncStatus = .failed(.localStorage)
                     return
                 }
             }
-            guard let cloudState else { return }
-            let generation = cloudGeneration
-            var replica = ResultsSyncReplica(state: cloudState)
-            // Older builds could save a timed solve without adding it to the sync state.
-            try replica.importSolves(persistedSolves)
             try await cloudTransport.prepareZone(for: account)
             try await replica.sync(with: cloudTransport)
             let currentAccount = try await cloudTransport.accountID()
@@ -367,25 +483,53 @@ struct ManualSolveContext: Identifiable {
                 needsCloudSync = true
                 return
             }
-            var updatedGroups = groups
-            for solve in replica.solves {
+            guard started == nil, inspectionStarted == nil, heldInput == nil else {
+                deferredCloudApply = true
+                cloudSyncStatus = .idle
+                return
+            }
+            deferredCloudApply = false
+            let groupMerge = replica.mergeGroups(groups)
+            var updatedGroups = groupMerge.groups
+            var deletedGroups: [String: Set<String>] = [:]
+            for case .group(let event, let id, nil) in replica.metadata {
+                deletedGroups[event, default: []].insert(id)
+            }
+            for var solve in replica.solves {
                 let id = solve.groupID ?? SolveGroup.initialID(for: solve.event)
                 if !updatedGroups.contains(where: { $0.id == id && $0.event == solve.event }) {
+                    if deletedGroups[solve.event]?.contains(id) == true,
+                       let fallback = updatedGroups.first(where: { $0.event == solve.event && $0.isDefault }) {
+                        // Keep a concurrent solve when its group was removed on another device.
+                        solve.groupID = fallback.id
+                        try replica.edit(solve)
+                        needsCloudSync = true
+                        continue
+                    }
                     let hasDefault = updatedGroups.contains { $0.event == solve.event && $0.isDefault }
                     updatedGroups.append(SolveGroup(id: id, event: solve.event,
-                                                   name: id == SolveGroup.initialID(for: solve.event) ? "" : "iCloud",
+                                                   name: id == SolveGroup.initialID(for: solve.event) ? "" : SolveGroup.cloudPlaceholderName,
                                                    isDefault: !hasDefault))
                 }
             }
             let updated = replica.solves
             let visibleIDs = Set(persistedSolves.map(\.id)).union(updated.map(\.id))
             let unsaved = solves.filter { !visibleIDs.contains($0.id) }
-            guard save(updated, groups: updatedGroups, remoteState: (replica.state, account)) else {
+            guard save(updated, operation: nil, groups: updatedGroups, remoteState: (replica.state, account)) else {
                 cloudSyncStatus = .failed(.localStorage)
                 return
             }
+            if groupMerge.didRecover { needsCloudSync = true }
             solves = (unsaved + updated).sorted(by: Solve.newestFirst)
+            let previousDefault = groups.first { $0.event == event && $0.isDefault }?.id
             groups = updatedGroups
+            if selectedGroupID == previousDefault || !eventGroups.contains(where: { $0.id == selectedGroupID }) {
+                selectedGroupID = eventGroups.first(where: \.isDefault)?.id
+            }
+            let currentPreferences = syncedPreferences
+            let processed = editedKeys.filter { currentPreferences[$0] == preferences[$0] }
+            defaults.set(editedPreferenceKeys.subtracting(processed).sorted(), forKey: Self.editedPreferenceKeysKey)
+            restoreCloudPreferences(replica.metadata, comparedTo: preferences)
             if lastSolveWasSaved, let lastSolveID, !updated.contains(where: { $0.id == lastSolveID }) {
                 self.lastSolveID = nil
             }
@@ -421,19 +565,30 @@ struct ManualSolveContext: Identifiable {
         defaults: UserDefaults = .standard,
         cloudTransport: (any ResultsCloudTransport)? = nil,
         now: @escaping () -> ContinuousClock.Instant = { .now },
+        loadInspectionPlayer: @escaping @MainActor (String) throws -> AVAudioPlayer? = TimerModel.bundledInspectionPlayer,
+        onInspectionAudioFailure: @escaping @MainActor (FailureReason) -> Void = {
+            AppTelemetry.record(.playInspectionAudio, $0, impact: .degraded)
+        },
+        recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { AppTelemetry.record($0) },
         generateScramble: @escaping @Sendable (String) async throws -> Scramble = Engine.scramble
     ) {
         self.storage = storage
         self.defaults = defaults
         self.cloudTransport = cloudTransport
+        if cloudTransport != nil || SettingsSync.isAvailable {
+            cloudSyncEnabled = ICloudSyncPreference.isEnabled(in: defaults)
+        }
         if cloudTransport != nil {
-            cloudSyncEnabled = defaults.bool(forKey: Self.cloudSyncKey)
             lastSuccessfulCloudSync = defaults.object(forKey: Self.lastCloudSyncKey) as? Date
         }
         self.now = now
+        self.loadInspectionPlayer = loadInspectionPlayer
+        self.onInspectionAudioFailure = onInspectionAudioFailure
         self.generateScramble = generateScramble
-        self.standardEvent = ScrambleCatalog.restored("scramble.standard", training: false, defaults: defaults)
-        self.trainingEvent = ScrambleCatalog.restored("scramble.training", training: true, defaults: defaults)
+        self.recordProductEvent = recordProductEvent
+        self.standardEvent = ScrambleCatalog.restored(Self.standardEventKey, training: false, defaults: defaults)
+        self.trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
+        self.mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
         do {
             let data = try Data(contentsOf: storage)
             if let store = try? JSONDecoder().decode(ResultsStore.self, from: data) {
@@ -453,6 +608,7 @@ struct ManualSolveContext: Identifiable {
             let fileError = error as NSError
             if fileError.domain != NSCocoaErrorDomain || fileError.code != NSFileReadNoSuchFileError {
                 storageReadFailed = true
+                AppTelemetry.record(.loadResults, error is DecodingError ? .decodeFailed : .readFailed)
                 self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription
             }
         }
@@ -503,9 +659,12 @@ struct ManualSolveContext: Identifiable {
         } else {
             updated.append(SolveGroup(id: groupID, event: event, name: name, isDefault: isDefault))
         }
-        guard save(solves, groups: updated) else { return false }
+        guard save(solves, operation: .saveGroup, groups: updated) else { return false }
         groups = updated
-        if id == nil && selectNewGroup { selectGroup(groupID) }
+        if id == nil {
+            recordProductEvent(.featureUsed(.groupCreated))
+            if selectNewGroup { selectGroup(groupID) }
+        }
         return true
     }
 
@@ -531,9 +690,10 @@ struct ManualSolveContext: Identifiable {
         for index in updated.indices where ids.contains(updated[index].id) {
             updated[index].groupID = targetID
         }
-        guard save(updated) else { return false }
+        guard save(updated, operation: .moveSolves) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
+        recordProductEvent(.featureUsed(.resultsMoved(ids.count == 1 ? .single : .batch)))
         return true
     }
 
@@ -550,13 +710,15 @@ struct ManualSolveContext: Identifiable {
 
     @discardableResult
     func reorderGroups(_ ids: [String]) -> Bool {
-        guard started == nil, ids.count == eventGroups.count, Set(ids) == Set(eventGroups.map(\.id)) else { return false }
+        let previousOrder = eventGroups.map(\.id)
+        guard started == nil, ids.count == previousOrder.count, Set(ids) == Set(previousOrder) else { return false }
         let reordered = ids.compactMap { id in eventGroups.first(where: { $0.id == id }) }
         var updated = groups
         let positions = groups.indices.filter { groups[$0].event == event }
         for (position, group) in zip(positions, reordered) { updated[position] = group }
-        guard save(solves, groups: updated) else { return false }
+        guard save(solves, operation: .reorderGroups, groups: updated) else { return false }
         groups = updated
+        if ids != previousOrder { recordProductEvent(.featureUsed(.groupReordered)) }
         return true
     }
 
@@ -569,7 +731,7 @@ struct ManualSolveContext: Identifiable {
         let updatedSolves = solves.filter {
             $0.event != event || ($0.groupID ?? SolveGroup.initialID(for: $0.event)) != id
         }
-        guard save(updatedSolves, groups: updatedGroups) else { return false }
+        guard save(updatedSolves, operation: .deleteGroup, groups: updatedGroups) else { return false }
         groups = updatedGroups
         solves = updatedSolves
         if selectedGroupID == id { selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id }
@@ -579,6 +741,7 @@ struct ManualSolveContext: Identifiable {
 
     func refresh(advance: Bool = false) {
         guard started == nil else { return }
+        if deferredCloudApply { requestCloudSync() }
         if selectionEvent != event {
             selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id
             selectionEvent = event
@@ -621,6 +784,7 @@ struct ManualSolveContext: Identifiable {
                 self.prefetchNextScramble()
             } catch {
                 guard !Task.isCancelled, let self, self.event == event else { return }
+                if !(error is CancellationError) { AppTelemetry.record(.generateScramble, .engineFailed) }
                 self.error = error.localizedDescription
                 self.busy = false
             }
@@ -651,7 +815,8 @@ struct ManualSolveContext: Identifiable {
         }
     }
 
-    func press(_ input: TimerInput, delayTenths: Int, onReadyPrompt: (() -> Void)? = nil) {
+    func press(_ input: TimerInput, delayTenths: Int, minimumHold: Duration = .zero,
+               onReadyPrompt: (() -> Void)? = nil) {
         if started != nil {
             stop()
             return
@@ -659,7 +824,8 @@ struct ManualSolveContext: Identifiable {
         guard !usesManualEntry, heldInput == nil, scramble != nil, !busy else { return }
         heldInput = input
         let bypassesHoldDelay = usesInspection || inspectionStarted != nil
-        let delay = bypassesHoldDelay ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let configuredDelay = bypassesHoldDelay ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let delay = max(configuredDelay, minimumHold)
         let deadline = now().advanced(by: delay)
         readyAt = deadline
         if delay == .zero { isReady = true }
@@ -732,8 +898,8 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
                           penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
-        let saved = save([solve] + solves)
-        finishSolve(solve, saved: saved)
+        let saved = save([solve] + solves, operation: .saveSolve)
+        finishSolve(solve, saved: saved, entryMethod: .timer)
     }
 
     func manualSolveContext() -> ManualSolveContext? {
@@ -756,16 +922,17 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: Double(milliseconds) / 1_000, event: context.event, scramble: context.scramble,
                           penalty: penalty, groupID: context.groupID)
         let previousError = error
-        if !save([solve] + solves) {
+        if !save([solve] + solves, operation: .saveSolve) {
             let message = error
             error = previousError
             return message ?? language.text("成绩保存失败。", "Could not save the result.")
         }
-        finishSolve(solve, saved: true)
+        finishSolve(solve, saved: true, entryMethod: .manual)
         return nil
     }
 
-    private func finishSolve(_ solve: Solve, saved: Bool) {
+    private func finishSolve(_ solve: Solve, saved: Bool, entryMethod: SolveEntryMethod) {
+        if saved { recordProductEvent(.solveSaved(project: solve.event, entryMethod: entryMethod)) }
         lastSolveID = solve.id
         lastSolveWasSaved = saved
         solves.insert(solve, at: 0)
@@ -790,7 +957,7 @@ struct ManualSolveContext: Identifiable {
         cancelPress()
         var updated = solves
         updated[index].penalty = penalty
-        guard save(updated) else { return false }
+        guard save(updated, operation: .editPenalty) else { return false }
         if id == lastSolveID { lastSolveWasSaved = true }
         solves = updated
         return true
@@ -802,11 +969,11 @@ struct ManualSolveContext: Identifiable {
     }
 
     @discardableResult
-    func deleteSolves(_ ids: Set<Solve.ID>) -> Bool {
+    func deleteSolves(_ ids: Set<Solve.ID>, operation: FailedOperation = .deleteSolves) -> Bool {
         guard started == nil, !ids.isEmpty, solves.contains(where: { ids.contains($0.id) }) else { return false }
         cancelPress()
         let updated = solves.filter { !ids.contains($0.id) }
-        guard save(updated) else { return false }
+        guard save(updated, operation: operation) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
         return true
@@ -830,7 +997,7 @@ struct ManualSolveContext: Identifiable {
         }
         var knownIDs = Set(solves.map(\.id))
         if let cloudState {
-            knownIDs.formUnion(cloudState.records.values.filter { $0.solve == nil }.map(\.id))
+            knownIDs.formUnion(cloudState.records.values.filter { $0.solve == nil && $0.metadata == nil }.map(\.id))
         }
         var updatedGroups = groups
         var imported: [Solve] = []
@@ -866,22 +1033,26 @@ struct ManualSolveContext: Identifiable {
 
         guard !imported.isEmpty else { return 0 }
         let updated = (solves + imported).sorted(by: Solve.newestFirst)
-        guard save(updated, groups: updatedGroups, importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
+        guard save(updated, operation: .importDCTimer, groups: updatedGroups,
+                   importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
             throw CocoaError(.fileWriteUnknown)
         }
         solves = updated
         groups = updatedGroups
+        recordProductEvent(.dctimerImportCompleted)
         return imported.count
     }
 
     func undoLastImport() -> Int? {
         let count = lastImportCount
-        guard deleteSolves(lastImportedSolveIDs) else { return nil }
+        guard deleteSolves(lastImportedSolveIDs, operation: .undoImport) else { return nil }
+        recordProductEvent(.featureUsed(.dctimerImportUndone))
         return count
     }
 
-    private func save(_ results: [Solve], groups: [SolveGroup]? = nil, importedIDs: Set<Solve.ID>? = nil,
-                      importedAt: Date? = nil, remoteState: (ResultsSyncReplica.State, String)? = nil) -> Bool {
+    private func save(_ results: [Solve], operation: FailedOperation?, groups: [SolveGroup]? = nil,
+                      importedIDs: Set<Solve.ID>? = nil, importedAt: Date? = nil,
+                      remoteState: (ResultsSyncReplica.State, String)? = nil) -> Bool {
         guard !storageReadFailed else {
             error = AppLanguage.saved.text(
                 "无法读取已有成绩。请恢复成绩文件后重新打开 Cubegin。",
@@ -893,11 +1064,13 @@ struct ManualSolveContext: Identifiable {
         let remaining = batch.isEmpty ? batch : batch.intersection(results.lazy.map(\.id))
         var nextCloudState = remoteState?.0 ?? cloudState
         let nextCloudAccount = remoteState?.1 ?? cloudAccount
+        var failureReason = FailureReason.encodeFailed
         do {
-            if remoteState == nil, cloudState != nil || cloudSyncEnabled {
+            if remoteState == nil, cloudState != nil || (cloudSyncEnabled && supportsResultsSync) {
                 var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
                 try replica.importSolves(persistedSolves)
                 try replica.recordLocalChanges(from: persistedSolves, to: results)
+                if let groups { replica.recordGroupChanges(from: self.groups, to: groups) }
                 nextCloudState = replica.state
             }
             let store = ResultsStore(
@@ -906,7 +1079,9 @@ struct ManualSolveContext: Identifiable {
                 lastImportDate: remaining.isEmpty ? nil : (importedAt ?? lastImportDate),
                 cloudState: nextCloudState, cloudAccount: nextCloudAccount
             )
-            try JSONEncoder().encode(store).write(to: storage, options: .atomic)
+            let encoded = try JSONEncoder().encode(store)
+            failureReason = .writeFailed
+            try encoded.write(to: storage, options: .atomic)
             lastImportedSolveIDs = remaining
             lastImportDate = store.lastImportDate
             persistedSolves = results
@@ -918,6 +1093,8 @@ struct ManualSolveContext: Identifiable {
             }
             return true
         } catch {
+            if failureReason == .writeFailed { failureReason = .writingResults(error) }
+            if let operation { AppTelemetry.record(operation, failureReason) }
             self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription
             return false
         }

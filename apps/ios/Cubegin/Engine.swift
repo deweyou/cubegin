@@ -155,7 +155,12 @@ enum Engine {
     static func acceptsImportedScramble(event: String, algorithm: String) throws -> Bool {
 #if canImport(Cubegin)
         let baseEvent = String(event.split(separator: ".")[0])
-        return (try? evaluateEvent(event: baseEvent, algorithm: algorithm)) != nil
+        do {
+            _ = try evaluateEvent(event: baseEvent, algorithm: algorithm)
+            return true
+        } catch CubeginError.InvalidInput {
+            return false
+        }
 #else
         throw EngineError.sdkMissing
 #endif

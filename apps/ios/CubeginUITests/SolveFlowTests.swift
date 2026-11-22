@@ -4,6 +4,39 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testVersionCopiesHiddenDeviceIDOnFifthTap() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en"]
+
+        app.launch()
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let version = app.buttons["settings.about.version"]
+        for _ in 0..<4 where !version.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(version.isHittable)
+        let privacy = app.buttons["settings.about.privacy"]
+        let importResults = app.buttons["settings.results.import"]
+        let clearResults = app.buttons["settings.results.clear"]
+        let includeDNF = app.switches["settings.results.includeDNFInWorst"]
+        XCTAssertTrue(privacy.exists && importResults.exists && clearResults.exists && includeDNF.exists)
+        XCTAssertLessThan(privacy.frame.midY, version.frame.midY)
+        XCTAssertLessThan(importResults.frame.midY, clearResults.frame.midY)
+        XCTAssertLessThan(clearResults.frame.midY, includeDNF.frame.midY)
+        XCTAssertFalse(app.descendants(matching: .any)["settings.deviceID"].exists)
+        let copied = app.descendants(matching: .any)["settings.deviceID.copied"].firstMatch
+        for _ in 0..<4 { version.tap() }
+        XCTAssertFalse(copied.exists)
+        version.tap()
+        XCTAssertTrue(copied.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testCelebrationReplaysOnlyWhileTheLatestSolveQualifies() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -229,30 +262,130 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testResultsSyncShowsRetryAfterAnOptInError() {
+    func testLanguageCanReturnToFollowingTheSystem() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "--preview-icloud-error", "-results.icloudSync", "NO"]
+        app.launchArguments += ["-AppleLanguages", "(en)"]
         app.launch()
 
-        let settings = app.tabBars.buttons["Settings"]
+        let settings = app.tabBars.buttons.matching(NSPredicate(format: "label IN %@", ["Settings", "设置"])).firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
-        let toggle = app.switches["settings.results.icloudSync"]
-        if !toggle.isHittable { app.swipeUp() }
+        let language = app.buttons["settings.language"]
+        XCTAssertTrue(language.waitForExistence(timeout: 5))
+        language.tap()
+        let chinese = app.buttons["简体中文"]
+        XCTAssertTrue(chinese.waitForExistence(timeout: 5))
+        chinese.tap()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 5))
+
+        language.tap()
+        let system = app.buttons["跟随系统"]
+        XCTAssertTrue(system.waitForExistence(timeout: 5))
+        system.tap()
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 20))
+    }
+
+    @MainActor
+    func testResultsSyncShowsRetryAfterAnOptInError() {
+        continueAfterFailure = false
+        let app = openSyncPreview("--preview-icloud-error")
+        let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "0")
+        XCTAssertEqual(toggle.label, "iCloud 同步")
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
-        let error = app.staticTexts["settings.results.cloudSyncError"]
-        let retry = app.buttons["settings.results.retryCloudSync"]
+        let error = app.staticTexts["settings.sync.cloudSyncError"]
+        let retry = app.buttons["settings.sync.refresh"]
+        let syncing = app.staticTexts["settings.sync.inProgress"]
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         XCTAssertTrue(retry.exists)
+        XCTAssertLessThan(error.frame.maxX, retry.frame.minX)
+        XCTAssertEqual(error.frame.midY, retry.frame.midY, accuracy: 2)
+        // The switch's accessibility frame covers the card. Its control is inset by the card row padding.
+        XCTAssertEqual(retry.frame.maxX, toggle.frame.maxX - 24, accuracy: 1)
+        captureScreen("Settings — iCloud sync error")
         retry.tap()
+        XCTAssertTrue(syncing.waitForExistence(timeout: 3))
+        XCTAssertFalse(retry.exists)
+        captureScreen("Settings — iCloud syncing")
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         XCTAssertFalse(error.exists)
+    }
+
+    @MainActor
+    func testResultsSyncShowsTheLastSuccessfulTimeAndCanRefresh() {
+        continueAfterFailure = false
+        let app = openSyncPreview("--preview-icloud-success")
+        let toggle = app.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+
+        let lastSync = app.staticTexts["settings.sync.lastCloudSync"]
+        let refresh = app.buttons["settings.sync.refresh"]
+        XCTAssertTrue(lastSync.waitForExistence(timeout: 5))
+        XCTAssertTrue(lastSync.label.hasPrefix("上次同步："))
+        XCTAssertLessThan(lastSync.frame.maxX, refresh.frame.minX)
+        captureScreen("Settings — iCloud sync success")
+        refresh.tap()
+        XCTAssertTrue(app.staticTexts["settings.sync.inProgress"].waitForExistence(timeout: 3))
+        XCTAssertFalse(refresh.exists)
+        XCTAssertTrue(lastSync.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testResultsSyncKeepsRefreshAtTheTopOfAMultilineError() {
+        continueAfterFailure = false
+        let normal = openSyncPreview("--preview-icloud-account-error", language: "en")
+        let normalToggle = normal.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(normalToggle.waitForExistence(timeout: 5))
+        normalToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        let normalError = normal.staticTexts["settings.sync.cloudSyncError"]
+        XCTAssertTrue(normalError.waitForExistence(timeout: 5))
+        let normalToggleHeight = normalToggle.frame.height
+        let normalErrorHeight = normalError.frame.height
+        normal.terminate()
+
+        let app = openSyncPreview("--preview-icloud-account-error", language: "en", largeText: true)
+        let toggle = app.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        let error = app.staticTexts["settings.sync.cloudSyncError"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        let refresh = app.buttons["settings.sync.refresh"]
+        XCTAssertEqual(toggle.frame.height, normalToggleHeight, accuracy: 1)
+        XCTAssertEqual(error.frame.height, normalErrorHeight, accuracy: 1)
+        XCTAssertGreaterThan(error.frame.height, 20)
+        XCTAssertEqual(refresh.frame.midY, error.frame.minY + 8, accuracy: 2)
+        captureScreen("Settings — iCloud multiline error")
+    }
+
+    @MainActor
+    private func openSyncPreview(_ preview: String, language: String = "zh-Hans", largeText: Bool = false) -> XCUIApplication {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", language, preview, "-app.icloudSync", "NO"]
+        if largeText {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        }
+        app.launch()
+        let settings = app.tabBars.buttons[language == "en" ? "Settings" : "设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let sync = app.buttons["settings.general.sync"]
+        XCTAssertTrue(sync.waitForExistence(timeout: 5))
+        tapCardRowEdge(sync)
+        XCTAssertTrue(app.navigationBars[language == "en" ? "Sync" : "同步"].waitForExistence(timeout: 5))
+        return app
     }
 
     @MainActor
@@ -338,6 +471,60 @@ final class SolveFlowTests: XCTestCase {
         entry.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertTrue(confirm.isEnabled)
+    }
+
+    @MainActor
+    func testFirstLaunchSharingChoiceAndPrivacySettings() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "zh-Hans", "-cubegin-show-telemetry-consent"]
+        app.launch()
+
+        let prompt = app.alerts["帮助改进 Cubegin"]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 20))
+        XCTAssertTrue(prompt.buttons["同意"].exists)
+        prompt.buttons["暂不共享"].tap()
+        let settings = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        XCTAssertFalse(prompt.exists)
+        settings.tap()
+        let privacy = app.buttons["settings.about.privacy"]
+        for _ in 0..<4 where !privacy.isHittable {
+            app.swipeUp()
+        }
+        privacy.tap()
+        XCTAssertTrue(app.navigationBars["隐私"].waitForExistence(timeout: 5))
+        let sharing = app.switches["settings.telemetry.sharing"]
+        XCTAssertEqual(sharing.value as? String, "0")
+        let policyText = app.descendants(matching: .any)["settings.privacyPolicy"].firstMatch
+        XCTAssertTrue(policyText.label.contains("开启后会发送崩溃报告"))
+        XCTAssertTrue(policyText.label.contains("查看隐私政策"))
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "Privacy settings (zh-Hans)"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let sharingControl = sharing.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5))
+        sharingControl.tap()
+        XCTAssertEqual(sharing.value as? String, "1")
+        sharingControl.tap()
+        XCTAssertEqual(sharing.value as? String, "0")
+
+        let privacyPolicy = app.links["查看隐私政策"].firstMatch
+        if privacyPolicy.isHittable {
+            privacyPolicy.tap()
+        } else {
+            policyText.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.76)).tap()
+        }
+        XCTAssertTrue(app.navigationBars["隐私政策"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["成绩和设置"].exists)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(sharing.exists)
     }
 
     @MainActor
@@ -1228,6 +1415,64 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTimerGesturesOverScrambleAndResultControls() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                               "-timer.entryMethod", "timer", "-timer.startDelayTenths", "3",
+                               "-timer.wcaInspection", "NO", "-timer.swipe.left", "manualEntry",
+                               "-timer.swipe.right", "newScramble"]
+        app.launch()
+
+        let elements = app.descendants(matching: .any)
+        let scramble = elements["timer.scramble"]
+        let hints = app.buttons["timer.formula-hints"]
+        let readout = elements["timer.readout"]
+        let manual = app.textFields["manual-result.time"]
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        let original = scramble.label
+        let center = scramble.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let left = center.withOffset(CGVector(dx: -65, dy: 0))
+        let right = center.withOffset(CGVector(dx: 65, dy: 0))
+        left.press(forDuration: 0.01, thenDragTo: right, withVelocity: .fast, thenHoldForDuration: 0)
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", original), object: scramble)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 15), .completed)
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        right.press(forDuration: 0.01, thenDragTo: left, withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(manual.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(manual.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 5))
+
+        let diagram = elements["timer.scramble-diagram"]
+        XCTAssertTrue(diagram.exists)
+        diagram.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        readout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+
+        let dnf = app.buttons["timer.penalty.dnf"]
+        XCTAssertTrue(dnf.waitForExistence(timeout: 5))
+        dnf.tap()
+        XCTAssertTrue(dnf.isSelected)
+        XCTAssertEqual(readout.label, "Start timer")
+        dnf.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        readout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertFalse(dnf.isSelected)
+
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        let summary = elements["timer-summary.count"]
+        XCTAssertTrue(summary.exists)
+        summary.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+    }
+
+    @MainActor
     func testTimerSwipeShortcutsPersistAndUseTheExistingSolveFlows() throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
                       "The Duo has a separate touch surface.")
@@ -1513,14 +1758,16 @@ final class SolveFlowTests: XCTestCase {
     func testInspectionContinuesAfterSwipeCancellation() {
         continueAfterFailure = false
 
+        XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
-                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "2"]
+        app.launchArguments += ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "2",
+                                "-timer.entryMethod", "timer"]
         app.launch()
-        XCUIDevice.shared.orientation = .portrait
 
         let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(app.buttons["timer.formula-hints"].waitForExistence(timeout: 20))
         XCTAssertTrue(timer.waitForExistence(timeout: 20))
         let center = timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()

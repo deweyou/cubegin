@@ -6,13 +6,19 @@ import Testing
 
 private actor SyntheticSyncServer: ResultsCloudTransport {
     enum Failure: Error { case offline, interrupted }
+    private enum AccountCheckFailure { case afterUpload, nextCheck }
     private var records: [UUID: SyncRecord] = [:]
     private var online = true
     private var account = "original"
     private var writesUntilFailure: Int?
+    private var accountCheckFailure: AccountCheckFailure?
 
     func switchAccount() { account = "different" }
     func accountID() throws -> String {
+        if accountCheckFailure == .nextCheck {
+            accountCheckFailure = nil
+            throw CloudSyncFailure.network
+        }
         guard online else { throw CloudSyncFailure.network }
         return account
     }
@@ -23,6 +29,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
 
     func setOnline(_ online: Bool) { self.online = online }
     func interruptAfterWrites(_ count: Int?) { writesUntilFailure = count }
+    func interruptAccountCheckAfterUpload() { accountCheckFailure = .afterUpload }
 
     func fetch() throws -> [SyncRecord] {
         guard online else { throw Failure.offline }
@@ -37,11 +44,77 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
         }
         if let current = records[record.id], !record.wins(over: current) { return current }
         records[record.id] = record
+        if accountCheckFailure == .afterUpload { accountCheckFailure = .nextCheck }
         return record
     }
 }
 
 struct ResultsSyncTests {
+    @Test func recoversAStableGroupAfterConcurrentDeletionAndSyncsItsRename() async throws {
+        let server = SyntheticSyncServer()
+        let event = "333"
+        let initial = SolveGroup(id: SolveGroup.initialID(for: event), event: event, name: "", isDefault: true)
+        let practice = SolveGroup(id: "practice", event: event, name: "Practice", isDefault: false)
+        let original = [initial, practice]
+        var phone = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        var tablet = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        phone.importGroups(original)
+        try await phone.sync(with: server)
+        try await tablet.sync(with: server)
+
+        var phoneDefault = practice
+        phoneDefault.isDefault = true
+        phone.recordGroupChanges(from: original, to: [phoneDefault])
+        tablet.recordGroupChanges(from: original, to: [initial])
+        try await phone.sync(with: server)
+        try await tablet.sync(with: server)
+        try await phone.sync(with: server)
+
+        let phoneMerge = phone.mergeGroups([phoneDefault])
+        let tabletMerge = tablet.mergeGroups([initial])
+        #expect(phoneMerge.didRecover)
+        #expect(tabletMerge.didRecover)
+        let recoveredOnPhone = phoneMerge.groups
+        let recoveredOnTablet = tabletMerge.groups
+        var recovered = try #require(recoveredOnPhone.first)
+        #expect(recoveredOnPhone.map(\.id) == recoveredOnTablet.map(\.id))
+        #expect(recovered.id != initial.id)
+        #expect(recovered.id != practice.id)
+        #expect(recovered.isDefault)
+        #expect(phone.metadata.contains(.group(event: event, id: recovered.id, name: "")))
+        recovered.name = "Recovered practice"
+        phone.recordGroupChanges(from: recoveredOnPhone, to: [recovered])
+        try await phone.sync(with: server)
+        try await tablet.sync(with: server)
+        let restoredMerge = tablet.mergeGroups(recoveredOnTablet)
+        #expect(!restoredMerge.didRecover)
+        let restored = restoredMerge.groups
+        #expect(restored.map(\.id) == [recovered.id])
+        #expect(restored.first?.name == recovered.name)
+        #expect(restored.first?.isDefault == true)
+    }
+
+    @Test func migratesOriginalGroupsAheadOfLegacyPlaceholders() async throws {
+        let server = SyntheticSyncServer()
+        let initial = SolveGroup(id: SolveGroup.initialID(for: "333"), event: "333", name: "", isDefault: true)
+        let competition = SolveGroup(id: UUID().uuidString, event: "333", name: "Competition", isDefault: true)
+        let placeholder = SolveGroup(id: competition.id, event: "333", name: SolveGroup.cloudPlaceholderName, isDefault: false)
+        var originalInitial = initial
+        originalInitial.isDefault = false
+        var original = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        var imported = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        original.importGroups([competition, originalInitial])
+        imported.importGroups([initial, placeholder])
+        try await imported.sync(with: server)
+        try await original.sync(with: server)
+        try await imported.sync(with: server)
+
+        let restored = imported.mergeGroups([initial, placeholder]).groups
+        #expect(restored.map(\.id) == [competition.id, initial.id])
+        #expect(restored.first?.name == "Competition")
+        #expect(restored.first?.isDefault == true)
+    }
+
     @Test func firstSyncMergesBothHistoriesAndRetriesPartialUpload() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -172,6 +245,30 @@ struct ResultsSyncTests {
     }
 
     @MainActor
+    @Test func sharesOnePreferenceAndKeepsThePreviousResultsChoice() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = directory.appending(path: "solves.json")
+        let suite = "icloud-sync-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(ICloudSyncPreference.isEnabled(in: defaults))
+        let fresh = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(fresh.cloudSyncEnabled)
+        defaults.set(false, forKey: "results.icloudSync")
+        let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(!model.cloudSyncEnabled)
+        model.setCloudSyncEnabled(true)
+        #expect(model.cloudSyncEnabled)
+        #expect(ICloudSyncPreference.isEnabled(in: defaults))
+        let reopened = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(reopened.cloudSyncEnabled)
+        reopened.setCloudSyncEnabled(false)
+        #expect(!ICloudSyncPreference.isEnabled(in: defaults))
+    }
+
+    @MainActor
     @Test func integratesLegacyResultsAndPersistsOfflineDeletionWithoutClearingOtherScores() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -189,9 +286,9 @@ struct ResultsSyncTests {
         try await replica.sync(with: server)
 
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: server)
-        #expect(!model.cloudSyncEnabled)
+        #expect(model.cloudSyncEnabled)
         #expect(model.solves == [local])
-        model.setCloudSyncEnabled(true)
+        model.requestCloudSync()
         try await waitForSync(model) { if case .synced = $0 { true } else { false } }
         #expect(Set(model.solves.map(\.id)) == [local.id, remote.id])
 
@@ -214,6 +311,104 @@ struct ResultsSyncTests {
     }
 
     @MainActor
+    @Test func syncsGroupsAndSavedPreferencesAcrossTwoDevices() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let phoneSuite = "sync-phone-\(UUID())"
+        let tabletSuite = "sync-tablet-\(UUID())"
+        let phoneDefaults = try #require(UserDefaults(suiteName: phoneSuite))
+        let tabletDefaults = try #require(UserDefaults(suiteName: tabletSuite))
+        defer {
+            phoneDefaults.removePersistentDomain(forName: phoneSuite)
+            tabletDefaults.removePersistentDomain(forName: tabletSuite)
+        }
+        let server = SyntheticSyncServer()
+        let phoneStorage = directory.appending(path: "phone.json")
+        let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+                                defaults: tabletDefaults, cloudTransport: server)
+        phone.requestCloudSync()
+        try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
+        phone.setCloudSyncEnabled(false)
+        let initial = try #require(phone.currentGroup?.id)
+        #expect(phone.saveGroup(name: "Competition", isDefault: true))
+        let competition = try #require(phone.currentGroup?.id)
+        #expect(phone.reorderGroups([competition, initial]))
+        let assist = AssistPreferences(event: phone.event, groupID: competition, defaults: phoneDefaults)
+        phone.preferenceDidChange(assist.saveMethod(.xcross))
+        let orderKey = "assist.333/\(competition).order.xcross"
+        phoneDefaults.set(["D", "U"], forKey: orderKey)
+        phone.preferenceDidChange(orderKey)
+        phone.standardEvent = "222"
+
+        // Reopen while syncing is off to verify that local changes survive until reenabled.
+        let reopened = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
+        reopened.setCloudSyncEnabled(true)
+        try await waitForSync(reopened) { if case .synced = $0 { true } else { false } }
+        tablet.requestCloudSync()
+        try await waitForSync(tablet) { if case .synced = $0 { true } else { false } }
+        #expect(tablet.event == "222")
+        let syncedGroups = tablet.groups.filter { $0.event == "333" }
+        #expect(syncedGroups.map(\.id) == [competition, initial])
+        #expect(syncedGroups.first?.name == "Competition")
+        #expect(syncedGroups.first?.isDefault == true)
+        let syncedAssist = AssistPreferences(event: "333", groupID: competition, defaults: tabletDefaults)
+        #expect(syncedAssist.selectedMethod(from: [.cross, .xcross]) == .xcross)
+        #expect(tabletDefaults.stringArray(forKey: orderKey) == ["D", "U"])
+
+        tablet.standardEvent = "333"
+        #expect(tablet.saveGroup(id: initial, name: "Practice", isDefault: true))
+        #expect(tablet.deleteGroup(competition))
+        try await waitForSync(tablet) { if case .synced = $0 { true } else { false } }
+        reopened.requestCloudSync()
+        try await waitForSync(reopened) { if case .synced = $0 { true } else { false } }
+        #expect(reopened.event == "333")
+        #expect(reopened.eventGroups.map(\.id) == [initial])
+        #expect(reopened.currentGroup?.name == "Practice")
+    }
+
+    @MainActor
+    @Test func preferenceChangeAfterInterruptedSyncUsesANewRevision() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let phoneSuite = "sync-phone-\(UUID())"
+        let tabletSuite = "sync-tablet-\(UUID())"
+        let phoneDefaults = try #require(UserDefaults(suiteName: phoneSuite))
+        let tabletDefaults = try #require(UserDefaults(suiteName: tabletSuite))
+        defer {
+            phoneDefaults.removePersistentDomain(forName: phoneSuite)
+            tabletDefaults.removePersistentDomain(forName: tabletSuite)
+        }
+        let server = SyntheticSyncServer()
+        let phoneStorage = directory.appending(path: "phone.json")
+        let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
+        phone.requestCloudSync()
+        try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
+
+        await server.interruptAccountCheckAfterUpload()
+        phone.standardEvent = "222"
+        try await waitForSync(phone) { if case .failed(.network) = $0 { true } else { false } }
+        let firstPreference = SyncedMetadata.preference(key: "scramble.standard", values: ["222"])
+        let firstRecords = try await server.fetch()
+        let firstUpload = try #require(firstRecords.first { $0.id == firstPreference.id })
+        #expect(firstUpload.metadata == firstPreference)
+
+        let reopened = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
+        reopened.standardEvent = "444"
+        try await waitForSync(reopened) { if case .synced = $0 { true } else { false } }
+        let secondRecords = try await server.fetch()
+        let secondUpload = try #require(secondRecords.first { $0.id == firstPreference.id })
+        #expect(secondUpload.revision > firstUpload.revision)
+
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+                                defaults: tabletDefaults, cloudTransport: server)
+        tablet.requestCloudSync()
+        try await waitForSync(tablet) { if case .synced = $0 { true } else { false } }
+        #expect(reopened.event == "444")
+        #expect(tablet.event == "444")
+    }
+
+    @MainActor
     @Test func refusesToSyncLocalResultsToADifferentAccount() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -225,7 +420,7 @@ struct ResultsSyncTests {
         try JSONEncoder().encode([score]).write(to: storage)
         let server = SyntheticSyncServer()
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: server)
-        model.setCloudSyncEnabled(true)
+        model.requestCloudSync()
         try await waitForSync(model) { if case .synced = $0 { true } else { false } }
 
         await server.switchAccount()

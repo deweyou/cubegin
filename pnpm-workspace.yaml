@@ -1,2 +1,9 @@
 packages:
+  - apps/web
   - sdk/web
+
+# Nuxt's schema imports Vite types without declaring the dependency.
+packageExtensions:
+  '@nuxt/schema@4.6.4':
+    dependencies:
+      vite: ^8.3.5

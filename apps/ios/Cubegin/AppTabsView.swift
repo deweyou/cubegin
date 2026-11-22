@@ -59,22 +59,10 @@ struct AppTabsView: View {
     private var language: AppLanguage { locale.appLanguage }
 
     var isActive: Bool
-    @State private var model = TimerModel(
-        storage: Self.resultsStorage, cloudTransport: CloudKitResultsTransport.configured()
-    )
-
-    private static var resultsStorage: URL {
-#if DEBUG
-        // A UI test uses the same temporary file across both app launches.
-        if let value = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"],
-           let session = UUID(uuidString: value) {
-            return URL.temporaryDirectory.appending(path: "ui-test-solves-\(session.uuidString).json")
-        }
-#endif
-        return URL.documentsDirectory.appending(path: "solves.json")
-    }
+    let model: TimerModel
 
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
+    @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @State private var isInTimerCancelZone = false
     private var shouldKeepScreenOn: Bool {
         isActive && scenePhase == .active && selection == .home
@@ -83,8 +71,12 @@ struct AppTabsView: View {
     private var showsTimingLayout: Bool {
         model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
     }
-    @State private var selection: Destination = CloudKitResultsTransport.showsErrorPreview ? .settings : .home
+    @State private var selection = Destination.initial
     @State private var resultsPage = ResultsPage.solves
+    @State private var viewedCharts: Set<ResultsChartMode> = []
+    private var visibleResultsPage: ResultsPage? {
+        isActive && scenePhase != .background && selection == .results ? resultsPage : nil
+    }
     @State private var isSelectingResults = false
     @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
     @State private var isDuoOuterDisplay = false
@@ -96,6 +88,10 @@ struct AppTabsView: View {
 
     private enum Destination: String, CaseIterable {
         case home, results, settings
+
+        @MainActor static var initial: Self {
+            SettingsView.opensAboutForQA || CloudKitResultsTransport.showsSyncPreview ? .settings : .home
+        }
 
         func title(in language: AppLanguage) -> String {
             switch self {
@@ -178,6 +174,17 @@ struct AppTabsView: View {
         .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
             UIApplication.shared.isIdleTimerDisabled = keepScreenOn
         }
+        .onChange(of: visibleResultsPage, initial: true) { _, page in
+            if page != .statistics { viewedCharts.removeAll() }
+            switch page {
+            case .statistics:
+                AppTelemetry.record(.statisticsViewed)
+            case .solves where !model.groupSolves.isEmpty:
+                AppTelemetry.record(.solveListViewed(includesDNF: includesDNFInWorst))
+            default:
+                break
+            }
+        }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
@@ -219,7 +226,12 @@ struct AppTabsView: View {
             Tab(value: Destination.results) {
                 ResultsView(model: model, page: $resultsPage,
                             isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
-                            contentInsets: isSelectingResults ? nil : contentInsets)
+                            contentInsets: isSelectingResults ? nil : contentInsets,
+                            showsStatistics: visibleResultsPage == .statistics) { mode in
+                    if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
+                        AppTelemetry.record(.featureUsed(.chartViewed(mode)))
+                    }
+                }
                     .labelStyle(.titleAndIcon)
                     .toolbar(usesSideNavigation || isSelectingResults ? .hidden : .automatic, for: .tabBar)
             } label: {
@@ -422,6 +434,8 @@ private struct ResultsView: View {
     @Binding var isSelecting: Bool
     let usesSideNavigation: Bool
     let contentInsets: LandscapeContentInsets?
+    let showsStatistics: Bool
+    let onChartViewed: (ResultsChartMode) -> Void
     @State private var selectedSolveIDs: Set<Solve.ID> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     private var usesTopNavigation: Bool { isPad && horizontalSizeClass == .regular }
@@ -599,7 +613,8 @@ private struct ResultsView: View {
         .accessibilityLabel(language.text("分组", "Group"))
         .accessibilityValue(model.currentGroup.map(\.displayName) ?? "")
         .sheet(isPresented: $showsGroups) {
-            GroupManager(model: model, usesCenteredPresentation: usesTopNavigation)
+            GroupManager(model: model, usesCenteredPresentation: usesTopNavigation,
+                         recordsGroupSwitch: page == .solves)
         }
     }
 
@@ -692,7 +707,8 @@ private struct ResultsView: View {
                 Text(language.text("删除后，成绩无法恢复。", "Deleted solves cannot be recovered."))
             }
         case (.statistics, _):
-            ResultsOverview(solves: results, contentInsets: contentInsets)
+            ResultsOverview(solves: results, contentInsets: contentInsets,
+                            tracksChartVisibility: showsStatistics, onChartViewed: onChartViewed)
                 .id(model.currentGroup?.id)
         }
     }
@@ -1039,6 +1055,8 @@ private func resultWorstColor(for colorScheme: ColorScheme) -> Color {
 private struct ResultsOverview: View {
     let solves: [Solve]
     let contentInsets: LandscapeContentInsets?
+    let tracksChartVisibility: Bool
+    let onChartViewed: (ResultsChartMode) -> Void
     @Environment(\.locale) private var locale
     @Environment(\.timeZone) private var timeZone
     @Environment(\.colorScheme) private var colorScheme
@@ -1094,7 +1112,7 @@ private struct ResultsOverview: View {
 
             if !solves.isEmpty {
                 Section {
-                    ResultsCharts(solves: solves)
+                    ResultsCharts(solves: solves, tracksVisibility: tracksChartVisibility, onViewed: onChartViewed)
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }
@@ -1117,7 +1135,6 @@ private struct ResultsOverview: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 24))
                 }
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
@@ -1314,6 +1331,7 @@ private struct SolveDetailsView: View {
                 svg = diagram
             } catch {
                 guard !Task.isCancelled else { return }
+                if !(error is CancellationError) { AppTelemetry.record(.loadDiagram, .engineFailed, impact: .degraded) }
                 diagramError = language.text("打乱图加载失败", "Could not load scramble diagram")
             }
         }
@@ -1400,6 +1418,7 @@ private struct SolveDetailsView: View {
 private struct GroupManager: View {
     @Bindable var model: TimerModel
     let usesCenteredPresentation: Bool
+    let recordsGroupSwitch: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @State private var groupToDelete: SolveGroup?
@@ -1499,7 +1518,7 @@ private struct GroupManager: View {
             .font(.body.weight(isSelected ? .medium : .regular))
             .foregroundColor(.primary)
         let starBaselineOffset = (
-            UIFont.preferredFont(forTextStyle: .body).capHeight
+            AppTypography.preferredFont(for: .body).capHeight
             - UIFont.systemFont(ofSize: 11, weight: .medium).capHeight
         ) / 2
         let star = Text(Image(systemName: "star.fill"))
@@ -1509,7 +1528,11 @@ private struct GroupManager: View {
         let title = group.isDefault ? Text("\(name) \(star)") : name
         return HStack(spacing: 8) {
             Button {
+                let previousGroup = model.currentGroup?.id
                 model.selectGroup(group.id)
+                if recordsGroupSwitch, model.currentGroup?.id == group.id, previousGroup != group.id {
+                    AppTelemetry.record(.featureUsed(.groupSwitched))
+                }
                 dismiss()
             } label: {
                 HStack(spacing: 10) {
@@ -1843,13 +1866,52 @@ extension CardSection where Header == EmptyView {
     }
 }
 
+@MainActor
+private func settingsLinkLabel(_ title: String) -> some View {
+    HStack {
+        Text(title)
+        Spacer()
+        Image(systemName: "chevron.forward")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+}
+
+@MainActor
+private func trackedSetting<Value: Equatable>(
+    _ binding: Binding<Value>, as analyticsValue: @escaping (Value) -> FeatureSettingValue
+) -> Binding<Value> {
+    Binding(get: { binding.wrappedValue }, set: { newValue in
+        let previous = binding.wrappedValue
+        guard newValue != previous else { return }
+        binding.wrappedValue = newValue
+        let from = analyticsValue(previous)
+        let to = analyticsValue(binding.wrappedValue)
+        guard from != to else { return }
+        AppTelemetry.record(.featureUsed(.settingChanged(from: from, to: to)))
+    })
+}
+
 private struct SettingsView: View {
+    static var opensAboutForQA: Bool {
+#if DEBUG
+        return Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+            && ProcessInfo.processInfo.arguments.contains("-cubegin-show-device-id")
+#else
+        return false
+#endif
+    }
+
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case gestures, imports, clearResults }
+    private enum Page: Hashable { case gestures, imports, clearResults, sync, privacy }
     @State private var path: [Page] = []
-    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
+    @State private var versionTapCount = 0
+    @State private var startDelayBeforeEditing: Int?
+    @State private var copiedDeviceIDAt: ContinuousClock.Instant?
+    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = AppLanguage.systemPreference
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
     @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
@@ -1863,74 +1925,16 @@ private struct SettingsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
 
-    @ViewBuilder private var resultSyncControls: some View {
-        Toggle(language.text("iCloud 成绩同步", "iCloud Results Sync"), isOn: Binding(
-            get: { model.cloudSyncEnabled },
-            set: { model.setCloudSyncEnabled($0) }
-        ))
-        .accessibilityIdentifier("settings.results.icloudSync")
-
-        if model.cloudSyncEnabled {
-            switch model.cloudSyncStatus {
-            case .idle, .synced:
-                if let date = model.lastSuccessfulCloudSync {
-                    let time = date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
-                    Text(language.text("上次同步：\(time)", "Last synced: \(time)"))
-                        .font(.footnote)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.results.lastCloudSync")
-                }
-            case .syncing:
-                HStack {
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(language.text("正在同步…", "Syncing…"))
-                        .font(.footnote)
-                }
-                .foregroundStyle(.secondary)
-            case .failed(let failure):
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(cloudSyncMessage(failure))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.results.cloudSyncError")
-                    Button {
-                        model.requestCloudSync()
-                    } label: {
-                        Label(language.text("重试", "Retry"), systemImage: "arrow.clockwise")
-                            .fixedSize()
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityIdentifier("settings.results.retryCloudSync")
-                }
-                .font(.footnote)
-            }
-        }
-    }
-
-    private func cloudSyncMessage(_ failure: CloudSyncFailure) -> String {
-        switch failure {
-        case .noAccount: language.text("请先在系统设置中登录 iCloud。", "Sign in to iCloud in Settings first.")
-        case .restricted: language.text("此设备限制了 iCloud 访问，请检查系统设置。", "iCloud access is restricted on this device. Check Settings.")
-        case .accountUnavailable: language.text("暂时无法访问 iCloud 账号，请稍后重试。", "Your iCloud account is temporarily unavailable. Try again later.")
-        case .accountChanged: language.text("iCloud 账号已变更，请切回之前同步用的账号。", "Switch back to the iCloud account previously used for sync.")
-        case .authentication: language.text("iCloud 验证失败，请检查账号状态。", "iCloud couldn’t verify your account. Check Settings.")
-        case .network: language.text("网络连接有问题，请检查网络后重试。", "Check your internet connection and try again.")
-        case .storageFull: language.text("iCloud 储存空间不足，请腾出空间后重试。", "Free up iCloud storage, then try again.")
-        case .serviceUnavailable: language.text("iCloud 暂时无法同步，请稍后重试。", "iCloud is temporarily unavailable. Try again later.")
-        case .localStorage: language.text("无法读取或保存本机成绩。", "Couldn’t read or save local results.")
-        case .unknown: language.text("同步失败，请稍后重试。", "Sync failed. Try again later.")
-        }
-    }
-
     private var syncedLanguage: Binding<String> {
-        SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }
+        trackedSetting(SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }) {
+            .language(AppLanguage(rawValue: $0))
+        }
     }
 
     @ViewBuilder private var timerSettings: some View {
-        Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
+        Toggle(language.text("计时触感", "Timer haptics"), isOn: trackedSetting(
+            SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 }, as: FeatureSettingValue.haptics
+        ))
             .accessibilityIdentifier("settings.timer.haptics")
         HStack(spacing: 8) {
             let title = language.text("启动延迟", "Start delay")
@@ -1946,7 +1950,14 @@ private struct SettingsView: View {
             Slider(value: Binding(
                 get: { Double(startDelayTenths) },
                 set: { syncedStartDelay.wrappedValue = Int($0.rounded()) }
-            ), in: 0...20) {
+            ), in: 0...20, onEditingChanged: { isEditing in
+                if isEditing {
+                    startDelayBeforeEditing = startDelayTenths
+                } else if let previous = startDelayBeforeEditing {
+                    startDelayBeforeEditing = nil
+                    recordStartDelayChange(from: previous)
+                }
+            }) {
                 Text(title)
             }
             .labelsHidden()
@@ -1954,23 +1965,32 @@ private struct SettingsView: View {
             .accessibilityLabel(title)
             .accessibilityValue(value)
             .accessibilityAdjustableAction { direction in
+                let previous = startDelayTenths
                 switch direction {
                 case .increment: syncedStartDelay.wrappedValue = min(20, startDelayTenths + 1)
                 case .decrement: syncedStartDelay.wrappedValue = max(0, startDelayTenths - 1)
                 @unknown default: break
                 }
+                recordStartDelayChange(from: previous)
             }
             .accessibilityIdentifier("settings.startDelay")
         }
-        Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
+        Toggle(language.text("WCA 观察", "WCA inspection"), isOn: trackedSetting(
+            SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 }, as: FeatureSettingValue.inspection
+        ))
             .accessibilityIdentifier("settings.inspection.enabled")
         if usesInspection {
-            Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 })
-            Picker(language.text("观察报时", "Inspection voice"), selection: SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }) {
+            Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: trackedSetting(
+                SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 }, as: FeatureSettingValue.trainingInspection
+            ))
+            Picker(language.text("观察报时", "Inspection voice"), selection: trackedSetting(
+                SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }, as: FeatureSettingValue.inspectionVoice
+            )) {
                 ForEach(InspectionVoice.allCases, id: \.self) { voice in
                     Text(voice.title(in: language)).tag(voice)
                 }
             }
+            .accessibilityIdentifier("settings.inspection.voice")
         }
     }
 
@@ -1978,47 +1998,69 @@ private struct SettingsView: View {
         SettingsSync.binding($startDelayTenths, key: TimerModel.startDelayKey) { $0 }
     }
 
-    private func settingsLinkLabel(_ title: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Image(systemName: "chevron.forward")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-        }
+    private func recordStartDelayChange(from previous: Int) {
+        guard previous != startDelayTenths else { return }
+        AppTelemetry.record(.featureUsed(.settingChanged(from: .startDelay(previous), to: .startDelay(startDelayTenths))))
+    }
+
+    private func tapVersion() {
+        versionTapCount += 1
+        guard versionTapCount == 5 else { return }
+        versionTapCount = 0
+        UIPasteboard.general.string = AppTelemetry.supportIdentifiers
+        copiedDeviceIDAt = ContinuousClock.now
+        AccessibilityNotification.Announcement(language.text("已复制设备 ID", "Device ID copied")).post()
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             Form {
                 CardSection(language.text("通用", "General")) {
-                    Picker(language.text("主题", "Theme"), selection: SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }) {
+                    Picker(language.text("主题", "Theme"), selection: trackedSetting(
+                        SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }, as: FeatureSettingValue.theme
+                    )) {
                         ForEach(AppTheme.allCases) { option in
                             Text(option.title(in: language)).tag(option)
                         }
                     }
                     .accessibilityIdentifier("settings.theme")
                     Picker(language.text("语言", "Language"), selection: Binding(
-                        get: { AppLanguage.resolve(languageOverride) },
-                        set: { syncedLanguage.wrappedValue = $0.rawValue }
+                        get: { AppLanguage(rawValue: languageOverride)?.rawValue ?? AppLanguage.systemPreference },
+                        set: { syncedLanguage.wrappedValue = $0 }
                     )) {
+                        Text(language.text("跟随系统", "System")).tag(AppLanguage.systemPreference)
                         ForEach(AppLanguage.allCases) { option in
-                            Text(option.name).tag(option)
+                            Text(option.name).tag(option.rawValue)
                         }
+                    }
+                    .accessibilityIdentifier("settings.language")
+                    if model.supportsCloudSync {
+                        cardRowButton {
+                            path.append(.sync)
+                        } label: {
+                            settingsLinkLabel(language.text("同步", "Sync"))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("settings.general.sync")
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {
-                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
+                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: trackedSetting(
+                        SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 }, as: FeatureSettingValue.keepScreenOn
+                    ))
                         .accessibilityIdentifier("settings.timer.keepScreenOn")
-                    Picker(language.text("成绩产生方式", "Result entry"), selection: SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }) {
+                    Picker(language.text("成绩产生方式", "Result entry"), selection: trackedSetting(
+                        SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }, as: FeatureSettingValue.entryMethod
+                    )) {
                         ForEach(SolveEntryMethod.allCases, id: \.self) { method in
                             Text(method.title(in: language)).tag(method)
                         }
                     }
                     .accessibilityIdentifier("settings.timer.entryMethod")
                     if entryMethod == .timer {
-                        Picker(language.text("计时器的时间显示", "Timer display"), selection: SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }) {
+                        Picker(language.text("计时器的时间显示", "Timer display"), selection: trackedSetting(
+                            SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }, as: FeatureSettingValue.display
+                        )) {
                             ForEach(TimerDisplay.allCases, id: \.self) { display in
                                 Text(display.title(in: language)).tag(display)
                             }
@@ -2035,11 +2077,6 @@ private struct SettingsView: View {
                     .accessibilityIdentifier("settings.timer.gestures")
                 }
                 CardSection(language.text("成绩", "Results")) {
-                    if model.supportsCloudSync {
-                        resultSyncControls
-                    }
-                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
-                        .accessibilityIdentifier("settings.results.includeDNFInWorst")
                     cardRowButton {
                         path.append(.imports)
                     } label: {
@@ -2054,16 +2091,36 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
+                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: trackedSetting(
+                        SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 }, as: FeatureSettingValue.includeDNF
+                    ))
+                        .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
                 CardSection(language.text("关于", "About")) {
-                    LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
+                    cardRowButton {
+                        path.append(.privacy)
+                    } label: {
+                        settingsLinkLabel(language.text("隐私", "Privacy"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.privacy")
+                    cardRowButton {
+                        tapVersion()
+                    } label: {
+                        LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.version")
                 }
             }
+            .defaultScrollAnchor(Self.opensAboutForQA ? .bottom : nil, for: .initialOffset)
             .navigationDestination(for: Page.self) { page in
                 switch page {
                 case .gestures: TimerGestureSettingsView()
                 case .imports: ResultsImportView(model: model)
                 case .clearResults: ClearResultsView(model: model)
+                case .sync: SyncSettingsView(model: model)
+                case .privacy: PrivacySettingsView()
                 }
             }
             .pinnedScrollHeader {
@@ -2081,10 +2138,207 @@ private struct SettingsView: View {
             .padding(.trailing, contentInsets?.containerTrailing ?? 0)
             .appBackground()
             .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .bottom) {
+                if copiedDeviceIDAt != nil {
+                    Label(language.text("已复制设备 ID", "Device ID copied"), systemImage: "checkmark.circle.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(.black, in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.24)))
+                        .padding()
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("settings.deviceID.copied")
+                }
+            }
+        }
+        .task(id: copiedDeviceIDAt) {
+            guard copiedDeviceIDAt != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(2))
+                copiedDeviceIDAt = nil
+            } catch {}
         }
         .onChange(of: isSelected) { _, selected in
-            if !selected { path.removeAll() }
+            if !selected {
+                path.removeAll()
+                versionTapCount = 0
+                copiedDeviceIDAt = nil
+            }
         }
+    }
+}
+
+private struct SyncSettingsView: View {
+    let model: TimerModel
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+    private let statusLineHeight = ceil(AppTypography.preferredFont(for: .footnote).lineHeight)
+    private let refreshTargetSize: CGFloat = 44
+
+    var body: some View {
+        Form {
+            CardSection {
+                iCloudSyncToggle
+            } footer: {
+                if model.cloudSyncEnabled, model.supportsResultsSync {
+                    syncStatus
+                }
+            }
+        }
+        .appBackground()
+        .navigationTitle(language.text("同步", "Sync"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+
+    private var iCloudSyncToggle: some View {
+        let title = language.text("iCloud 同步", "iCloud Sync")
+        let description = model.supportsResultsSync
+            ? language.text("跨设备同步成绩和设置。", "Sync results and settings across devices.")
+            : language.text("跨设备同步常用设置。", "Sync preferences across devices.")
+        return Toggle(isOn: trackedSetting(Binding(
+            get: { model.cloudSyncEnabled },
+            set: { model.setCloudSyncEnabled($0) }
+        ), as: FeatureSettingValue.iCloudSync)) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                Text(description)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 10)
+        }
+        .accessibilityLabel(title)
+        .accessibilityHint(description)
+        .accessibilityIdentifier("settings.sync.icloudSync")
+    }
+
+    private var syncStatus: some View {
+        HStack(alignment: .top, spacing: 8) {
+            switch model.cloudSyncStatus {
+            case .idle, .synced:
+                let time = model.lastSuccessfulCloudSync.map {
+                    $0.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
+                }
+                Text(time.map { language.text("上次同步：\($0)", "Last synced: \($0)") }
+                     ?? language.text("等待同步", "Waiting to sync"))
+                    .accessibilityIdentifier("settings.sync.lastCloudSync")
+                Spacer(minLength: 0)
+                syncButton(language.text("刷新", "Refresh"), isRetry: false)
+            case .syncing:
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: statusLineHeight, height: statusLineHeight)
+                    .accessibilityHidden(true)
+                Text(language.text("正在同步…", "Syncing…"))
+                    .accessibilityIdentifier("settings.sync.inProgress")
+            case .failed(let failure):
+                Text(cloudSyncMessage(failure))
+                    .foregroundStyle(failure == .network ? Color.secondary : .red)
+                    .accessibilityIdentifier("settings.sync.cloudSyncError")
+                Spacer(minLength: 0)
+                syncButton(language.text("重试", "Retry"), isRetry: true)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.leading)
+        .padding(.horizontal, cardShadowInset)
+        // The switch has an additional trailing inset inside its card row.
+        .padding(.trailing, cardShadowInset)
+        .padding(.top, 6)
+        .frame(maxWidth: .infinity, minHeight: refreshTargetSize, alignment: .topLeading)
+    }
+
+    private func syncButton(_ title: String, isRetry: Bool) -> some View {
+        Color.clear
+            .frame(width: refreshTargetSize, height: statusLineHeight)
+            .overlay(alignment: .trailing) {
+                Button {
+                    model.requestCloudSync()
+                    SettingsSync.refresh()
+                    AppTelemetry.record(.featureUsed(.syncRequested(isRetry: isRetry)))
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(height: statusLineHeight)
+                        // Compensate for the symbol's trailing side bearing.
+                        .offset(x: 3)
+                        .frame(width: refreshTargetSize, height: refreshTargetSize, alignment: .trailing)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(title)
+                .accessibilityIdentifier("settings.sync.refresh")
+            }
+    }
+
+    private func cloudSyncMessage(_ failure: CloudSyncFailure) -> String {
+        switch failure {
+        case .noAccount: language.text("请先在系统设置中登录 iCloud。", "Sign in to iCloud in Settings first.")
+        case .restricted: language.text("此设备限制了 iCloud 访问，请检查系统设置。", "iCloud access is restricted on this device. Check Settings.")
+        case .accountUnavailable: language.text("暂时无法访问 iCloud 账号，请稍后重试。", "Your iCloud account is temporarily unavailable. Try again later.")
+        case .accountChanged: language.text("iCloud 账号已变更，请切回之前同步用的账号。", "Switch back to the iCloud account previously used for sync.")
+        case .authentication: language.text("iCloud 验证失败，请检查账号状态。", "iCloud couldn’t verify your account. Check Settings.")
+        case .network: language.text("网络连接异常", "Network connection unavailable")
+        case .storageFull: language.text("iCloud 储存空间不足，请腾出空间后重试。", "Free up iCloud storage, then try again.")
+        case .serviceUnavailable: language.text("iCloud 暂时无法同步，请稍后重试。", "iCloud is temporarily unavailable. Try again later.")
+        case .localStorage: language.text("无法读取或保存本机成绩。", "Couldn’t read or save local results.")
+        case .unknown: language.text("同步失败，请稍后重试。", "Sync failed. Try again later.")
+        }
+    }
+}
+
+private struct PrivacySettingsView: View {
+    @AppStorage(AppTelemetry.sharingChoiceKey, store: AppTelemetry.sharingDefaults)
+    private var sharingChoice = AppTelemetry.SharingChoice.undecided
+    @State private var showsPrivacyPolicy = false
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+
+    private static let policyURL = URL(string: "cubegin://privacy-policy")
+
+    private func policyText(includeDescription: Bool) -> some View {
+        let description = includeDescription ? language.text(
+            "开启后会发送崩溃报告、操作失败和功能使用情况，帮助我们修复问题、改进计时体验。",
+            "When enabled, Cubegin sends crash reports, failed operations, and feature usage to help us fix issues and improve the timer. "
+        ) : ""
+        var link = AttributedString(language.text("查看隐私政策", "View privacy policy"))
+        link.link = Self.policyURL
+        return Text(AttributedString(description) + link)
+            .tint(Color(uiColor: .link))
+            .environment(\.openURL, OpenURLAction { url in
+                guard url == Self.policyURL else { return .discarded }
+                showsPrivacyPolicy = true
+                return .handled
+            })
+            .accessibilityIdentifier("settings.privacyPolicy")
+    }
+
+    var body: some View {
+        Form {
+            if AppTelemetry.showsSharingPreference {
+                CardSection {
+                    Toggle(language.text("帮助改进 Cubegin", "Help improve Cubegin"), isOn: Binding(
+                        get: { sharingChoice == .allowed },
+                        set: { AppTelemetry.chooseSharing($0 ? .allowed : .declined) }
+                    ))
+                    .accessibilityIdentifier("settings.telemetry.sharing")
+                } footer: {
+                    policyText(includeDescription: true)
+                }
+            } else {
+                policyText(includeDescription: false).listRowBackground(Color.clear)
+            }
+        }
+        .appBackground()
+        .navigationTitle(language.text("隐私", "Privacy"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .sheet(isPresented: $showsPrivacyPolicy) { PrivacyPolicyView() }
     }
 }
 
@@ -2119,7 +2373,9 @@ private struct TimerSwipePicker: View {
     }
 
     var body: some View {
-        Picker(direction.title(in: language), selection: SettingsSync.binding($action, key: direction.preferenceKey) { $0.rawValue }) {
+        Picker(direction.title(in: language), selection: trackedSetting(SettingsSync.binding($action, key: direction.preferenceKey) { $0.rawValue }) {
+            .swipe(direction, $0)
+        }) {
             ForEach(TimerSwipeAction.allCases, id: \.self) { option in
                 Text(option.title(in: language)).tag(option)
             }
@@ -2133,6 +2389,7 @@ private struct ClearResultsView: View {
         let id = UUID()
         let solveIDs: Set<Solve.ID>
         let title: String
+        let scope: ClearResultsScope
     }
 
     let model: TimerModel
@@ -2188,7 +2445,8 @@ private struct ClearResultsView: View {
                     cardRowButton(role: .destructive) {
                         guard request == nil, !selectedIDs.isEmpty else { return }
                         request = Request(solveIDs: selectedIDs,
-                                          title: language.text("清空所选分组？", "Clear selected groups?"))
+                                          title: language.text("清空所选分组？", "Clear selected groups?"),
+                                          scope: .selectedGroups)
                     } label: {
                         Text(language.text("清空所选分组（\(selectedIDs.count.formatted()) 条）", "Clear selected groups (\(selectedIDs.count.formatted()))"))
                     }
@@ -2200,7 +2458,8 @@ private struct ClearResultsView: View {
                     cardRowButton(role: .destructive) {
                         guard request == nil, selection.isEmpty else { return }
                         request = Request(solveIDs: Set(model.solves.map(\.id)),
-                                          title: language.text("清空所有成绩？", "Clear all results?"))
+                                          title: language.text("清空所有成绩？", "Clear all results?"),
+                                          scope: .all)
                     } label: {
                         Text(language.text("清空所有成绩", "Clear all results"))
                     }
@@ -2222,7 +2481,8 @@ private struct ClearResultsView: View {
                     language: language,
                     onCancel: { request = nil }
                 ) {
-                    guard model.deleteSolves(pending.solveIDs) else { return false }
+                    guard model.deleteSolves(pending.solveIDs, operation: .clearResults) else { return false }
+                    AppTelemetry.record(.featureUsed(.resultsCleared(pending.scope)))
                     selection.removeAll()
                     deletedCount = pending.solveIDs.count
                     request = nil

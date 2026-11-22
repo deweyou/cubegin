@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
+import CloudKit
 
 @main
 struct CubeginApp: App {
-    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
+    @UIApplicationDelegateAdaptor(CubeginAppDelegate.self) private var delegate
+    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = AppLanguage.systemPreference
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @State private var hasFinishedLaunch = false
 
@@ -11,11 +13,16 @@ struct CubeginApp: App {
         WindowGroup {
             LaunchRootView(hasFinishedLaunch: $hasFinishedLaunch)
                 .environment(\.locale, AppLanguage.resolve(languageOverride).locale)
+                .dynamicTypeSize(.large)
                 .preferredColorScheme(theme.colorScheme)
                 .scrollIndicators(.hidden)
                 .task { SettingsSync.refresh() }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     SettingsSync.refresh()
+                    AppTelemetry.refreshCloudIdentity()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged).receive(on: RunLoop.main)) { _ in
+                    AppTelemetry.cloudIdentityDidChange()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)) {
                     SettingsSync.receive($0)
@@ -27,6 +34,66 @@ struct CubeginApp: App {
                             .accessibilityHidden(true)
                     }
                 }
+        }
+    }
+}
+
+enum AppTypography {
+    static func preferredFont(for style: UIFont.TextStyle) -> UIFont {
+        UIFont.preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large))
+    }
+}
+
+final class CubeginAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        AppTelemetry.startFromPreferences()
+        return true
+    }
+}
+
+struct PrivacyPolicyView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
+
+    private var language: AppLanguage { locale.appLanguage }
+
+    private var paragraphs: [String] {
+        guard let url = Bundle.main.url(forResource: "PrivacyPolicy", withExtension: "md"),
+              let markdown = try? String(contentsOf: url, encoding: .utf8) else {
+            return [language.text("暂时无法读取隐私政策。", "The privacy policy couldn’t be loaded.")]
+        }
+        let sections = markdown.components(separatedBy: "\n<!-- English -->\n")
+        let section = language == .english ? sections.last : sections.first
+        return (section ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: "\n\n")
+            .filter { !$0.hasPrefix("# ") }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                        if paragraph.hasPrefix("## ") {
+                            Text(paragraph.dropFirst(3))
+                                .font(.headline)
+                                .accessibilityAddTraits(.isHeader)
+                        } else {
+                            Text((try? AttributedString(markdown: paragraph)) ?? AttributedString(paragraph))
+                        }
+                    }
+                }
+                .frame(maxWidth: 640, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle(language.text("隐私政策", "Privacy Policy"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(language.text("完成", "Done")) { dismiss() }
+                }
+            }
         }
     }
 }
@@ -59,6 +126,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case english = "en"
 
     static let preferenceKey = "app.language"
+    static let systemPreference = ""
     static var saved: Self {
         resolve(UserDefaults.standard.string(forKey: preferenceKey))
     }
@@ -112,6 +180,17 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+enum ICloudSyncPreference {
+    static let key = "app.icloudSync"
+    private static let legacyResultsKey = "results.icloudSync"
+
+    static func isEnabled(in defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: key) != nil { return defaults.bool(forKey: key) }
+        if defaults.object(forKey: legacyResultsKey) != nil { return defaults.bool(forKey: legacyResultsKey) }
+        return true
+    }
+}
+
 @MainActor
 enum SettingsSync {
     private static let keys = [
@@ -121,12 +200,16 @@ enum SettingsSync {
         ResultExtremes.includeDNFPreferenceKey
     ] + TimerSwipeDirection.allCases.map(\.preferenceKey)
 
-    private static var isEnabled: Bool {
+    static var isAvailable: Bool {
 #if targetEnvironment(simulator)
         false
 #else
-        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin"
+        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin" || CloudKitResultsTransport.isAvailable
 #endif
+    }
+
+    private static var isEnabled: Bool {
+        isAvailable && ICloudSyncPreference.isEnabled(in: .standard)
     }
 
     static func binding<Value: Equatable>(_ local: Binding<Value>, key: String, encode: @escaping (Value) -> Any) -> Binding<Value> {

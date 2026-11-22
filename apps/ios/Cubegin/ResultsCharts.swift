@@ -1,7 +1,7 @@
 import Charts
 import SwiftUI
 
-enum ResultsChartMode: CaseIterable, Sendable {
+enum ResultsChartMode: String, CaseIterable, Sendable {
     case trend, distribution
 
     var icon: String {
@@ -31,6 +31,8 @@ struct StatisticsCardSection<Card: View>: View {
                 .accessibilityAddTraits(.isHeader)
                 .padding(.leading, 16)
             card
+                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 24))
         }
         // The enclosing Form supplies the other 12 pt of section spacing.
         .padding(.top, 8)
@@ -39,9 +41,12 @@ struct StatisticsCardSection<Card: View>: View {
 
 struct ResultsCharts: View {
     let solves: [Solve]
+    let tracksVisibility: Bool
+    let onViewed: (ResultsChartMode) -> Void
 
     @Environment(\.locale) private var locale
     @State private var mode = ResultsChartMode.trend
+    @State private var plotIsVisible = false
     @State private var range = AttemptRange.recent100
     @State private var selectedDistributionBin: Int?
     @State private var hiddenAverages: Set<SolveAverage> = []
@@ -88,15 +93,28 @@ struct ResultsCharts: View {
         let request = Request(solves: solves, mode: mode, range: range,
                               averages: mode == .trend ? visibleAverages : [],
                               columns: mode == .trend ? plotColumns : 0)
+        let viewedMode = visibleMode(for: request)
         StatisticsCardSection(title: mode.title(language)) {
             chartCard(request, rangeCounts: rangeCounts)
         }
         .onChange(of: request) { _, _ in
             selectedDistributionBin = nil
         }
+        .onChange(of: mode) { _, selection in
+            AppTelemetry.record(.featureUsed(.chartSelected(selection)))
+        }
+        .onChange(of: viewedMode, initial: true) { _, visible in
+            if let visible { onViewed(visible) }
+        }
         .task(id: request) {
             await load(request)
         }
+    }
+
+    private func visibleMode(for request: Request) -> ResultsChartMode? {
+        guard tracksVisibility, plotIsVisible, let rendered, rendered.0 == request else { return nil }
+        if case .distribution(let data) = rendered.1, data.bins.isEmpty { return nil }
+        return request.mode
     }
 
     private func chartControls(rangeCounts: [AttemptRange: Int]?) -> some View {
@@ -132,10 +150,10 @@ struct ResultsCharts: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: max(minimumChartHeight, min(340, chartWidth * 0.27)))
+            .onScrollVisibilityChange(threshold: 0.5) { plotIsVisible = $0 }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 24))
         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
             chartWidth = width
             // Snap to width bands so resizing doesn't launch a task for each point.

@@ -30,7 +30,9 @@ App 单测位于 `CubeginTests/`，通过正式工程的 `CubeginApp` scheme 执
 
 计时显示需覆盖实时、到秒和仅观察。检查 WCA 观察读数和停表后的三位小数，并确认切到手动后轻点计时区直接打开录入。手动录入覆盖分格从左到右输入、高亮当前格、点选改单格、非零时可提前保存、秒位校验、+2、空时间 DNF、取消和保存失败重试。只有保存成功才推进打乱。成绩详情的无惩罚、+2 和 DNF 始终单选。零秒 DNF 在详情及计时页均不可修改判罚。iPhone 竖屏录入时对照键盘弹出前后的截图，确认底部面板贴着键盘，背后的计时页保持原位。检查小窗口和横屏键盘弹出后，判罚和保存操作仍可到达。
 
-手势单测验证默认左扫生成新打乱、右扫删除上一条成绩，已保存的选项优先。界面用例从「设置 → 计时 → 手势」分别设置左右轻扫，重启后验证生成新打乱和单次手动录入。保存后仍可继续计时。删除快捷操作弹出确认框，确认后更新读数。选「无」时轻扫不执行操作。横向位移超过 10 pt 会退出按住状态，达到 44 pt 且方向明确才会触发快捷操作。检查两阈值之间的短拖动、长按后的横向拖动和观察期间的上滑取消。
+左右轻扫默认均为「无」，已保存的选项优先。界面用例从「设置 → 计时 → 手势」分别设置左右轻扫，重启后验证生成新打乱和单次手动录入。保存后仍可继续计时。删除快捷操作弹出确认框，确认后更新读数。选「无」时轻扫不执行操作。横向位移超过 10 pt 会退出按住状态，达到 44 pt 且方向明确才会触发快捷操作。检查两阈值之间的短拖动、长按后的横向拖动和观察期间的上滑取消。
+
+在打乱公式上测试两个方向的快捷手势，打乱图、成绩概要和计时数字处测试长按启动。停表后短点成绩操作仍执行按钮动作，长按至少 250 毫秒且达到配置的启动延迟后，松手开始计时。核对辅助公式图标贴齐右侧内容边缘，点按区域维持 44 pt。
 
 Duo 半展开竖屏用例检查 WCA 观察和计时读数保持在上半屏中央。停表后，成绩操作出现在上半屏读数下方。待机时，下半屏显示项目和打乱工具栏、打乱图与成绩概要、计时提示。计时期间，下半屏只显示居中的停表提示。验证开表、上滑取消、停表和加两秒。
 待机布局还需检查三阶和五魔方，确认五魔方的七行打乱清晰可读，公式和待机读数有足够间距。
@@ -142,7 +144,7 @@ Duo 多显示器截图要明确选择当前屏幕，不能默认读取外屏：�
 ## 本地真机安装
 
 本地调试默认安装 **Cubegin Dev**。独立的 Bundle ID `io.github.deweyou.cubegin.dev`
-为它创建单独的成绩和设置容器。App 仅在正式版 Bundle ID 下启用 iCloud 设置同步。
+为它创建单独的成绩和设置容器。普通 Cubegin Dev 使用本机设置。下方专用签名构建可以验证 Dev 的 iCloud 设置和成绩同步。
 
 Xcode 需登录开发者账号并完成 Apple 要求的协议更新，设备需配对并启用开发者模式。
 用 `xcrun devicectl list devices` 获取 UDID。在 `apps/ios/` 下将命令中的
@@ -172,18 +174,66 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 
 ### iCloud 成绩同步验证
 
-成绩同步使用 Cubegin Dev App ID。开发签名必须允许运行 CloudKit，并关联
+同步验证使用 Cubegin Dev App ID。开发签名须启用 CloudKit、iCloud 键值存储，并关联
 `iCloud.io.github.deweyou.cubegin.sync-prototype` 容器。按上面的真机构建命令，
 将空的 `CODE_SIGN_ENTITLEMENTS=` 替换为以下两个构建参数。
 
 ```sh
 CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
-'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CUBEGIN_RESULTS_SYNC'
+'OTHER_SWIFT_FLAGS=$(inherited) -D CUBEGIN_RESULTS_SYNC'
 ```
 
-两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 成绩 → iCloud 成绩同步」，
+两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 通用 → 同步」，
 验证首次合并、编辑罚时、离线删除后重试，以及更换 iCloud 账号后本机成绩保留。先核对测试设备和专用容器，
-再打开开关。这样不会使用正式 App 的成绩。两台设备的测试成绩都可见后再验证删除。
+再打开开关。两台设备都显示测试成绩后再验证删除。在其中一台设备改分组名称、拖动分组、设为默认组，
+再切换项目、选择辅助公式方法并调整解法顺序。在另一台设备确认这些改动。改变主题或报时设置，确认两台设备会同步。
+关掉一台设备上的开关，确认它仍可本地修改设置和成绩，并停止接收另一台设备的新修改。重新开启后验证本机离线修改传到另一台设备。
 
-模拟器用 Debug 启动参数 `--preview-icloud-error` 模拟网络失败，可检查默认关闭、开启、错误提示和重试。
-单测用内存服务验证合并和重试，全程使用临时成绩文件。
+模拟器用 Debug 启动参数 `--preview-icloud-error` 或 `--preview-icloud-success`，可以从「设置 → 通用 → 同步」检查模拟的进度、错误、成功时间和刷新。用 `--preview-icloud-account-error` 检查长错误文案换行时刷新图标是否与首行居中，并在系统最大字号下核对应用字体尺寸。
+单测用内存服务验证成绩和分组的合并、偏好同步与重试，全程使用临时成绩文件。
+
+## 真机验证故障诊断
+
+在忽略提交的 `apps/ios/TelemetryConfig/` 中放置配置，也可通过
+`CUBEGIN_TELEMETRY_CONFIG_DIR` 指定目录。Dev 和正式版使用独立的 Firebase 项目、
+GA4 属性和 Sentry 项目。
+
+| 构建 | Firebase 配置文件 | Sentry DSN 文件 |
+| --- | --- | --- |
+| 真机 Debug（Cubegin Dev） | `io.github.deweyou.cubegin.dev.plist` | `io.github.deweyou.cubegin.dev.sentry-dsn.txt` |
+| 真机 Release（Cubegin） | `io.github.deweyou.cubegin.plist` | `io.github.deweyou.cubegin.sentry-dsn.txt` |
+
+构建脚本按构建类型和 Bundle ID 选择配置，模拟器构建不打包配置。正式 Release 归档
+或显式指定配置目录时，匹配的两个文件缺一都会中止。普通 Release 编译检查可以省略两份配置。
+发布时设置实际的 App 版本和构建号。
+
+按[本地真机安装](#本地真机安装)安装 Debug 版后，显式开启该次启动的诊断并启用 GA DebugView。
+
+```sh
+xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
+  io.github.deweyou.cubegin.dev -cubegin-telemetry-qa -FIRDebugEnabled
+```
+
+导入无效备份，在 GA4 DebugView 确认 `operation_failed`。用测试数据验证写入失败，
+确认 GA4 同时记录失败，Sentry 的 `device_qa` 环境收到对应的非致命诊断。
+核对两端手动错误都带有 `operation`、`reason` 和 `impact`。
+核对 GA4 事件参数 `app_build` 与安装包的 `CFBundleVersion` 一致。
+在专用验证构建中触发测试崩溃后重启，确认 Sentry 收到崩溃。发布归档保留并上传匹配的 dSYM，
+上传令牌配置在发布环境中。核对诊断中的设备 ID 与连点五次「版本」复制的值一致，再检查上报只包含预期字段。
+发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
+
+首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。设备 ID 复制入口由 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 验证。
+
+## 产品埋点验证
+
+按[真机验证故障诊断](#真机验证故障诊断)中的启动命令打开 Cubegin Dev，附加 `-cubegin-telemetry-qa-consent` 以使用本机共享选择。实际操作功能，在隔离的 GA4 DebugView 核对事件名称、触发次数和参数。涉及 UID 时，另外核对该事件原始上传数据中的 `user_id`。
+
+验证跨设备埋点时，Cubegin Dev 同时使用专用 CloudKit 容器与隔离的 Firebase、Sentry 项目。使用[成绩同步验证](#icloud-成绩同步验证)中的签名授权与编译参数，保留 Firebase 包自己的编译条件。用新安装覆盖已有共享 ID、首次创建、离线超时后恢复三种情况。核对自动 `first_open`、`session_start` 实际出现的时机，以及原始数据中的 `user_id`。核对取消共享、关闭 iCloud 同步及切换 iCloud 账号时的身份切换。
+
+正式构建使用容器 `iCloud.io.github.deweyou.cubegin`。发布前给正式 Bundle ID 关联此容器，并在 CloudKit Production 部署 `CubeginAnalyticsIdentity` 记录类型及字符串字段 `uuid`。成绩同步仍由 Dev 专用容器承载。GA4 的 `cube_event`、`inspection_voice` 和 `include_dnf_in_worst` 使用事件级自定义维度。
+
+### 2026-11-22 Cubegin Dev 验收
+
+- 实际计时、查看成绩列表和统计、导入 DCTimer 后，DebugView 各收到一条 `wca_inspection_started`、`solve_saved`、`solve_list_viewed`、`statistics_viewed`、`dctimer_import_started` 和 `dctimer_import_completed`。SDK 日志核对了各事件的预期参数。
+- 全新模拟器安装模拟 CloudKit 在 100 毫秒返回共享 UID。Firebase 上传的 `first_open` 和 `session_start` 均无 UID，随后上传的 `statistics_viewed` 带有预期 UID。其余五个业务事件已确认入站，原始上传数据中的 UID 尚未逐条核对。
+- 模拟 UID 在 3.5 秒返回时，App 等满 1 秒后开启采集，UID 到达后没有重发两条自动事件。一台签名 Dev 真机成功读取并设置 CloudKit 共享 UID。真机全新安装及两台真机核对共享 UID 仍待验收。
