@@ -142,7 +142,7 @@ Duo 多显示器截图要明确选择当前屏幕，不能默认读取外屏：�
 ## 本地真机安装
 
 本地调试默认安装 **Cubegin Dev**。独立的 Bundle ID `io.github.deweyou.cubegin.dev`
-为它创建单独的成绩和设置容器。App 仅在正式版 Bundle ID 下启用 iCloud 设置同步。
+为它创建单独的成绩和设置容器。普通 Cubegin Dev 使用本机设置。下方专用签名构建可以验证 Dev 的 iCloud 设置和成绩同步。
 
 Xcode 需登录开发者账号并完成 Apple 要求的协议更新，设备需配对并启用开发者模式。
 用 `xcrun devicectl list devices` 获取 UDID。在 `apps/ios/` 下将命令中的
@@ -172,7 +172,7 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 
 ### iCloud 成绩同步验证
 
-成绩同步使用 Cubegin Dev App ID。开发签名必须允许运行 CloudKit，并关联
+同步验证使用 Cubegin Dev App ID。开发签名须启用 CloudKit、iCloud 键值存储，并关联
 `iCloud.io.github.deweyou.cubegin.sync-prototype` 容器。按上面的真机构建命令，
 将空的 `CODE_SIGN_ENTITLEMENTS=` 替换为以下两个构建参数。
 
@@ -181,9 +181,9 @@ CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CUBEGIN_RESULTS_SYNC'
 ```
 
-两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 成绩 → iCloud 成绩同步」，
+两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 通用 → iCloud 同步」，
 验证首次合并、编辑罚时、离线删除后重试，以及更换 iCloud 账号后本机成绩保留。先核对测试设备和专用容器，
-再打开开关。这样不会使用正式 App 的成绩。两台设备的测试成绩都可见后再验证删除。
+再打开开关。两台设备的测试成绩都可见后再验证删除。改变主题或报时设置，确认两台设备会同步。关掉一台设备上的开关，确认它仍可本地修改设置和成绩，并停止接收另一台设备的新修改。
 
 模拟器用 Debug 启动参数 `--preview-icloud-error` 模拟网络失败，可检查默认关闭、开启、错误提示和重试。
 单测用内存服务验证合并和重试，全程使用临时成绩文件。

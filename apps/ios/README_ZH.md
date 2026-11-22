@@ -21,4 +21,4 @@ Cubegin 是原生 SwiftUI 魔方速拧计时器，支持 iOS 和 iPadOS 26 及�
 
 iPhone Duo 半展开竖屏时，上半屏显示打乱公式和时间，在下半屏操作开停表。
 
-使用支持 iCloud 键值存储的签名时，应用设置会在登录同一 iCloud 账号的设备之间同步。
+使用支持 iCloud 键值存储的签名时，可以在「设置 → 通用 → iCloud 同步」控制是否在同一 iCloud 账号的设备间同步部分设置。

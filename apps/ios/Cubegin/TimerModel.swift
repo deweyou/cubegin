@@ -295,14 +295,14 @@ struct ManualSolveContext: Identifiable {
     private let now: () -> ContinuousClock.Instant
     private let generateScramble: @Sendable (String) async throws -> Scramble
 
-    static let cloudSyncKey = "results.icloudSync"
     private static let lastCloudSyncKey = "results.lastSuccessfulCloudSync"
     private(set) var lastSuccessfulCloudSync: Date?
     private(set) var cloudSyncEnabled = false
     private(set) var cloudSyncStatus: CloudSyncStatus = .idle
     enum CloudSyncStatus { case idle, syncing, synced, failed(CloudSyncFailure) }
     @ObservationIgnored private let cloudTransport: (any ResultsCloudTransport)?
-    var supportsCloudSync: Bool { cloudTransport != nil }
+    var supportsResultsSync: Bool { cloudTransport != nil }
+    var supportsCloudSync: Bool { supportsResultsSync || SettingsSync.isAvailable }
     @ObservationIgnored private var cloudState: ResultsSyncReplica.State?
     @ObservationIgnored private var cloudAccount: String?
     @ObservationIgnored private var cloudTask: Task<Void, Never>?
@@ -312,8 +312,9 @@ struct ManualSolveContext: Identifiable {
     func setCloudSyncEnabled(_ enabled: Bool) {
         guard supportsCloudSync, enabled != cloudSyncEnabled else { return }
         cloudSyncEnabled = enabled
-        defaults.set(enabled, forKey: Self.cloudSyncKey)
+        defaults.set(enabled, forKey: ICloudSyncPreference.key)
         if enabled {
+            SettingsSync.refresh()
             requestCloudSync()
         } else {
             cloudTask?.cancel()
@@ -323,7 +324,7 @@ struct ManualSolveContext: Identifiable {
     }
 
     func requestCloudSync() {
-        guard cloudSyncEnabled, supportsCloudSync else { return }
+        guard cloudSyncEnabled, supportsResultsSync else { return }
         guard !storageReadFailed else {
             cloudSyncStatus = .failed(.localStorage)
             return
@@ -426,8 +427,10 @@ struct ManualSolveContext: Identifiable {
         self.storage = storage
         self.defaults = defaults
         self.cloudTransport = cloudTransport
+        if cloudTransport != nil || SettingsSync.isAvailable {
+            cloudSyncEnabled = ICloudSyncPreference.isEnabled(in: defaults, supportsResults: cloudTransport != nil)
+        }
         if cloudTransport != nil {
-            cloudSyncEnabled = defaults.bool(forKey: Self.cloudSyncKey)
             lastSuccessfulCloudSync = defaults.object(forKey: Self.lastCloudSyncKey) as? Date
         }
         self.now = now
@@ -894,7 +897,7 @@ struct ManualSolveContext: Identifiable {
         var nextCloudState = remoteState?.0 ?? cloudState
         let nextCloudAccount = remoteState?.1 ?? cloudAccount
         do {
-            if remoteState == nil, cloudState != nil || cloudSyncEnabled {
+            if remoteState == nil, cloudState != nil || (cloudSyncEnabled && supportsResultsSync) {
                 var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
                 try replica.importSolves(persistedSolves)
                 try replica.recordLocalChanges(from: persistedSolves, to: results)

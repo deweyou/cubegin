@@ -21,4 +21,4 @@ Optional WCA inspection includes 8- and 12-second voice calls and automatic insp
 
 On a partially folded iPhone Duo in portrait, read the scramble and time above the fold and use the lower half to start or stop the timer.
 
-App settings sync across devices signed into the same iCloud account when the app is signed with the iCloud key-value storage capability.
+Use Settings → General → iCloud Sync to control syncing supported settings across devices signed into the same iCloud account. This requires a build signed with the iCloud key-value storage capability.

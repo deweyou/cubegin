@@ -64,17 +64,23 @@ extension CloudKitResultsTransport {
 #endif
     }
 
-    static func configured() -> (any ResultsCloudTransport)? {
+    static var isAvailable: Bool {
 #if DEBUG && targetEnvironment(simulator)
-        if showsErrorPreview {
-            return PreviewCloudResultsTransport()
-        }
+        showsErrorPreview
 #elseif DEBUG && CUBEGIN_RESULTS_SYNC
-        if Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev" {
-            return CloudKitResultsTransport()
-        }
+        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+#else
+        false
 #endif
-        return nil
+    }
+
+    static func configured() -> (any ResultsCloudTransport)? {
+        guard isAvailable else { return nil }
+#if DEBUG && targetEnvironment(simulator)
+        return PreviewCloudResultsTransport()
+#else
+        return CloudKitResultsTransport()
+#endif
     }
 }
 

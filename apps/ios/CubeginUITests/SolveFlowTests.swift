@@ -234,16 +234,16 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "--preview-icloud-error", "-results.icloudSync", "NO"]
+        app.launchArguments += ["-app.language", "en", "--preview-icloud-error", "-app.icloudSync", "NO"]
         app.launch()
 
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
-        let toggle = app.switches["settings.results.icloudSync"]
-        if !toggle.isHittable { app.swipeUp() }
+        let toggle = app.switches["settings.general.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "0")
+        XCTAssertEqual(toggle.label, "iCloud Sync")
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         let error = app.staticTexts["settings.results.cloudSyncError"]
         let retry = app.buttons["settings.results.retryCloudSync"]

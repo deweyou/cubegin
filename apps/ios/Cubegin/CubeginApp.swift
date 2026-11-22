@@ -112,6 +112,17 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+enum ICloudSyncPreference {
+    static let key = "app.icloudSync"
+    private static let legacyResultsKey = "results.icloudSync"
+
+    static func isEnabled(in defaults: UserDefaults, supportsResults: Bool) -> Bool {
+        if let enabled = defaults.object(forKey: key) as? Bool { return enabled }
+        if let enabled = defaults.object(forKey: legacyResultsKey) as? Bool { return enabled }
+        return !supportsResults
+    }
+}
+
 @MainActor
 enum SettingsSync {
     private static let keys = [
@@ -121,12 +132,16 @@ enum SettingsSync {
         ResultExtremes.includeDNFPreferenceKey
     ] + TimerSwipeDirection.allCases.map(\.preferenceKey)
 
-    private static var isEnabled: Bool {
+    static var isAvailable: Bool {
 #if targetEnvironment(simulator)
         false
 #else
-        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin"
+        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin" || CloudKitResultsTransport.isAvailable
 #endif
+    }
+
+    private static var isEnabled: Bool {
+        isAvailable && ICloudSyncPreference.isEnabled(in: .standard, supportsResults: CloudKitResultsTransport.isAvailable)
     }
 
     static func binding<Value: Equatable>(_ local: Binding<Value>, key: String, encode: @escaping (Value) -> Any) -> Binding<Value> {

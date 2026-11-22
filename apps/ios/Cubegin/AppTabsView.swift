@@ -1863,14 +1863,14 @@ private struct SettingsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
 
-    @ViewBuilder private var resultSyncControls: some View {
-        Toggle(language.text("iCloud 成绩同步", "iCloud Results Sync"), isOn: Binding(
+    @ViewBuilder private var iCloudSyncControls: some View {
+        Toggle(language.text("iCloud 同步", "iCloud Sync"), isOn: Binding(
             get: { model.cloudSyncEnabled },
             set: { model.setCloudSyncEnabled($0) }
         ))
-        .accessibilityIdentifier("settings.results.icloudSync")
+        .accessibilityIdentifier("settings.general.icloudSync")
 
-        if model.cloudSyncEnabled {
+        if model.cloudSyncEnabled, model.supportsResultsSync {
             switch model.cloudSyncStatus {
             case .idle, .synced:
                 if let date = model.lastSuccessfulCloudSync {
@@ -1992,7 +1992,7 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Form {
-                CardSection(language.text("通用", "General")) {
+                CardSection {
                     Picker(language.text("主题", "Theme"), selection: SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }) {
                         ForEach(AppTheme.allCases) { option in
                             Text(option.title(in: language)).tag(option)
@@ -2006,6 +2006,17 @@ private struct SettingsView: View {
                         ForEach(AppLanguage.allCases) { option in
                             Text(option.name).tag(option)
                         }
+                    }
+                    if model.supportsCloudSync {
+                        iCloudSyncControls
+                    }
+                } header: {
+                    Text(language.text("通用", "General"))
+                } footer: {
+                    if model.supportsCloudSync {
+                        Text(model.supportsResultsSync
+                             ? language.text("在设备间同步成绩和部分设置。", "Sync results and some settings across devices.")
+                             : language.text("在设备间同步部分设置。", "Sync some settings across devices."))
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {
@@ -2035,9 +2046,6 @@ private struct SettingsView: View {
                     .accessibilityIdentifier("settings.timer.gestures")
                 }
                 CardSection(language.text("成绩", "Results")) {
-                    if model.supportsCloudSync {
-                        resultSyncControls
-                    }
                     Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                     cardRowButton {

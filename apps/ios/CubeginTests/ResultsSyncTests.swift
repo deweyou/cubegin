@@ -172,6 +172,27 @@ struct ResultsSyncTests {
     }
 
     @MainActor
+    @Test func sharesOnePreferenceAndKeepsThePreviousResultsChoice() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = directory.appending(path: "solves.json")
+        let suite = "icloud-sync-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(ICloudSyncPreference.isEnabled(in: defaults, supportsResults: false))
+        #expect(!ICloudSyncPreference.isEnabled(in: defaults, supportsResults: true))
+        defaults.set(true, forKey: "results.icloudSync")
+        let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(model.cloudSyncEnabled)
+        model.setCloudSyncEnabled(false)
+        #expect(!ICloudSyncPreference.isEnabled(in: defaults, supportsResults: false))
+        #expect(!ICloudSyncPreference.isEnabled(in: defaults, supportsResults: true))
+        let reopened = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(!reopened.cloudSyncEnabled)
+    }
+
+    @MainActor
     @Test func integratesLegacyResultsAndPersistsOfflineDeletionWithoutClearingOtherScores() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
