@@ -1868,17 +1868,17 @@ private struct SettingsView: View {
             get: { model.cloudSyncEnabled },
             set: { model.setCloudSyncEnabled($0) }
         ))
-        .accessibilityIdentifier("settings.general.icloudSync")
+        .accessibilityIdentifier("settings.sync.icloudSync")
 
         if model.cloudSyncEnabled, model.supportsResultsSync {
             switch model.cloudSyncStatus {
             case .idle, .synced:
                 if let date = model.lastSuccessfulCloudSync {
                     let time = date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
-                    Text(language.text("上次同步：\(time)", "Last synced: \(time)"))
+                    Text(language.text("上次同步成绩：\(time)", "Results last synced: \(time)"))
                         .font(.footnote)
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.results.lastCloudSync")
+                        .accessibilityIdentifier("settings.sync.lastCloudSync")
                 }
             case .syncing:
                 HStack {
@@ -1895,7 +1895,7 @@ private struct SettingsView: View {
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.results.cloudSyncError")
+                        .accessibilityIdentifier("settings.sync.cloudSyncError")
                     Button {
                         model.requestCloudSync()
                     } label: {
@@ -1903,7 +1903,7 @@ private struct SettingsView: View {
                             .fixedSize()
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityIdentifier("settings.results.retryCloudSync")
+                    .accessibilityIdentifier("settings.sync.retryCloudSync")
                 }
                 .font(.footnote)
             }
@@ -2007,9 +2007,6 @@ private struct SettingsView: View {
                             Text(option.name).tag(option)
                         }
                     }
-                    if model.supportsCloudSync {
-                        iCloudSyncControls
-                    }
                 }
                 CardSection(language.text("计时", "Timer")) {
                     Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
@@ -2054,6 +2051,17 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
+                }
+                if model.supportsCloudSync {
+                    CardSection {
+                        iCloudSyncControls
+                    } header: {
+                        Text(language.text("同步", "Sync"))
+                    } footer: {
+                        Text(model.supportsResultsSync
+                             ? language.text("在登录同一 iCloud 账号的设备间同步成绩和部分设置。", "Sync results and some settings across devices signed into the same iCloud account.")
+                             : language.text("在登录同一 iCloud 账号的设备间同步部分设置。", "Sync some settings across devices signed into the same iCloud account."))
+                    }
                 }
                 CardSection(language.text("关于", "About")) {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))

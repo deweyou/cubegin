@@ -240,16 +240,24 @@ final class SolveFlowTests: XCTestCase {
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
-        let toggle = app.switches["settings.general.icloudSync"]
+        let toggle = app.switches["settings.sync.icloudSync"]
+        if !toggle.isHittable { app.swipeUp() }
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "0")
         XCTAssertEqual(toggle.label, "iCloud Sync")
-        XCTAssertFalse(app.staticTexts["Sync results and some settings across devices."].exists)
+        let syncHeader = app.staticTexts["Sync"]
+        let aboutHeader = app.staticTexts["About"]
+        XCTAssertTrue(syncHeader.exists)
+        XCTAssertTrue(aboutHeader.exists)
+        XCTAssertLessThan(syncHeader.frame.minY, toggle.frame.minY)
+        XCTAssertLessThan(toggle.frame.maxY, aboutHeader.frame.minY)
+        XCTAssertTrue(app.staticTexts["Sync results and some settings across devices signed into the same iCloud account."].exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
-        let error = app.staticTexts["settings.results.cloudSyncError"]
-        let retry = app.buttons["settings.results.retryCloudSync"]
+        let error = app.staticTexts["settings.sync.cloudSyncError"]
+        let retry = app.buttons["settings.sync.retryCloudSync"]
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         XCTAssertTrue(retry.exists)
+        captureScreen("Settings — iCloud sync error")
         retry.tap()
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()

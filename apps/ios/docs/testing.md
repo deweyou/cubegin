@@ -181,7 +181,7 @@ CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CUBEGIN_RESULTS_SYNC'
 ```
 
-两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 通用 → iCloud 同步」，
+两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 同步 → iCloud 同步」，
 验证首次合并、编辑罚时、离线删除后重试，以及更换 iCloud 账号后本机成绩保留。先核对测试设备和专用容器，
 再打开开关。两台设备的测试成绩都可见后再验证删除。改变主题或报时设置，确认两台设备会同步。关掉一台设备上的开关，确认它仍可本地修改设置和成绩，并停止接收另一台设备的新修改。
 
