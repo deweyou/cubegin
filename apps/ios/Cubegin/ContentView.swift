@@ -1083,6 +1083,7 @@ struct ContentView: View {
                             // A replay during the delay also satisfies the first playback.
                             _ = model.takeAutomaticCelebration()
                             playCelebration(celebration)
+                            AppTelemetry.record(.featureUsed(.celebrationReplayed))
                         } label: {
                             Image(systemName: "party.popper")
                                 .font(.system(size: 16))
@@ -1324,6 +1325,7 @@ struct ContentView: View {
                                             groupID: model.currentGroup?.id ?? SolveGroup.initialID(for: model.event),
                                             algorithm: algorithm,
                                             usesDuoModal: isDuoInnerDisplay || isDuoOuterDisplay)
+            AppTelemetry.record(.featureUsed(.assistOpened))
         } label: {
             Image(systemName: "sparkles")
                 .resizable()

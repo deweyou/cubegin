@@ -604,7 +604,8 @@ private struct ResultsView: View {
         .accessibilityLabel(language.text("分组", "Group"))
         .accessibilityValue(model.currentGroup.map(\.displayName) ?? "")
         .sheet(isPresented: $showsGroups) {
-            GroupManager(model: model, usesCenteredPresentation: usesTopNavigation)
+            GroupManager(model: model, usesCenteredPresentation: usesTopNavigation,
+                         recordsGroupSwitch: page == .solves)
         }
     }
 
@@ -1406,6 +1407,7 @@ private struct SolveDetailsView: View {
 private struct GroupManager: View {
     @Bindable var model: TimerModel
     let usesCenteredPresentation: Bool
+    let recordsGroupSwitch: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @State private var groupToDelete: SolveGroup?
@@ -1515,7 +1517,11 @@ private struct GroupManager: View {
         let title = group.isDefault ? Text("\(name) \(star)") : name
         return HStack(spacing: 8) {
             Button {
+                let previousGroup = model.currentGroup?.id
                 model.selectGroup(group.id)
+                if recordsGroupSwitch, model.currentGroup?.id == group.id, previousGroup != group.id {
+                    AppTelemetry.record(.featureUsed(.groupSwitched))
+                }
                 dismiss()
             } label: {
                 HStack(spacing: 10) {
@@ -1861,6 +1867,21 @@ private func settingsLinkLabel(_ title: String) -> some View {
     }
 }
 
+@MainActor
+private func trackedSetting<Value: Equatable>(
+    _ binding: Binding<Value>, as analyticsValue: @escaping (Value) -> FeatureSettingValue
+) -> Binding<Value> {
+    Binding(get: { binding.wrappedValue }, set: { newValue in
+        let previous = binding.wrappedValue
+        guard newValue != previous else { return }
+        binding.wrappedValue = newValue
+        let from = analyticsValue(previous)
+        let to = analyticsValue(binding.wrappedValue)
+        guard from != to else { return }
+        AppTelemetry.record(.featureUsed(.settingChanged(from: from, to: to)))
+    })
+}
+
 private struct SettingsView: View {
     static var opensAboutForQA: Bool {
 #if DEBUG
@@ -1877,6 +1898,7 @@ private struct SettingsView: View {
     private enum Page: Hashable { case gestures, imports, clearResults, sync, privacy }
     @State private var path: [Page] = []
     @State private var versionTapCount = 0
+    @State private var startDelayBeforeEditing: Int?
     @State private var copiedDeviceIDAt: ContinuousClock.Instant?
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = AppLanguage.systemPreference
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
@@ -1893,11 +1915,15 @@ private struct SettingsView: View {
     private var language: AppLanguage { locale.appLanguage }
 
     private var syncedLanguage: Binding<String> {
-        SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }
+        trackedSetting(SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }) {
+            .language(AppLanguage(rawValue: $0))
+        }
     }
 
     @ViewBuilder private var timerSettings: some View {
-        Toggle(language.text("计时触感", "Timer haptics"), isOn: SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 })
+        Toggle(language.text("计时触感", "Timer haptics"), isOn: trackedSetting(
+            SettingsSync.binding($usesTimerHaptics, key: TimerModel.hapticsKey) { $0 }, as: FeatureSettingValue.haptics
+        ))
             .accessibilityIdentifier("settings.timer.haptics")
         HStack(spacing: 8) {
             let title = language.text("启动延迟", "Start delay")
@@ -1913,7 +1939,14 @@ private struct SettingsView: View {
             Slider(value: Binding(
                 get: { Double(startDelayTenths) },
                 set: { syncedStartDelay.wrappedValue = Int($0.rounded()) }
-            ), in: 0...20) {
+            ), in: 0...20, onEditingChanged: { isEditing in
+                if isEditing {
+                    startDelayBeforeEditing = startDelayTenths
+                } else if let previous = startDelayBeforeEditing {
+                    startDelayBeforeEditing = nil
+                    recordStartDelayChange(from: previous)
+                }
+            }) {
                 Text(title)
             }
             .labelsHidden()
@@ -1921,28 +1954,42 @@ private struct SettingsView: View {
             .accessibilityLabel(title)
             .accessibilityValue(value)
             .accessibilityAdjustableAction { direction in
+                let previous = startDelayTenths
                 switch direction {
                 case .increment: syncedStartDelay.wrappedValue = min(20, startDelayTenths + 1)
                 case .decrement: syncedStartDelay.wrappedValue = max(0, startDelayTenths - 1)
                 @unknown default: break
                 }
+                recordStartDelayChange(from: previous)
             }
             .accessibilityIdentifier("settings.startDelay")
         }
-        Toggle(language.text("WCA 观察", "WCA inspection"), isOn: SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 })
+        Toggle(language.text("WCA 观察", "WCA inspection"), isOn: trackedSetting(
+            SettingsSync.binding($usesInspection, key: TimerModel.inspectionKey) { $0 }, as: FeatureSettingValue.inspection
+        ))
             .accessibilityIdentifier("settings.inspection.enabled")
         if usesInspection {
-            Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 })
-            Picker(language.text("观察报时", "Inspection voice"), selection: SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }) {
+            Toggle(language.text("训练中启用观察", "Inspection in training"), isOn: trackedSetting(
+                SettingsSync.binding($usesTrainingInspection, key: TimerModel.trainingInspectionKey) { $0 }, as: FeatureSettingValue.trainingInspection
+            ))
+            Picker(language.text("观察报时", "Inspection voice"), selection: trackedSetting(
+                SettingsSync.binding($inspectionVoice, key: TimerModel.inspectionVoiceKey) { $0.rawValue }, as: FeatureSettingValue.inspectionVoice
+            )) {
                 ForEach(InspectionVoice.allCases, id: \.self) { voice in
                     Text(voice.title(in: language)).tag(voice)
                 }
             }
+            .accessibilityIdentifier("settings.inspection.voice")
         }
     }
 
     private var syncedStartDelay: Binding<Int> {
         SettingsSync.binding($startDelayTenths, key: TimerModel.startDelayKey) { $0 }
+    }
+
+    private func recordStartDelayChange(from previous: Int) {
+        guard previous != startDelayTenths else { return }
+        AppTelemetry.record(.featureUsed(.settingChanged(from: .startDelay(previous), to: .startDelay(startDelayTenths))))
     }
 
     private func tapVersion() {
@@ -1958,7 +2005,9 @@ private struct SettingsView: View {
         NavigationStack(path: $path) {
             Form {
                 CardSection(language.text("通用", "General")) {
-                    Picker(language.text("主题", "Theme"), selection: SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }) {
+                    Picker(language.text("主题", "Theme"), selection: trackedSetting(
+                        SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }, as: FeatureSettingValue.theme
+                    )) {
                         ForEach(AppTheme.allCases) { option in
                             Text(option.title(in: language)).tag(option)
                         }
@@ -1985,16 +2034,22 @@ private struct SettingsView: View {
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {
-                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
+                    Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: trackedSetting(
+                        SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 }, as: FeatureSettingValue.keepScreenOn
+                    ))
                         .accessibilityIdentifier("settings.timer.keepScreenOn")
-                    Picker(language.text("成绩产生方式", "Result entry"), selection: SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }) {
+                    Picker(language.text("成绩产生方式", "Result entry"), selection: trackedSetting(
+                        SettingsSync.binding($entryMethod, key: TimerModel.entryMethodKey) { $0.rawValue }, as: FeatureSettingValue.entryMethod
+                    )) {
                         ForEach(SolveEntryMethod.allCases, id: \.self) { method in
                             Text(method.title(in: language)).tag(method)
                         }
                     }
                     .accessibilityIdentifier("settings.timer.entryMethod")
                     if entryMethod == .timer {
-                        Picker(language.text("计时器的时间显示", "Timer display"), selection: SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }) {
+                        Picker(language.text("计时器的时间显示", "Timer display"), selection: trackedSetting(
+                            SettingsSync.binding($timerDisplay, key: TimerModel.displayKey) { $0.rawValue }, as: FeatureSettingValue.display
+                        )) {
                             ForEach(TimerDisplay.allCases, id: \.self) { display in
                                 Text(display.title(in: language)).tag(display)
                             }
@@ -2025,7 +2080,9 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
-                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 })
+                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: trackedSetting(
+                        SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 }, as: FeatureSettingValue.includeDNF
+                    ))
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
                 CardSection(language.text("关于", "About")) {
@@ -2130,10 +2187,10 @@ private struct SyncSettingsView: View {
         let description = model.supportsResultsSync
             ? language.text("跨设备同步成绩和设置。", "Sync results and settings across devices.")
             : language.text("跨设备同步常用设置。", "Sync preferences across devices.")
-        return Toggle(isOn: Binding(
+        return Toggle(isOn: trackedSetting(Binding(
             get: { model.cloudSyncEnabled },
             set: { model.setCloudSyncEnabled($0) }
-        )) {
+        ), as: FeatureSettingValue.iCloudSync)) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                 Text(description)
@@ -2159,7 +2216,7 @@ private struct SyncSettingsView: View {
                      ?? language.text("等待同步", "Waiting to sync"))
                     .accessibilityIdentifier("settings.sync.lastCloudSync")
                 Spacer(minLength: 0)
-                syncButton(language.text("刷新", "Refresh"))
+                syncButton(language.text("刷新", "Refresh"), isRetry: false)
             case .syncing:
                 ProgressView()
                     .controlSize(.small)
@@ -2172,7 +2229,7 @@ private struct SyncSettingsView: View {
                     .foregroundStyle(failure == .network ? Color.secondary : .red)
                     .accessibilityIdentifier("settings.sync.cloudSyncError")
                 Spacer(minLength: 0)
-                syncButton(language.text("重试", "Retry"))
+                syncButton(language.text("重试", "Retry"), isRetry: true)
             }
         }
         .font(.footnote)
@@ -2183,13 +2240,14 @@ private struct SyncSettingsView: View {
         .frame(maxWidth: .infinity, minHeight: refreshTargetSize, alignment: .topLeading)
     }
 
-    private func syncButton(_ title: String) -> some View {
+    private func syncButton(_ title: String, isRetry: Bool) -> some View {
         Color.clear
             .frame(width: refreshTargetSize, height: statusLineHeight)
             .overlay(alignment: .trailing) {
                 Button {
                     model.requestCloudSync()
                     SettingsSync.refresh()
+                    AppTelemetry.record(.featureUsed(.syncRequested(isRetry: isRetry)))
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .foregroundStyle(Color.accentColor)
@@ -2302,7 +2360,9 @@ private struct TimerSwipePicker: View {
     }
 
     var body: some View {
-        Picker(direction.title(in: language), selection: SettingsSync.binding($action, key: direction.preferenceKey) { $0.rawValue }) {
+        Picker(direction.title(in: language), selection: trackedSetting(SettingsSync.binding($action, key: direction.preferenceKey) { $0.rawValue }) {
+            .swipe(direction, $0)
+        }) {
             ForEach(TimerSwipeAction.allCases, id: \.self) { option in
                 Text(option.title(in: language)).tag(option)
             }
@@ -2316,6 +2376,7 @@ private struct ClearResultsView: View {
         let id = UUID()
         let solveIDs: Set<Solve.ID>
         let title: String
+        let scope: ClearResultsScope
     }
 
     let model: TimerModel
@@ -2371,7 +2432,8 @@ private struct ClearResultsView: View {
                     cardRowButton(role: .destructive) {
                         guard request == nil, !selectedIDs.isEmpty else { return }
                         request = Request(solveIDs: selectedIDs,
-                                          title: language.text("清空所选分组？", "Clear selected groups?"))
+                                          title: language.text("清空所选分组？", "Clear selected groups?"),
+                                          scope: .selectedGroups)
                     } label: {
                         Text(language.text("清空所选分组（\(selectedIDs.count.formatted()) 条）", "Clear selected groups (\(selectedIDs.count.formatted()))"))
                     }
@@ -2383,7 +2445,8 @@ private struct ClearResultsView: View {
                     cardRowButton(role: .destructive) {
                         guard request == nil, selection.isEmpty else { return }
                         request = Request(solveIDs: Set(model.solves.map(\.id)),
-                                          title: language.text("清空所有成绩？", "Clear all results?"))
+                                          title: language.text("清空所有成绩？", "Clear all results?"),
+                                          scope: .all)
                     } label: {
                         Text(language.text("清空所有成绩", "Clear all results"))
                     }
@@ -2406,6 +2469,7 @@ private struct ClearResultsView: View {
                     onCancel: { request = nil }
                 ) {
                     guard model.deleteSolves(pending.solveIDs, operation: .clearResults) else { return false }
+                    AppTelemetry.record(.featureUsed(.resultsCleared(pending.scope)))
                     selection.removeAll()
                     deletedCount = pending.solveIDs.count
                     request = nil

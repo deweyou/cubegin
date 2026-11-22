@@ -84,6 +84,32 @@ struct TimerModelTests {
         #expect(ProductEvent.statisticsViewed.fields.isEmpty)
         #expect(ProductEvent.dctimerImportStarted.fields.isEmpty)
         #expect(ProductEvent.dctimerImportCompleted.fields.isEmpty)
+        let setting = ProductEvent.featureUsed(.settingChanged(from: .swipe(.left, .newScramble), to: .swipe(.left, .none)))
+        #expect(setting.name == "feature_used")
+        #expect(setting.fields == ["feature": "settings", "action": "change", "setting": "swipe_left",
+                                   "previous_value": "newScramble", "setting_value": "none"])
+        #expect(ProductEvent.featureUsed(.assistMethodSelected(.xcross)).fields ==
+                ["feature": "assist_formula", "action": "select_method", "method": "xcross"])
+        #expect(ProductEvent.featureUsed(.chartSelected(.distribution)).fields ==
+                ["feature": "statistics_chart", "action": "select", "chart_type": "distribution"])
+        #expect(ProductEvent.featureUsed(.resultsCleared(.selectedGroups)).fields ==
+                ["feature": "settings", "action": "clear_results", "scope": "selected_groups"])
+    }
+
+    @Test func recordsGroupCreationAndOnlyChangedOrder() async throws {
+        try await withFixture { fixture in
+            var events: [ProductEvent] = []
+            let model = fixture.model(recordProductEvent: { events.append($0) })
+            #expect(!model.saveGroup(name: " ", isDefault: false))
+            #expect(model.saveGroup(name: "Practice", isDefault: false))
+            let groupID = try #require(model.currentGroup?.id)
+            #expect(model.saveGroup(id: groupID, name: "Edited", isDefault: false))
+            let order = model.eventGroups.map(\.id)
+            #expect(!model.reorderGroups([]))
+            #expect(model.reorderGroups(order))
+            #expect(model.reorderGroups(Array(order.reversed())))
+            #expect(events == [.featureUsed(.groupCreated), .featureUsed(.groupReordered)])
+        }
     }
 
     @Test func recordsNewSolvesOnceAfterSavingAndCountsSilentInspection() async throws {

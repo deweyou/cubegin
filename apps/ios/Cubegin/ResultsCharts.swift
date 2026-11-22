@@ -1,7 +1,7 @@
 import Charts
 import SwiftUI
 
-enum ResultsChartMode: CaseIterable, Sendable {
+enum ResultsChartMode: String, CaseIterable, Sendable {
     case trend, distribution
 
     var icon: String {
@@ -93,6 +93,9 @@ struct ResultsCharts: View {
         }
         .onChange(of: request) { _, _ in
             selectedDistributionBin = nil
+        }
+        .onChange(of: mode) { _, selection in
+            AppTelemetry.record(.featureUsed(.chartSelected(selection)))
         }
         .task(id: request) {
             await load(request)

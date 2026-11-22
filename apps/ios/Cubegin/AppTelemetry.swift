@@ -85,6 +85,88 @@ enum FailureReason: String {
     }
 }
 
+enum FeatureUse: Equatable {
+    case assistOpened, assistMethodSelected(AssistMethod), assistReordered
+    case celebrationReplayed
+    case groupCreated, groupReordered, groupSwitched
+    case chartSelected(ResultsChartMode)
+    case settingChanged(from: FeatureSettingValue, to: FeatureSettingValue)
+    case syncRequested(isRetry: Bool)
+    case resultsCleared(ClearResultsScope)
+
+    var fields: [String: String] {
+        switch self {
+        case .assistOpened:
+            ["feature": "assist_formula", "action": "open"]
+        case .assistMethodSelected(let method):
+            ["feature": "assist_formula", "action": "select_method", "method": method.rawValue]
+        case .assistReordered:
+            ["feature": "assist_formula", "action": "reorder"]
+        case .celebrationReplayed:
+            ["feature": "celebration", "action": "replay"]
+        case .groupCreated:
+            ["feature": "result_group", "action": "create"]
+        case .groupReordered:
+            ["feature": "result_group", "action": "reorder"]
+        case .groupSwitched:
+            ["feature": "result_group", "action": "switch"]
+        case .chartSelected(let mode):
+            ["feature": "statistics_chart", "action": "select", "chart_type": mode.rawValue]
+        case .settingChanged(let previous, let current):
+            ["feature": "settings", "action": "change", "setting": current.key,
+             "setting_value": current.value, "previous_value": previous.value]
+        case .syncRequested(let isRetry):
+            ["feature": "settings", "action": isRetry ? "sync_retry" : "sync_refresh"]
+        case .resultsCleared(let scope):
+            ["feature": "settings", "action": "clear_results", "scope": scope.rawValue]
+        }
+    }
+}
+
+enum ClearResultsScope: String {
+    case all, selectedGroups = "selected_groups"
+}
+
+enum FeatureSettingValue: Equatable {
+    case theme(AppTheme), language(AppLanguage?), iCloudSync(Bool)
+    case keepScreenOn(Bool), entryMethod(SolveEntryMethod), display(TimerDisplay), haptics(Bool)
+    case startDelay(Int), inspection(Bool), trainingInspection(Bool), inspectionVoice(InspectionVoice)
+    case swipe(TimerSwipeDirection, TimerSwipeAction), includeDNF(Bool)
+
+    var key: String {
+        switch self {
+        case .theme: "theme"
+        case .language: "language"
+        case .iCloudSync: "icloud_sync"
+        case .keepScreenOn: "keep_screen_on"
+        case .entryMethod: "entry_method"
+        case .display: "timer_display"
+        case .haptics: "timer_haptics"
+        case .startDelay: "start_delay_tenths"
+        case .inspection: "wca_inspection"
+        case .trainingInspection: "training_inspection"
+        case .inspectionVoice: "inspection_voice"
+        case .swipe(let direction, _): "swipe_" + direction.rawValue
+        case .includeDNF: "include_dnf_in_worst"
+        }
+    }
+
+    var value: String {
+        switch self {
+        case .theme(let theme): theme.rawValue
+        case .language(let language): language?.rawValue ?? "system"
+        case .entryMethod(let method): method.rawValue
+        case .display(let display): display.rawValue
+        case .startDelay(let tenths): String(min(20, max(0, tenths)))
+        case .inspectionVoice(let voice): voice.rawValue
+        case .swipe(_, let action): action.rawValue
+        case .iCloudSync(let enabled), .keepScreenOn(let enabled), .haptics(let enabled),
+             .inspection(let enabled), .trainingInspection(let enabled), .includeDNF(let enabled):
+            enabled ? "on" : "off"
+        }
+    }
+}
+
 enum ProductEvent: Equatable {
     case solveSaved(project: String)
     case statisticsViewed
@@ -92,6 +174,7 @@ enum ProductEvent: Equatable {
     case dctimerImportCompleted
     case wcaInspectionStarted(InspectionVoice)
     case solveListViewed(includesDNF: Bool)
+    case featureUsed(FeatureUse)
 
     var name: String {
         switch self {
@@ -101,6 +184,7 @@ enum ProductEvent: Equatable {
         case .dctimerImportCompleted: "dctimer_import_completed"
         case .wcaInspectionStarted: "wca_inspection_started"
         case .solveListViewed: "solve_list_viewed"
+        case .featureUsed: "feature_used"
         }
     }
 
@@ -116,6 +200,8 @@ enum ProductEvent: Equatable {
             return ["inspection_voice": voice.rawValue]
         case .solveListViewed(let includesDNF):
             return ["include_dnf_in_worst": includesDNF ? "on" : "off"]
+        case .featureUsed(let use):
+            return use.fields
         case .statisticsViewed, .dctimerImportStarted, .dctimerImportCompleted:
             return [:]
         }

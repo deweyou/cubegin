@@ -145,6 +145,7 @@ struct AssistFormulaView: View {
             .onChange(of: method) { _, selection in
                 onPreferencesChanged(preferences.saveMethod(selection))
                 search = .loading
+                AppTelemetry.record(.featureUsed(.assistMethodSelected(selection)))
             }
         }
     }
@@ -184,9 +185,12 @@ struct AssistFormulaView: View {
 
     private func moveSolutions(from source: IndexSet, to destination: Int) {
         guard canReorder, case .solutions(var solutions) = search else { return }
+        let previousOrder = solutions.map(\.id)
         solutions.move(fromOffsets: source, toOffset: destination)
+        guard solutions.map(\.id) != previousOrder else { return }
         onPreferencesChanged(preferences.saveOrder(solutions, for: method))
         search = .solutions(solutions)
+        AppTelemetry.record(.featureUsed(.assistReordered))
     }
 
     private func moveSolution(_ target: String, offset: Int) {

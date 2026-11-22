@@ -36,7 +36,9 @@ App 数据后会重新生成。剪贴板首行为 `did: …`，当前已取得�
 
 同意共享且启用 iCloud 同步时，App 单独查询 CloudKit 私有数据库中的共享用户 UUID，最多等一秒再配置 Firebase 和开启 GA4。Firebase 关闭采集时会拒绝设置 User-ID，因此 App 先开启采集，再设置已读到的 User-ID，然后发送等待中的业务事件。SDK 的启动自动事件可能早于 User-ID 写入。跨设备报表只纳入导出时实际带有 `user_id` 的事件。超时、记录不存在或 iCloud 不可用时，GA4 先按应用实例采集，晚到的 UUID 应用于后续事件。私有记录缺失时，后台尝试原子创建，冲突时读取已存的 ID。切换 iCloud 账号或关闭同步会清除 GA4 User-ID。撤回共享会停止采集并取消当前查询。
 
-产品埋点使用 `solve_saved`、`statistics_viewed`、`dctimer_import_started`、`dctimer_import_completed`、`wca_inspection_started` 和 `solve_list_viewed`。App 打开与会话继续复用 GA4 的自动事件。业务事件和故障事件都带当前 `app_build`。
+产品埋点使用 `solve_saved`、`statistics_viewed`、`dctimer_import_started`、`dctimer_import_completed`、`wca_inspection_started`、`solve_list_viewed` 和 `feature_used`。App 打开与会话继续复用 GA4 的自动事件。业务事件和故障事件都带当前 `app_build`。
+
+`feature_used` 用 `feature` 和 `action` 记录辅助公式、庆祝重播、成绩分组、图表切换和设置操作。辅助方法和图表记录内置类别。设置变更记录设定项及改前、改后值，清空成绩只记录操作范围。实际修改或执行成功后才采集对应操作。同步刷新和重试统计手动请求，公式、分组名称、成绩明细和隐私操作排除在产品采集范围外。
 
 GA4 的 `operation_failed` 与 Sentry 手动诊断共用三个字符串字段。
 

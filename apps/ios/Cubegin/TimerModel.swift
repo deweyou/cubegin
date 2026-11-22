@@ -666,7 +666,10 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         }
         guard save(solves, operation: .saveGroup, groups: updated) else { return false }
         groups = updated
-        if id == nil && selectNewGroup { selectGroup(groupID) }
+        if id == nil {
+            recordProductEvent(.featureUsed(.groupCreated))
+            if selectNewGroup { selectGroup(groupID) }
+        }
         return true
     }
 
@@ -711,13 +714,15 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
 
     @discardableResult
     func reorderGroups(_ ids: [String]) -> Bool {
-        guard started == nil, ids.count == eventGroups.count, Set(ids) == Set(eventGroups.map(\.id)) else { return false }
+        let previousOrder = eventGroups.map(\.id)
+        guard started == nil, ids.count == previousOrder.count, Set(ids) == Set(previousOrder) else { return false }
         let reordered = ids.compactMap { id in eventGroups.first(where: { $0.id == id }) }
         var updated = groups
         let positions = groups.indices.filter { groups[$0].event == event }
         for (position, group) in zip(positions, reordered) { updated[position] = group }
         guard save(solves, operation: .reorderGroups, groups: updated) else { return false }
         groups = updated
+        if ids != previousOrder { recordProductEvent(.featureUsed(.groupReordered)) }
         return true
     }
 
