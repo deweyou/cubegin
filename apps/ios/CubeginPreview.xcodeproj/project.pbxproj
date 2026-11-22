@@ -1,6 +1,10 @@
 // !$*UTF8*$!
 {archiveVersion = 1; classes = {}; objectVersion = 56; objects = {F0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CubeginApp.swift; sourceTree = "<group>"; };
 B0 = {isa = PBXBuildFile; fileRef = F0; };
+TELEMETRY = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTelemetry.swift; sourceTree = "<group>"; };
+TELEMETRYBUILD = {isa = PBXBuildFile; fileRef = TELEMETRY; };
+POLICY = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PrivacyPolicy.md; sourceTree = "<group>"; };
+POLICYBUILD = {isa = PBXBuildFile; fileRef = POLICY; };
 F1 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
 B1 = {isa = PBXBuildFile; fileRef = F1; };
 ASSIST = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistFormulaView.swift; sourceTree = "<group>"; };
@@ -29,11 +33,11 @@ LAUNCHSCREEN = {isa = PBXFileReference; lastKnownFileType = file.storyboard; pat
 LAUNCHSCREENBUILD = {isa = PBXBuildFile; fileRef = LAUNCHSCREEN; };
 APP = {isa = PBXFileReference; explicitFileType = wrapper.application; path = cubegin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 ROOT = {isa = PBXGroup; children = (SRC, PRODUCTS); sourceTree = "<group>"; };
-SRC = {isa = PBXGroup; path = Cubegin; children = (F0,F1,F2,RESULTSSYNC,F3,MANUALSOLVE,ASSIST,TABS,DCIMPORT,CHARTS,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
+SRC = {isa = PBXGroup; path = Cubegin; children = (F0,TELEMETRY,POLICY,F1,F2,RESULTSSYNC,F3,MANUALSOLVE,ASSIST,TABS,DCIMPORT,CHARTS,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
 PRODUCTS = {isa = PBXGroup; children = (APP); name = Products; sourceTree = "<group>"; };
-SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,B1,B2,RESULTSSYNCBUILD,B3,MANUALSOLVEBUILD,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
+SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,TELEMETRYBUILD,B1,B2,RESULTSSYNCBUILD,B3,MANUALSOLVEBUILD,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
 FRAMEWORKS = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-RESOURCES = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (ASSETSBUILD,INSPECTIONAUDIOBUILD,LAUNCHSCREENBUILD); runOnlyForDeploymentPostprocessing = 0; };
+RESOURCES = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (POLICYBUILD,ASSETSBUILD,INSPECTIONAUDIOBUILD,LAUNCHSCREENBUILD); runOnlyForDeploymentPostprocessing = 0; };
 TARGET = {isa = PBXNativeTarget; buildConfigurationList = TCL; buildPhases = (SOURCES,FRAMEWORKS,RESOURCES); buildRules = (); dependencies = (); name = CubeginPreview; packageProductDependencies = (); productName = cubegin; productReference = APP; productType = "com.apple.product-type.application"; };
 PROJECT = {isa = PBXProject; attributes = {LastUpgradeCheck = 2700; }; buildConfigurationList = PCL; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); mainGroup = ROOT; productRefGroup = PRODUCTS; projectDirPath = ""; projectRoot = ""; targets = (TARGET); packageReferences = (); };
 PDebug = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };

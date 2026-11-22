@@ -1,6 +1,8 @@
 import Foundation
 import SQLite3
 import Testing
+import UIKit
+import WebKit
 @testable import CubeginApp
 
 struct AppLanguageTests {
@@ -15,6 +17,134 @@ struct AppLanguageTests {
 
 @MainActor
 struct TimerModelTests {
+    @Test
+    func savesAnExplicitSharingChoicePerInstallation() throws {
+        let suite = "sharing-choice-test.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(true, forKey: "telemetry.diagnosticsEnabled")
+        #expect(AppTelemetry.sharingChoice(in: defaults) == .undecided)
+        AppTelemetry.chooseSharing(.declined, in: defaults)
+        #expect(AppTelemetry.sharingChoice(in: defaults) == .declined)
+        AppTelemetry.chooseSharing(.allowed, in: defaults)
+        let reopened = try #require(UserDefaults(suiteName: suite))
+        #expect(AppTelemetry.sharingChoice(in: reopened) == .allowed)
+    }
+
+    @Test
+    func createsOneInstallationIDPerDefaultsStore() throws {
+        let firstSuite = "installation-test.\(UUID())"
+        let secondSuite = "installation-test.\(UUID())"
+        let first = try #require(UserDefaults(suiteName: firstSuite))
+        let second = try #require(UserDefaults(suiteName: secondSuite))
+        defer {
+            first.removePersistentDomain(forName: firstSuite)
+            second.removePersistentDomain(forName: secondSuite)
+        }
+        let id = AppTelemetry.installationID(in: first)
+        #expect(UUID(uuidString: id) != nil)
+        let reopened = try #require(UserDefaults(suiteName: firstSuite))
+        #expect(AppTelemetry.installationID(in: reopened) == id)
+        #expect(AppTelemetry.installationID(in: second) != id)
+    }
+
+    @Test
+    func sendsOnlyUnexpectedErrorsToSentry() {
+        #expect(FailureReason.writeFailed.needsDiagnostic(for: .saveSolve))
+        #expect(FailureReason.writeFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.decodeFailed.needsDiagnostic(for: .loadResults))
+        #expect(FailureReason.engineFailed.needsDiagnostic(for: .generateScramble))
+        #expect(!FailureReason.engineFailed.needsDiagnostic(for: .loadDiagram))
+        #expect(!FailureReason.readFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(!FailureReason.invalidBackup.needsDiagnostic(for: .importDCTimer))
+        #expect(!FailureReason.incompatibleBackup.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.validationFailed.needsDiagnostic(for: .importDCTimer))
+        #expect(FailureReason.webContentTerminated.needsDiagnostic(for: .renderDiagram))
+        #expect(FailureReason.audioResourceMissing.needsDiagnostic(for: .playInspectionAudio))
+        #expect(FailureReason.audioDecodeFailed.needsDiagnostic(for: .playInspectionAudio))
+        #expect(!FailureReason.audioScheduleFailed.needsDiagnostic(for: .playInspectionAudio))
+        let diskFull = CocoaError(.fileWriteOutOfSpace)
+        #expect(FailureReason.writingResults(diskFull) == .diskFull)
+        #expect(!FailureReason.writingResults(diskFull).needsDiagnostic(for: .saveSolve))
+    }
+
+    @Test
+    func serializesTheSharedFailureSchema() {
+        let failure = OperationFailure(operation: .renderDiagram, reason: .webContentTerminated, impact: .degraded)
+        #expect(OperationFailure.eventName == "operation_failed")
+        #expect(failure.fields == [
+            "operation": "render_diagram",
+            "reason": "web_content_terminated",
+            "impact": "degraded"
+        ])
+    }
+
+    @Test
+    func addsTheInstalledBuildNumberToAnalyticsParameters() throws {
+        let buildNumber = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+        #expect(!buildNumber.isEmpty)
+        let failure = OperationFailure(operation: .loadResults, reason: .readFailed, impact: .blocked)
+        var expected = failure.fields
+        expected["app_build"] = buildNumber
+        #expect(AppTelemetry.analyticsParameters(failure.fields) == expected)
+    }
+
+    @Test
+    func retriesOnlyTheRequestedDiagramAndReportsTerminalFailureOnce() {
+        var recovery = SVGView.RenderRecovery()
+        recovery.request("current")
+        #expect(recovery.failed("prefetched") == .ignore)
+        #expect(recovery.failed("current") == .retry)
+        recovery.displayed()
+        #expect(recovery.failed("current") == .retry)
+        #expect(recovery.failed("current") == .report)
+        #expect(recovery.exhausted)
+        #expect(recovery.failed("current") == .ignore)
+        recovery.request("next")
+        #expect(!recovery.exhausted)
+        #expect(recovery.failed("current") == .ignore)
+        #expect(recovery.failed("next") == .retry)
+    }
+
+    @Test
+    func reportsRepeatedWebContentTerminationFromTheCurrentDiagram() throws {
+        var captured: [FailureReason] = []
+        let coordinator = SVGView.Coordinator { captured.append($0) }
+        let container = UIView()
+        coordinator.update(in: container, svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", nextSVG: nil)
+        let webView = try #require(container.subviews.first as? WKWebView)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        #expect(captured.isEmpty)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        coordinator.webViewWebContentProcessDidTerminate(webView)
+        #expect(captured == [.webContentTerminated])
+        coordinator.stop()
+    }
+
+    @Test
+    func reportsOneAudioFailurePerObservationAndStillAllowsTiming() async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            fixture.defaults.set(InspectionVoice.female.rawValue, forKey: TimerModel.inspectionVoiceKey)
+            var captured: [FailureReason] = []
+            let model = TimerModel(storage: fixture.storage, defaults: fixture.defaults,
+                                   loadInspectionPlayer: { _ in nil }, onInspectionAudioFailure: { captured.append($0) },
+                                   generateScramble: { _ in Scramble(algorithm: "R", svg: "") })
+            model.refresh()
+            try await waitForGeneration(model)
+            model.activateAccessibleTimer()
+            #expect(model.inspectionStarted != nil)
+            #expect(captured == [.audioResourceMissing])
+            model.activateAccessibleTimer()
+            #expect(model.started != nil)
+            model.interrupt()
+            #expect(captured == [.audioResourceMissing])
+            model.activateAccessibleTimer()
+            #expect(captured == [.audioResourceMissing, .audioResourceMissing])
+        }
+    }
+
     @Test
     func celebratesFirstValidResultOncePerSolveAndScopesRecordsToTheSelectedGroup() async throws {
         try await withFixture { fixture in
@@ -662,6 +792,7 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let backup = try dctimerImportFixture(in: fixture.directory)
             let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
+            #expect(plan.compatibilityFailure == nil)
             let clock = try #require(plan.sessions.first { $0.id == 1 })
             #expect(clock.event == "clock")
             #expect(clock.converted == 1)
@@ -678,6 +809,33 @@ struct TimerModelTests {
             let unknown = try #require(plan.sessions.first { $0.id == 3 })
             #expect(unknown.event == nil)
             #expect(unknown.skipped == 1)
+        }
+    }
+
+    @Test func classifiesDCTimerBackupsWithNoCompatibleResults() async throws {
+        try await withFixture { fixture in
+            let backup = try dctimerImportFixture(in: fixture.directory)
+            let rejectedScrambles = try DCTimerImportPlan(backup: backup) { _, _ in false }
+            #expect(rejectedScrambles.compatibilityFailure == .incompatibleBackup)
+
+            let unsupportedGroups = DCTimerBackup(sessions: backup.sessions.filter { $0.id == 2 || $0.id == 3 })
+            let unsupportedPlan = try DCTimerImportPlan(backup: unsupportedGroups, validate: Engine.acceptsImportedScramble)
+            #expect(!unsupportedPlan.sessions.isEmpty)
+            #expect(unsupportedPlan.compatibilityFailure == .incompatibleBackup)
+        }
+    }
+
+    @Test func separatesUnexpectedDCTimerValidationErrorsFromInvalidScrambles() async throws {
+        struct InternalEngineError: Error {}
+        try await withFixture { fixture in
+            let backup = try dctimerImportFixture(in: fixture.directory)
+            #expect(try !Engine.acceptsImportedScramble(event: "333", algorithm: "invalid"))
+            #expect(throws: DCTimerImportPlan.ValidationFailure.self) {
+                try DCTimerImportPlan(backup: backup) { _, _ in throw InternalEngineError() }
+            }
+            #expect(throws: CancellationError.self) {
+                try DCTimerImportPlan(backup: backup) { _, _ in throw CancellationError() }
+            }
         }
     }
 
@@ -701,6 +859,7 @@ struct TimerModelTests {
 
                 let reread = try DCTimerBackup.read(fixture.directory.appending(path: "spdcube.sqlite"))
                 let newPlan = try DCTimerImportPlan(backup: reread, validate: Engine.acceptsImportedScramble)
+                #expect(newPlan.compatibilityFailure == nil)
                 let otherDestination: DCTimerImportDestination = destination == .defaultGroups ? .originalSessions : .defaultGroups
                 #expect(try reopened.importDCTimer(newPlan, destination: otherDestination, language: .english) == 0)
                 #expect(reopened.solves.count == 3)
@@ -894,9 +1053,9 @@ struct TimerModelTests {
 
         @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now }) -> TimerModel {
             let generator = ScrambleGenerator()
-            return TimerModel(storage: storage, defaults: defaults, now: now) { event in
+            return TimerModel(storage: storage, defaults: defaults, now: now, generateScramble: { event in
                 await generator.generate(event)
-            }
+            })
         }
     }
 

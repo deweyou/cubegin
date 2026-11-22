@@ -3,8 +3,12 @@ import SwiftUI
 struct LaunchRootView: View {
     @Binding var hasFinishedLaunch: Bool
     @Environment(\.scenePhase) private var scenePhase
-    @State private var shouldPrepareTimer = false
+    @Environment(\.locale) private var locale
+    @State private var timerModel: TimerModel?
     @State private var timerIsReady = false
+    @State private var showsSharingPrompt = false
+
+    private var language: AppLanguage { locale.appLanguage }
 
     private var holdsLaunchScreen: Bool {
         #if DEBUG
@@ -17,8 +21,8 @@ struct LaunchRootView: View {
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            if shouldPrepareTimer || hasFinishedLaunch {
-                AppTabsView(isActive: hasFinishedLaunch)
+            if let timerModel {
+                AppTabsView(isActive: hasFinishedLaunch, model: timerModel)
                     .onAppear { timerIsReady = true }
                     .disabled(!hasFinishedLaunch)
                     .accessibilityHidden(!hasFinishedLaunch)
@@ -29,9 +33,16 @@ struct LaunchRootView: View {
                     LaunchView(
                         holdsLaunchScreen: holdsLaunchScreen,
                         timerIsReady: timerIsReady,
-                        prepareTimer: { shouldPrepareTimer = true },
+                        prepareTimer: prepareTimer,
                         finish: { hasFinishedLaunch = true }
                     )
+                }
+            }
+            .onChange(of: hasFinishedLaunch, initial: true) { _, finished in
+                guard finished else { return }
+                prepareTimer()
+                if AppTelemetry.showsSharingPreference, AppTelemetry.sharingChoice() == .undecided {
+                    showsSharingPrompt = true
                 }
             }
             .onChange(of: scenePhase) { _, phase in
@@ -39,7 +50,38 @@ struct LaunchRootView: View {
                     hasFinishedLaunch = true
                 }
             }
+            .alert(language.text("帮助改进 Cubegin", "Help improve Cubegin"), isPresented: $showsSharingPrompt) {
+                Button(language.text("同意", "Agree")) { AppTelemetry.chooseSharing(.allowed) }
+                    .keyboardShortcut(.defaultAction)
+                Button(language.text("暂不共享", "Don’t share"), role: .cancel) { AppTelemetry.chooseSharing(.declined) }
+            } message: {
+                Text(language.text(
+                    "是否共享崩溃报告、操作失败和功能使用情况，帮助我们修复问题、改进计时体验？",
+                    "Share crash reports, failed operations, and feature usage to help us fix issues and improve the timer?"
+                ))
+            }
 
+    }
+
+    private func prepareTimer() {
+        guard timerModel == nil else { return }
+        timerModel = TimerModel(
+            storage: Self.resultsStorage, cloudTransport: CloudKitResultsTransport.configured()
+        )
+    }
+
+    private static var resultsStorage: URL {
+#if DEBUG
+        // A UI test uses the same temporary file across both app launches.
+        if let value = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"],
+           let session = UUID(uuidString: value) {
+            return URL.temporaryDirectory.appending(path: "ui-test-solves-\(session.uuidString).json")
+        }
+        if CloudKitResultsTransport.showsSyncPreview {
+            return URL.temporaryDirectory.appending(path: "icloud-preview-solves.json")
+        }
+#endif
+        return URL.documentsDirectory.appending(path: "solves.json")
     }
 }
 

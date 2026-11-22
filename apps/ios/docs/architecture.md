@@ -1,6 +1,6 @@
 # App 架构
 
-CubeginApp 是 SwiftUI 入口；LaunchRootView 叠加一次性冷启动动画；AppTabsView 拥有
+CubeginApp 是 SwiftUI 入口；LaunchRootView 叠加一次性冷启动动画并创建计时模型；AppTabsView 拥有
 首页、成绩和设置导航，ContentView 负责首页响应式布局、系统玻璃控件和计时交互。
 TimerModel 是 MainActor 上的 Observable 产品状态，Engine 是后台 SDK 适配层。
 
@@ -25,6 +25,38 @@ iPhone Duo 内屏半展开竖屏时，布局通过系统折痕区域分隔。待
 云端缺少对应值时保留本地设置。本次同步会在修改某项设置时上传该项，启动时不会批量
 上传旧设备的本地设置。关闭开关后忽略云端设置更新，本机修改继续保存。只支持设置同步的正式构建沿用默认开启。模拟器和预览工程使用本地设置。
 语言默认跟随系统，手动选择简体中文或英语后会保留该选择。
+
+## 故障诊断
+
+在「设置 → 关于」连点五次「版本」可以复制设备 ID。它是 App 首次需要时生成的随机 UUID，保存在本地
+UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设置同步，清除
+App 数据后会重新生成。
+
+正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于 → 隐私」提供「帮助改进 Cubegin」开关和[隐私政策](../Cubegin/PrivacyPolicy.md)。同意后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
+GA4 的 `operation_failed` 与 Sentry 手动诊断共用三个字符串字段。
+
+| 字段 | 含义 |
+| --- | --- |
+| `operation` | 发生故障的操作 |
+| `reason` | 固定的失败原因 |
+| `impact` | `blocked` 表示操作被阻断，`degraded` 表示主要流程仍可用 |
+
+GA4 失败事件另外带有字符串参数 `app_build`，值取自当前 App 的 `CFBundleVersion`。
+可以结合 GA4 自动采集的 `app_version` 对比同一版本的不同构建。Sentry 在 App 上下文中采集构建号。
+
+Sentry 自动捕获崩溃。手动诊断按操作与原因聚合，同类每次运行最多每分钟发送一次，GA4
+仍按操作记录。P0–P2 由排障时根据实际影响范围分级。
+
+- 打乱图只在当前显示请求重试后仍失败时上报，未展示的预加载故障不计。
+- WCA 语音每次观察至多上报一次。资源缺失和解码失败同时上报 Sentry。
+- DCTimer 整份不兼容记 `incompatible_backup`。校验过程的内部异常中止导入，并向两端记录
+  `validation_failed`。无效打乱仍按不兼容处理。
+
+App 发送固定分类和脱敏诊断。原始错误文本、文件内容及成绩明细保存在设备。
+常规开发构建、预览、模拟器和测试关闭云端上报。真机验证用独立 Dev Bundle ID、Firebase 项目及 Sentry 项目。
+[真机验收](testing.md#真机验证故障诊断)
+
+## 成绩存储
 
 Solve 保存 UUID、秒数、项目、打乱、日期。成绩以 JSON 原子写入 App Documents 的
 solves.json，读取与写入失败通过界面提示。存储包含 solves 与 groups，写入时整体原子替换。

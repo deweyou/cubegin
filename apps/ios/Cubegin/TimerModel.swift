@@ -155,6 +155,19 @@ struct ManualSolveContext: Identifiable {
     let groupID: String?
 }
 
+private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
+    let inspectionID = UUID()
+    private let onDecodeError: @MainActor @Sendable (UUID) -> Void
+
+    init(onDecodeError: @escaping @MainActor @Sendable (UUID) -> Void) {
+        self.onDecodeError = onDecodeError
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_: AVAudioPlayer, error _: Error?) {
+        Task { @MainActor [onDecodeError, inspectionID] in onDecodeError(inspectionID) }
+    }
+}
+
 @MainActor @Observable final class TimerModel {
     static let startDelayKey = "timer.startDelayTenths"
     static let defaultStartDelayTenths = 0
@@ -177,6 +190,8 @@ struct ManualSolveContext: Identifiable {
     private(set) var inspectionStarted: ContinuousClock.Instant?
     private var inspectionPenalty: SolvePenalty?
     @ObservationIgnored private var inspectionPlayers: [AVAudioPlayer] = []
+    @ObservationIgnored private var reportedInspectionAudioFailure = false
+    @ObservationIgnored private var inspectionAudioDelegate: InspectionAudioDelegate?
 
     static func penalty(forInspection duration: Duration) -> SolvePenalty? {
         if duration >= .seconds(17) { return .dnf }
@@ -186,25 +201,61 @@ struct ManualSolveContext: Identifiable {
 
     private func beginInspection(at instant: ContinuousClock.Instant) {
         inspectionStarted = instant
+        reportedInspectionAudioFailure = false
         let voice = InspectionVoice(rawValue: defaults.string(forKey: Self.inspectionVoiceKey) ?? "") ?? .off
         guard voice != .off else { return }
+        inspectionAudioDelegate = InspectionAudioDelegate { [weak self] id in
+            guard let self, self.inspectionAudioDelegate?.inspectionID == id else { return }
+            self.reportInspectionAudioFailure(.audioDecodeFailed)
+        }
         let language = AppLanguage.saved == .english ? "en" : "zh"
+        var firstFailure: FailureReason?
         for seconds in [8, 12] {
             let name = "\(language)-\(voice.rawValue)-\(seconds)"
-            guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio"),
-                  let player = try? AVAudioPlayer(contentsOf: url), player.prepareToPlay() else { continue }
-            let remaining = now().duration(to: instant.advanced(by: .seconds(seconds))).components
-            let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
-            let session = AVAudioSession.sharedInstance()
-            // Account for the small preroll left in the clips and the current audio route.
-            let lead = 0.03 + session.outputLatency + session.ioBufferDuration
-            player.play(atTime: player.deviceCurrentTime + max(0, delay - lead))
-            inspectionPlayers.append(player)
+            if let failure = scheduleInspectionPrompt(name, at: instant.advanced(by: .seconds(seconds))),
+               firstFailure == nil || failure.needsDiagnostic(for: .playInspectionAudio) {
+                firstFailure = failure
+            }
         }
+        if let firstFailure { reportInspectionAudioFailure(firstFailure) }
+    }
+
+    private func scheduleInspectionPrompt(_ name: String, at instant: ContinuousClock.Instant) -> FailureReason? {
+        let player: AVAudioPlayer
+        do {
+            guard let loaded = try loadInspectionPlayer(name) else { return .audioResourceMissing }
+            player = loaded
+        } catch {
+            return .audioDecodeFailed
+        }
+        player.delegate = inspectionAudioDelegate
+        guard player.prepareToPlay() else { return .audioPrepareFailed }
+        let remaining = now().duration(to: instant).components
+        let delay = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+        let session = AVAudioSession.sharedInstance()
+        // Account for the small preroll left in the clips and the current audio route.
+        let lead = 0.03 + session.outputLatency + session.ioBufferDuration
+        guard player.play(atTime: player.deviceCurrentTime + max(0, delay - lead)) else { return .audioScheduleFailed }
+        inspectionPlayers.append(player)
+        return nil
+    }
+
+    private func reportInspectionAudioFailure(_ reason: FailureReason) {
+        guard inspectionStarted != nil, !reportedInspectionAudioFailure else { return }
+        reportedInspectionAudioFailure = true
+        onInspectionAudioFailure(reason)
+    }
+
+    static func bundledInspectionPlayer(_ name: String) throws -> AVAudioPlayer? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "InspectionAudio") else {
+            return nil
+        }
+        return try AVAudioPlayer(contentsOf: url)
     }
 
     func endInspection() {
         inspectionStarted = nil
+        inspectionAudioDelegate = nil
         for player in inspectionPlayers { player.stop() }
         inspectionPlayers.removeAll()
     }
@@ -301,6 +352,8 @@ struct ManualSolveContext: Identifiable {
     private let storage: URL
     private let defaults: UserDefaults
     private let now: () -> ContinuousClock.Instant
+    private let loadInspectionPlayer: @MainActor (String) throws -> AVAudioPlayer?
+    private let onInspectionAudioFailure: @MainActor (FailureReason) -> Void
     private let generateScramble: @Sendable (String) async throws -> Scramble
 
     private static let lastCloudSyncKey = "results.lastSuccessfulCloudSync"
@@ -408,7 +461,7 @@ struct ManualSolveContext: Identifiable {
             if cloudState == nil || cloudAccount == nil {
                 var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
                 try replica.importSolves(persistedSolves)
-                guard save(persistedSolves, remoteState: (replica.state, account)) else {
+                guard save(persistedSolves, operation: nil, remoteState: (replica.state, account)) else {
                     cloudSyncStatus = .failed(.localStorage)
                     return
                 }
@@ -465,7 +518,7 @@ struct ManualSolveContext: Identifiable {
             let updated = replica.solves
             let visibleIDs = Set(persistedSolves.map(\.id)).union(updated.map(\.id))
             let unsaved = solves.filter { !visibleIDs.contains($0.id) }
-            guard save(updated, groups: updatedGroups, remoteState: (replica.state, account)) else {
+            guard save(updated, operation: nil, groups: updatedGroups, remoteState: (replica.state, account)) else {
                 cloudSyncStatus = .failed(.localStorage)
                 return
             }
@@ -514,6 +567,10 @@ struct ManualSolveContext: Identifiable {
         defaults: UserDefaults = .standard,
         cloudTransport: (any ResultsCloudTransport)? = nil,
         now: @escaping () -> ContinuousClock.Instant = { .now },
+        loadInspectionPlayer: @escaping @MainActor (String) throws -> AVAudioPlayer? = TimerModel.bundledInspectionPlayer,
+        onInspectionAudioFailure: @escaping @MainActor (FailureReason) -> Void = {
+            AppTelemetry.record(.playInspectionAudio, $0, impact: .degraded)
+        },
         generateScramble: @escaping @Sendable (String) async throws -> Scramble = Engine.scramble
     ) {
         self.storage = storage
@@ -526,6 +583,8 @@ struct ManualSolveContext: Identifiable {
             lastSuccessfulCloudSync = defaults.object(forKey: Self.lastCloudSyncKey) as? Date
         }
         self.now = now
+        self.loadInspectionPlayer = loadInspectionPlayer
+        self.onInspectionAudioFailure = onInspectionAudioFailure
         self.generateScramble = generateScramble
         self.standardEvent = ScrambleCatalog.restored(Self.standardEventKey, training: false, defaults: defaults)
         self.trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
@@ -549,6 +608,7 @@ struct ManualSolveContext: Identifiable {
             let fileError = error as NSError
             if fileError.domain != NSCocoaErrorDomain || fileError.code != NSFileReadNoSuchFileError {
                 storageReadFailed = true
+                AppTelemetry.record(.loadResults, error is DecodingError ? .decodeFailed : .readFailed)
                 self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription
             }
         }
@@ -599,7 +659,7 @@ struct ManualSolveContext: Identifiable {
         } else {
             updated.append(SolveGroup(id: groupID, event: event, name: name, isDefault: isDefault))
         }
-        guard save(solves, groups: updated) else { return false }
+        guard save(solves, operation: .saveGroup, groups: updated) else { return false }
         groups = updated
         if id == nil && selectNewGroup { selectGroup(groupID) }
         return true
@@ -627,7 +687,7 @@ struct ManualSolveContext: Identifiable {
         for index in updated.indices where ids.contains(updated[index].id) {
             updated[index].groupID = targetID
         }
-        guard save(updated) else { return false }
+        guard save(updated, operation: .moveSolves) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
         return true
@@ -651,7 +711,7 @@ struct ManualSolveContext: Identifiable {
         var updated = groups
         let positions = groups.indices.filter { groups[$0].event == event }
         for (position, group) in zip(positions, reordered) { updated[position] = group }
-        guard save(solves, groups: updated) else { return false }
+        guard save(solves, operation: .reorderGroups, groups: updated) else { return false }
         groups = updated
         return true
     }
@@ -665,7 +725,7 @@ struct ManualSolveContext: Identifiable {
         let updatedSolves = solves.filter {
             $0.event != event || ($0.groupID ?? SolveGroup.initialID(for: $0.event)) != id
         }
-        guard save(updatedSolves, groups: updatedGroups) else { return false }
+        guard save(updatedSolves, operation: .deleteGroup, groups: updatedGroups) else { return false }
         groups = updatedGroups
         solves = updatedSolves
         if selectedGroupID == id { selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id }
@@ -718,6 +778,7 @@ struct ManualSolveContext: Identifiable {
                 self.prefetchNextScramble()
             } catch {
                 guard !Task.isCancelled, let self, self.event == event else { return }
+                if !(error is CancellationError) { AppTelemetry.record(.generateScramble, .engineFailed) }
                 self.error = error.localizedDescription
                 self.busy = false
             }
@@ -829,7 +890,7 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
                           penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
-        let saved = save([solve] + solves)
+        let saved = save([solve] + solves, operation: .saveSolve)
         finishSolve(solve, saved: saved)
     }
 
@@ -853,7 +914,7 @@ struct ManualSolveContext: Identifiable {
         let solve = Solve(seconds: Double(milliseconds) / 1_000, event: context.event, scramble: context.scramble,
                           penalty: penalty, groupID: context.groupID)
         let previousError = error
-        if !save([solve] + solves) {
+        if !save([solve] + solves, operation: .saveSolve) {
             let message = error
             error = previousError
             return message ?? language.text("成绩保存失败。", "Could not save the result.")
@@ -887,7 +948,7 @@ struct ManualSolveContext: Identifiable {
         cancelPress()
         var updated = solves
         updated[index].penalty = penalty
-        guard save(updated) else { return false }
+        guard save(updated, operation: .editPenalty) else { return false }
         if id == lastSolveID { lastSolveWasSaved = true }
         solves = updated
         return true
@@ -899,11 +960,11 @@ struct ManualSolveContext: Identifiable {
     }
 
     @discardableResult
-    func deleteSolves(_ ids: Set<Solve.ID>) -> Bool {
+    func deleteSolves(_ ids: Set<Solve.ID>, operation: FailedOperation = .deleteSolves) -> Bool {
         guard started == nil, !ids.isEmpty, solves.contains(where: { ids.contains($0.id) }) else { return false }
         cancelPress()
         let updated = solves.filter { !ids.contains($0.id) }
-        guard save(updated) else { return false }
+        guard save(updated, operation: operation) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
         return true
@@ -963,7 +1024,8 @@ struct ManualSolveContext: Identifiable {
 
         guard !imported.isEmpty else { return 0 }
         let updated = (solves + imported).sorted(by: Solve.newestFirst)
-        guard save(updated, groups: updatedGroups, importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
+        guard save(updated, operation: .importDCTimer, groups: updatedGroups,
+                   importedIDs: Set(imported.map(\.id)), importedAt: importedAt) else {
             throw CocoaError(.fileWriteUnknown)
         }
         solves = updated
@@ -973,12 +1035,13 @@ struct ManualSolveContext: Identifiable {
 
     func undoLastImport() -> Int? {
         let count = lastImportCount
-        guard deleteSolves(lastImportedSolveIDs) else { return nil }
+        guard deleteSolves(lastImportedSolveIDs, operation: .undoImport) else { return nil }
         return count
     }
 
-    private func save(_ results: [Solve], groups: [SolveGroup]? = nil, importedIDs: Set<Solve.ID>? = nil,
-                      importedAt: Date? = nil, remoteState: (ResultsSyncReplica.State, String)? = nil) -> Bool {
+    private func save(_ results: [Solve], operation: FailedOperation?, groups: [SolveGroup]? = nil,
+                      importedIDs: Set<Solve.ID>? = nil, importedAt: Date? = nil,
+                      remoteState: (ResultsSyncReplica.State, String)? = nil) -> Bool {
         guard !storageReadFailed else {
             error = AppLanguage.saved.text(
                 "无法读取已有成绩。请恢复成绩文件后重新打开 Cubegin。",
@@ -990,6 +1053,7 @@ struct ManualSolveContext: Identifiable {
         let remaining = batch.isEmpty ? batch : batch.intersection(results.lazy.map(\.id))
         var nextCloudState = remoteState?.0 ?? cloudState
         let nextCloudAccount = remoteState?.1 ?? cloudAccount
+        var failureReason = FailureReason.encodeFailed
         do {
             if remoteState == nil, cloudState != nil || (cloudSyncEnabled && supportsResultsSync) {
                 var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
@@ -1004,7 +1068,9 @@ struct ManualSolveContext: Identifiable {
                 lastImportDate: remaining.isEmpty ? nil : (importedAt ?? lastImportDate),
                 cloudState: nextCloudState, cloudAccount: nextCloudAccount
             )
-            try JSONEncoder().encode(store).write(to: storage, options: .atomic)
+            let encoded = try JSONEncoder().encode(store)
+            failureReason = .writeFailed
+            try encoded.write(to: storage, options: .atomic)
             lastImportedSolveIDs = remaining
             lastImportDate = store.lastImportDate
             persistedSolves = results
@@ -1016,6 +1082,8 @@ struct ManualSolveContext: Identifiable {
             }
             return true
         } catch {
+            if failureReason == .writeFailed { failureReason = .writingResults(error) }
+            if let operation { AppTelemetry.record(operation, failureReason) }
             self.error = AppLanguage.saved.text("成绩保存失败：", "Could not save results: ") + error.localizedDescription
             return false
         }

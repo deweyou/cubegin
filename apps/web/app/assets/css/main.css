@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  --background: light-dark(#ffffff, #000000);
+  --foreground: light-dark(#16171d, #f5f5fa);
+  --muted-foreground: light-dark(#373940, #ccd0da);
+  --border: light-dark(#d7dbe5, #393d47);
+  --primary: light-dark(#0755a2, #93c9ff);
+  --primary-foreground: light-dark(#ffffff, #071422);
+  --accent: light-dark(#e5ebf3, #252a36);
+  --accent-foreground: light-dark(#171b25, #f5f5fa);
+  --secondary: light-dark(#eef1f6, #1c202a);
+  --secondary-foreground: light-dark(#292e39, #e1e4ed);
+  --destructive: light-dark(#a42838, #ff8996);
+  --ring: light-dark(#2067b2, #80baff);
+  --input: var(--border);
+  --radius: 0.625rem;
+  --gradient-cyan: light-dark(#32ade6, #64d2ff);
+  --gradient-indigo: light-dark(#5856d6, #5e5ce6);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-md: var(--radius);
+}
+
+body {
+  isolation: isolate;
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+}
+
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--gradient-cyan) 14%, var(--background)),
+    var(--background),
+    color-mix(in srgb, var(--gradient-indigo) 12%, var(--background))
+  );
+  content: "";
+  pointer-events: none;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.site-frame {
+  width: min(46rem, calc(100% - 2.5rem));
+  margin-inline: auto;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 4.25rem;
+}
+
+.brand {
+  display: block;
+}
+
+.brand img {
+  width: auto;
+  height: 2.25rem;
+}
+
+.brand-dark,
+:root[data-theme="dark"] .brand-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .brand-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .brand-light {
+    display: none;
+  }
+
+  :root:not([data-theme]) .brand-dark {
+    display: block;
+  }
+}
+
+.policy-page {
+  padding-block: clamp(1.5rem, 5vw, 3.5rem) 4rem;
+}
+
+.policy-page h1 {
+  margin-bottom: clamp(1.75rem, 4vw, 2.75rem);
+  font-size: clamp(1.875rem, 4.6vw, 2.75rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.18;
+}
+
+.policy-body {
+  color: var(--muted-foreground);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.policy-body h2 {
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+  scroll-margin-top: 1.5rem;
+}
+
+.policy-body h2:not(:first-child) {
+  margin-top: 2rem;
+}
+
+.policy-body p + p {
+  margin-top: 0.75rem;
+}
+
+.policy-body a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}

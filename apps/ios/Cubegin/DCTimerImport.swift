@@ -27,6 +27,14 @@ struct DCTimerBackup: Sendable {
         case invalidResult
         case noResults
 
+        var telemetryReason: FailureReason {
+            switch self {
+            case .invalidBackup: .invalidBackup
+            case .invalidResult: .invalidResult
+            case .noResults: .emptyBackup
+            }
+        }
+
         var errorDescription: String? {
             let language = AppLanguage.saved
             switch self {
@@ -146,6 +154,8 @@ struct DCTimerBackup: Sendable {
 }
 
 struct DCTimerImportPlan: Identifiable, Sendable {
+    struct ValidationFailure: Error {}
+
     struct Session: Identifiable, Sendable {
         let id: Int64
         let name: String
@@ -157,6 +167,10 @@ struct DCTimerImportPlan: Identifiable, Sendable {
 
     let id = UUID()
     let sessions: [Session]
+
+    var compatibilityFailure: FailureReason? {
+        sessions.contains { !$0.solves.isEmpty } ? nil : .incompatibleBackup
+    }
 
     // WCA IDs follow DCTimer-Android's Scrambler table. Positive IDs below
     // follow the categories and subsets in DCTimer-iOS's Scrambler table.
@@ -180,7 +194,14 @@ struct DCTimerImportPlan: Identifiable, Sendable {
             for entry in source.entries {
                 let trimmed = entry.scramble.trimmingCharacters(in: .whitespacesAndNewlines)
                 let scramble = event == "clock" ? Self.normalizeClock(trimmed) : trimmed
-                guard !scramble.isEmpty, try validate(event, scramble) else { continue }
+                guard !scramble.isEmpty else { continue }
+                do {
+                    guard try validate(event, scramble) else { continue }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    throw ValidationFailure()
+                }
                 if scramble != trimmed { converted += 1 }
                 solves.append(Solve(id: entry.id, seconds: Double(entry.milliseconds) / 1000, event: event,
                                     scramble: scramble, date: entry.date, penalty: entry.penalty))
@@ -267,7 +288,10 @@ struct ResultsImportView: View {
         .fileImporter(isPresented: $isPicking, allowedContentTypes: [.item]) { selection in
             switch selection {
             case .success(let url): read(url)
-            case .failure:
+            case .failure(let error):
+                guard (error as NSError).domain != NSCocoaErrorDomain
+                    || (error as NSError).code != NSUserCancelledError else { return }
+                AppTelemetry.record(.importDCTimer, .openFailed)
                 noticeIcon = "exclamationmark.circle"
                 notice = language.text("无法打开文件，请重试。", "Couldn’t open the file. Try again.")
             }
@@ -355,13 +379,26 @@ struct ResultsImportView: View {
         Task {
             defer { isReading = false }
             do {
-                plan = try await Task.detached(priority: .userInitiated) {
+                let loadedPlan = try await Task.detached(priority: .userInitiated) {
                     defer { if removeAfterRead { try? FileManager.default.removeItem(at: url) } }
                     return try DCTimerImportPlan(backup: DCTimerBackup.read(url), validate: Engine.acceptsImportedScramble)
                 }.value
+                guard !Task.isCancelled else { return }
+                if let reason = loadedPlan.compatibilityFailure {
+                    AppTelemetry.record(.importDCTimer, reason)
+                }
+                plan = loadedPlan
             } catch let error as DCTimerBackup.Failure {
+                guard !Task.isCancelled else { return }
+                AppTelemetry.record(.importDCTimer, error.telemetryReason)
                 notice = error.localizedDescription
+            } catch is DCTimerImportPlan.ValidationFailure {
+                guard !Task.isCancelled else { return }
+                AppTelemetry.record(.importDCTimer, .validationFailed)
+                notice = language.text("无法校验备份中的打乱，请重试。", "Couldn’t validate scrambles in the backup. Try again.")
             } catch {
+                guard !Task.isCancelled, !(error is CancellationError) else { return }
+                AppTelemetry.record(.importDCTimer, .readFailed)
                 notice = language.text("无法读取备份，请重新选择文件。", "Couldn’t read the backup. Select the file again.")
             }
         }

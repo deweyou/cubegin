@@ -1736,17 +1736,57 @@ struct SVGView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
-        coordinator.displayedSVG = nil
+        coordinator.stop()
+    }
+
+    struct RenderRecovery {
+        enum Action { case ignore, retry, report }
+
+        private(set) var desiredSVG: String?
+        private var attemptedRetry = false
+        private(set) var exhausted = false
+
+        mutating func request(_ svg: String?) {
+            guard desiredSVG != svg else { return }
+            desiredSVG = svg
+            attemptedRetry = false
+            exhausted = false
+        }
+
+        mutating func displayed() {
+            attemptedRetry = false
+        }
+
+        mutating func failed(_ svg: String?) -> Action {
+            guard let svg, svg == desiredSVG, !exhausted else { return .ignore }
+            if !attemptedRetry {
+                attemptedRetry = true
+                return .retry
+            }
+            exhausted = true
+            return .report
+        }
     }
 
     // Keep the visible diagram intact while the other WebView loads its replacement.
     final class Coordinator: NSObject, WKNavigationDelegate {
         private var alignment = ContentAlignment.bottomTrailing
+        private let onFailure: @MainActor (FailureReason) -> Void
+
+        init(onFailure: @escaping @MainActor (FailureReason) -> Void = {
+            AppTelemetry.record(.renderDiagram, $0, impact: .degraded)
+        }) {
+            self.onFailure = onFailure
+        }
 
         func setAlignment(_ value: ContentAlignment) {
             guard alignment != value else { return }
             alignment = value
-            slots.forEach { $0.svg = nil }
+            for slot in slots {
+                slot.svg = nil
+                slot.navigation = nil
+                slot.ready = false
+            }
         }
         @MainActor private final class Slot {
             let view: WKWebView
@@ -1768,11 +1808,12 @@ struct SVGView: UIViewRepresentable {
 
         private var slots: [Slot] = []
         private var visible: Slot?
-        private var desiredSVG: String?
+        private var recovery = RenderRecovery()
         var displayedSVG: Binding<String?>?
 
         func update(in container: UIView, svg: String?, nextSVG: String?) {
-            desiredSVG = svg
+            recovery.request(svg)
+            guard !recovery.exhausted else { return }
             if let svg, visible?.svg != svg {
                 if let loaded = slots.first(where: { $0.svg == svg && $0.ready }) {
                     show(loaded)
@@ -1781,10 +1822,21 @@ struct SVGView: UIViewRepresentable {
                     return
                 }
             }
-            if let nextSVG, nextSVG != visible?.svg {
+            if let nextSVG, !slots.contains(where: { $0.svg == nextSVG }) {
                 load(nextSVG, in: container)
             }
             reportDisplayedSVG()
+        }
+
+        func stop() {
+            recovery.request(nil)
+            displayedSVG = nil
+            for slot in slots {
+                slot.view.navigationDelegate = nil
+                slot.view.stopLoading()
+            }
+            visible = nil
+            slots.removeAll()
         }
 
         private func load(_ svg: String, in container: UIView) {
@@ -1797,13 +1849,13 @@ struct SVGView: UIViewRepresentable {
                 slot.view.navigationDelegate = self
                 slot.view.frame = container.bounds
                 slot.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                // Keep the first page renderable. Hide only the spare used for preloading.
-                slot.view.isHidden = visible != nil
                 container.addSubview(slot.view)
             }
-            guard slot.svg != svg else { return }
+            guard slot.svg != svg || (!slot.ready && slot.navigation == nil) else { return }
             slot.svg = svg
             slot.ready = false
+            // Keep the first page renderable. Hide only a replacement or preload.
+            slot.view.isHidden = visible != nil
             let encodedSVG = Data(svg.utf8).base64EncodedString()
             slot.navigation = slot.view.loadHTMLString("""
                 <!doctype html>
@@ -1814,33 +1866,79 @@ struct SVGView: UIViewRepresentable {
                 </style>
                 <img src="data:image/svg+xml;base64,\(encodedSVG)" alt="">
                 """, baseURL: nil)
+            if slot.navigation == nil { fail(slot, reason: .webNavigationFailed) }
         }
 
         private func show(_ slot: Slot) {
             visible?.view.isHidden = true
             slot.view.isHidden = false
             visible = slot
+            recovery.displayed()
+        }
+
+        private func fail(_ slot: Slot, reason: FailureReason) {
+            slot.navigation = nil
+            slot.ready = false
+            if visible === slot {
+                slot.view.isHidden = true
+                visible = nil
+            }
+            guard let svg = slot.svg, let container = slot.view.superview else { return }
+            switch recovery.failed(svg) {
+            case .ignore:
+                break
+            case .retry:
+                load(svg, in: container)
+            case .report:
+                visible?.view.isHidden = true
+                visible = nil
+                onFailure(reason)
+            }
+        }
+
+        private func navigationFailed(_ webView: WKWebView, _ navigation: WKNavigation?, error: Error) {
+            guard let navigation, let slot = slots.first(where: { $0.view === webView }),
+                  slot.navigation === navigation else { return }
+            let error = error as NSError
+            if error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
+                slot.navigation = nil
+                return
+            }
+            fail(slot, reason: .webNavigationFailed)
         }
 
         private func reportDisplayedSVG() {
-            guard let svg = desiredSVG, visible?.svg == svg,
+            guard let svg = recovery.desiredSVG, visible?.svg == svg,
                   let displayedSVG, displayedSVG.wrappedValue != svg else { return }
             // Cached diagrams can be selected during updateUIView. Publish after that update.
             Task { @MainActor [weak self] in
-                guard let self, self.desiredSVG == svg, self.visible?.svg == svg,
+                guard let self, self.recovery.desiredSVG == svg, self.visible?.svg == svg,
                       let displayedSVG = self.displayedSVG else { return }
                 displayedSVG.wrappedValue = svg
             }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard let slot = slots.first(where: { $0.view === webView }),
+            guard let navigation, let slot = slots.first(where: { $0.view === webView }),
                   slot.navigation === navigation else { return }
             slot.ready = true
-            if let desiredSVG, slot.svg == desiredSVG {
+            if let desiredSVG = recovery.desiredSVG, slot.svg == desiredSVG {
                 show(slot)
                 reportDisplayedSVG()
             }
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            navigationFailed(webView, navigation, error: error)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            navigationFailed(webView, navigation, error: error)
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            guard let slot = slots.first(where: { $0.view === webView }) else { return }
+            fail(slot, reason: .webContentTerminated)
         }
     }
 }

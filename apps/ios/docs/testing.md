@@ -189,3 +189,35 @@ CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
 
 模拟器用 Debug 启动参数 `--preview-icloud-error` 或 `--preview-icloud-success`，可以从「设置 → 通用 → 同步」检查模拟的进度、错误、成功时间和刷新。用 `--preview-icloud-account-error` 检查长错误文案换行时刷新图标是否与首行居中，并在系统最大字号下核对应用字体尺寸。
 单测用内存服务验证成绩和分组的合并、偏好同步与重试，全程使用临时成绩文件。
+
+## 真机验证故障诊断
+
+在忽略提交的 `apps/ios/TelemetryConfig/` 中放置配置，也可通过
+`CUBEGIN_TELEMETRY_CONFIG_DIR` 指定目录。Dev 和正式版使用独立的 Firebase 项目、
+GA4 属性和 Sentry 项目。
+
+| 构建 | Firebase 配置文件 | Sentry DSN 文件 |
+| --- | --- | --- |
+| 真机 Debug（Cubegin Dev） | `io.github.deweyou.cubegin.dev.plist` | `io.github.deweyou.cubegin.dev.sentry-dsn.txt` |
+| 真机 Release（Cubegin） | `io.github.deweyou.cubegin.plist` | `io.github.deweyou.cubegin.sentry-dsn.txt` |
+
+构建脚本按构建类型和 Bundle ID 选择配置，模拟器构建不打包配置。正式 Release 归档
+或显式指定配置目录时，匹配的两个文件缺一都会中止。普通 Release 编译检查可以省略两份配置。
+发布时设置实际的 App 版本和构建号。
+
+按[本地真机安装](#本地真机安装)安装 Debug 版后，显式开启该次启动的诊断并启用 GA DebugView。
+
+```sh
+xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
+  io.github.deweyou.cubegin.dev -cubegin-telemetry-qa -FIRDebugEnabled
+```
+
+导入无效备份，在 GA4 DebugView 确认 `operation_failed`。用测试数据验证写入失败，
+确认 GA4 同时记录失败，Sentry 的 `device_qa` 环境收到对应的非致命诊断。
+核对两端手动错误都带有 `operation`、`reason` 和 `impact`。
+核对 GA4 事件参数 `app_build` 与安装包的 `CFBundleVersion` 一致。
+在专用验证构建中触发测试崩溃后重启，确认 Sentry 收到崩溃。发布归档保留并上传匹配的 dSYM，
+上传令牌配置在发布环境中。核对诊断中的设备 ID 与连点五次「版本」复制的值一致，再检查上报只包含预期字段。
+发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
+
+首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。设备 ID 复制入口由 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 验证。

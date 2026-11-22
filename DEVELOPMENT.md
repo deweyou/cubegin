@@ -29,6 +29,23 @@ cargo xtask verify-packages  # 在独立消费项目安装 npm 压缩包
 cargo xtask release --version 0.1.0 --dry-run
 ```
 
+### Cubegin 官网
+
+官网位于 `apps/web`，使用 Nuxt、Vue、TypeScript、Tailwind CSS 和 shadcn-vue。
+使用 Node 24.15 或同等受 Nuxt 支持的版本。运行以下命令后，可在
+<http://127.0.0.1:4489/privacy> 预览中文政策，英文路由为 `/en/privacy`。
+
+```sh
+pnpm --filter @cubegin/web dev
+pnpm --filter @cubegin/web check
+pnpm --filter @cubegin/web generate
+```
+
+静态部署目录为 `apps/web/.output/public`。如需按请求 SSR，运行
+`pnpm --filter @cubegin/web build`，再启动 `node apps/web/.output/server/index.mjs`。
+两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
+网页使用的 shadcn-vue Button 按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
+
 ## CI 检查
 
 各 workflow 根据自己声明的路径触发。Rust Core 改动会触发 Rust、Web、Apple 和
