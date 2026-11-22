@@ -3,6 +3,16 @@ import SQLite3
 import Testing
 @testable import CubeginApp
 
+struct AppLanguageTests {
+    @Test func followsPreferredSystemLanguagesUnlessTheUserChoosesOne() {
+        #expect(AppLanguage.resolve(nil, preferredLanguages: ["zh-Hant-TW", "en"]) == .chinese)
+        #expect(AppLanguage.resolve(AppLanguage.systemPreference, preferredLanguages: ["fr", "en-GB"]) == .english)
+        #expect(AppLanguage.resolve(AppLanguage.systemPreference, preferredLanguages: ["fr"]) == .english)
+        #expect(AppLanguage.resolve("en", preferredLanguages: ["zh-Hans"]) == .english)
+        #expect(AppLanguage.resolve("zh-Hans", preferredLanguages: ["en"]) == .chinese)
+    }
+}
+
 @MainActor
 struct TimerModelTests {
     @Test

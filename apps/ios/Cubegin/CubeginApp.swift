@@ -3,7 +3,7 @@ import UIKit
 
 @main
 struct CubeginApp: App {
-    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
+    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = AppLanguage.systemPreference
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @State private var hasFinishedLaunch = false
 
@@ -59,6 +59,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case english = "en"
 
     static let preferenceKey = "app.language"
+    static let systemPreference = ""
     static var saved: Self {
         resolve(UserDefaults.standard.string(forKey: preferenceKey))
     }

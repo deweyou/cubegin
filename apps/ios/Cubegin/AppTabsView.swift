@@ -1849,7 +1849,7 @@ private struct SettingsView: View {
     let isSelected: Bool
     private enum Page: Hashable { case gestures, imports, clearResults, sync }
     @State private var path: [Page] = []
-    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
+    @AppStorage(AppLanguage.preferenceKey) private var languageOverride = AppLanguage.systemPreference
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
     @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
@@ -1938,13 +1938,15 @@ private struct SettingsView: View {
                     }
                     .accessibilityIdentifier("settings.theme")
                     Picker(language.text("语言", "Language"), selection: Binding(
-                        get: { AppLanguage.resolve(languageOverride) },
-                        set: { syncedLanguage.wrappedValue = $0.rawValue }
+                        get: { AppLanguage(rawValue: languageOverride)?.rawValue ?? AppLanguage.systemPreference },
+                        set: { syncedLanguage.wrappedValue = $0 }
                     )) {
+                        Text(language.text("跟随系统", "System")).tag(AppLanguage.systemPreference)
                         ForEach(AppLanguage.allCases) { option in
-                            Text(option.name).tag(option)
+                            Text(option.name).tag(option.rawValue)
                         }
                     }
+                    .accessibilityIdentifier("settings.language")
                     if model.supportsCloudSync {
                         cardRowButton {
                             path.append(.sync)

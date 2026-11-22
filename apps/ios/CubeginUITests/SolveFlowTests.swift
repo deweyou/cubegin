@@ -229,6 +229,38 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testLanguageCanReturnToFollowingTheSystem() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-AppleLanguages", "(en)"]
+        app.launch()
+
+        let settings = app.tabBars.buttons.matching(NSPredicate(format: "label IN %@", ["Settings", "设置"])).firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let language = app.buttons["settings.language"]
+        XCTAssertTrue(language.waitForExistence(timeout: 5))
+        language.tap()
+        let chinese = app.buttons["简体中文"]
+        XCTAssertTrue(chinese.waitForExistence(timeout: 5))
+        chinese.tap()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 5))
+
+        language.tap()
+        let system = app.buttons["跟随系统"]
+        XCTAssertTrue(system.waitForExistence(timeout: 5))
+        system.tap()
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 20))
+    }
+
+    @MainActor
     func testResultsSyncShowsRetryAfterAnOptInError() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
