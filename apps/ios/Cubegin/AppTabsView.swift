@@ -70,6 +70,9 @@ struct AppTabsView: View {
            let session = UUID(uuidString: value) {
             return URL.temporaryDirectory.appending(path: "ui-test-solves-\(session.uuidString).json")
         }
+        if CloudKitResultsTransport.showsSyncPreview {
+            return URL.temporaryDirectory.appending(path: "icloud-preview-solves.json")
+        }
 #endif
         return URL.documentsDirectory.appending(path: "solves.json")
     }
@@ -83,7 +86,7 @@ struct AppTabsView: View {
     private var showsTimingLayout: Bool {
         model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
     }
-    @State private var selection: Destination = CloudKitResultsTransport.showsErrorPreview ? .settings : .home
+    @State private var selection: Destination = CloudKitResultsTransport.showsSyncPreview ? .settings : .home
     @State private var resultsPage = ResultsPage.solves
     @State private var isSelectingResults = false
     @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
@@ -2043,7 +2046,11 @@ private struct SyncSettingsView: View {
     var body: some View {
         Form {
             CardSection {
-                iCloudSyncControls
+                iCloudSyncToggle
+            } footer: {
+                if model.cloudSyncEnabled, model.supportsResultsSync {
+                    syncStatus
+                }
             }
         }
         .appBackground()
@@ -2052,12 +2059,12 @@ private struct SyncSettingsView: View {
         .toolbar(.visible, for: .navigationBar)
     }
 
-    @ViewBuilder private var iCloudSyncControls: some View {
+    private var iCloudSyncToggle: some View {
         let title = language.text("iCloud 同步", "iCloud Sync")
         let description = model.supportsResultsSync
             ? language.text("跨设备同步成绩和设置。", "Sync results and settings across devices.")
             : language.text("跨设备同步常用设置。", "Sync preferences across devices.")
-        Toggle(isOn: Binding(
+        return Toggle(isOn: Binding(
             get: { model.cloudSyncEnabled },
             set: { model.setCloudSyncEnabled($0) }
         )) {
@@ -2073,48 +2080,59 @@ private struct SyncSettingsView: View {
         .accessibilityLabel(title)
         .accessibilityHint(description)
         .accessibilityIdentifier("settings.sync.icloudSync")
+    }
 
-        if model.cloudSyncEnabled, model.supportsResultsSync {
+    private var syncStatus: some View {
+        HStack(alignment: .top, spacing: 8) {
             switch model.cloudSyncStatus {
             case .idle, .synced:
                 let time = model.lastSuccessfulCloudSync.map {
                     $0.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
                 }
-                let status = time.map { language.text("上次同步：\($0)", "Last synced: \($0)") }
-                    ?? language.text("等待同步", "Waiting to sync")
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                Text(time.map { language.text("上次同步：\($0)", "Last synced: \($0)") }
+                     ?? language.text("等待同步", "Waiting to sync"))
+                    .padding(.top, 10)
                     .accessibilityIdentifier("settings.sync.lastCloudSync")
+                Spacer(minLength: 0)
+                syncButton(language.text("刷新", "Refresh"))
             case .syncing:
-                HStack {
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(language.text("正在同步…", "Syncing…"))
-                        .font(.footnote)
-                }
-                .foregroundStyle(.secondary)
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.top, 10)
+                    .accessibilityHidden(true)
+                Text(language.text("正在同步…", "Syncing…"))
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("settings.sync.inProgress")
             case .failed(let failure):
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(cloudSyncMessage(failure))
-                        .foregroundStyle(failure == .network ? Color.secondary : .red)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.sync.cloudSyncError")
-                    Button {
-                        model.requestCloudSync()
-                    } label: {
-                        Label(language.text("重试", "Retry"), systemImage: "arrow.clockwise")
-                            .fixedSize()
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityIdentifier("settings.sync.retryCloudSync")
-                }
-                .font(.footnote)
+                Text(cloudSyncMessage(failure))
+                    .foregroundStyle(failure == .network ? Color.secondary : .red)
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("settings.sync.cloudSyncError")
+                Spacer(minLength: 0)
+                syncButton(language.text("重试", "Retry"))
             }
         }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
+    }
+
+    private func syncButton(_ title: String) -> some View {
+        Button {
+            model.requestCloudSync()
+            SettingsSync.refresh()
+        } label: {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 17))
+                .foregroundStyle(Color.accentColor)
+                .padding(.top, 8)
+                .frame(width: 44, height: 44, alignment: .top)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("settings.sync.refresh")
     }
 
     private func cloudSyncMessage(_ failure: CloudSyncFailure) -> String {
@@ -2131,7 +2149,6 @@ private struct SyncSettingsView: View {
         case .unknown: language.text("同步失败，请稍后重试。", "Sync failed. Try again later.")
         }
     }
-
 }
 
 private struct TimerGestureSettingsView: View {

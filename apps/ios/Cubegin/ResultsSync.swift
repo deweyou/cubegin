@@ -85,9 +85,9 @@ protocol ResultsCloudTransport: SyncTransport {
 }
 
 extension CloudKitResultsTransport {
-    static var showsErrorPreview: Bool {
+    static var showsSyncPreview: Bool {
 #if DEBUG && targetEnvironment(simulator)
-        ProcessInfo.processInfo.arguments.contains("--preview-icloud-error")
+        syncPreview != nil
 #else
         false
 #endif
@@ -95,7 +95,7 @@ extension CloudKitResultsTransport {
 
     static var isAvailable: Bool {
 #if DEBUG && targetEnvironment(simulator)
-        showsErrorPreview
+        showsSyncPreview
 #elseif DEBUG && CUBEGIN_RESULTS_SYNC
         Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
 #else
@@ -106,19 +106,37 @@ extension CloudKitResultsTransport {
     static func configured() -> (any ResultsCloudTransport)? {
         guard isAvailable else { return nil }
 #if DEBUG && targetEnvironment(simulator)
-        return PreviewCloudResultsTransport()
+        return syncPreview
 #else
         return CloudKitResultsTransport()
 #endif
     }
+
+#if DEBUG && targetEnvironment(simulator)
+    private static var syncPreview: PreviewCloudResultsTransport? {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--preview-icloud-error") { return .init(failure: .network) }
+        if arguments.contains("--preview-icloud-account-error") { return .init(failure: .accountChanged) }
+        if arguments.contains("--preview-icloud-success") { return .init(failure: nil) }
+        return nil
+    }
+#endif
 }
 
 #if DEBUG && targetEnvironment(simulator)
 private struct PreviewCloudResultsTransport: ResultsCloudTransport {
-    func accountID() async throws -> String { throw CloudSyncFailure.network }
-    func prepareZone(for account: String) async throws { throw CloudSyncFailure.network }
-    func fetch() async throws -> [SyncRecord] { throw CloudSyncFailure.network }
-    func merge(_ record: SyncRecord) async throws -> SyncRecord { throw CloudSyncFailure.network }
+    let failure: CloudSyncFailure?
+
+    func accountID() async throws -> String { "preview" }
+    func prepareZone(for account: String) async throws {}
+
+    func fetch() async throws -> [SyncRecord] {
+        try await Task.sleep(for: .seconds(2.5))
+        if let failure { throw failure }
+        return []
+    }
+
+    func merge(_ record: SyncRecord) async throws -> SyncRecord { record }
 }
 #endif
 
