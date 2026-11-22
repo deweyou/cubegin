@@ -1415,6 +1415,64 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTimerGesturesOverScrambleAndResultControls() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en", "-scramble.standard", "333",
+                               "-timer.entryMethod", "timer", "-timer.startDelayTenths", "3",
+                               "-timer.wcaInspection", "NO", "-timer.swipe.left", "manualEntry",
+                               "-timer.swipe.right", "newScramble"]
+        app.launch()
+
+        let elements = app.descendants(matching: .any)
+        let scramble = elements["timer.scramble"]
+        let hints = app.buttons["timer.formula-hints"]
+        let readout = elements["timer.readout"]
+        let manual = app.textFields["manual-result.time"]
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        let original = scramble.label
+        let center = scramble.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let left = center.withOffset(CGVector(dx: -65, dy: 0))
+        let right = center.withOffset(CGVector(dx: 65, dy: 0))
+        left.press(forDuration: 0.01, thenDragTo: right, withVelocity: .fast, thenHoldForDuration: 0)
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", original), object: scramble)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 15), .completed)
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        right.press(forDuration: 0.01, thenDragTo: left, withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(manual.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(manual.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 5))
+
+        let diagram = elements["timer.scramble-diagram"]
+        XCTAssertTrue(diagram.exists)
+        diagram.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        readout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+
+        let dnf = app.buttons["timer.penalty.dnf"]
+        XCTAssertTrue(dnf.waitForExistence(timeout: 5))
+        dnf.tap()
+        XCTAssertTrue(dnf.isSelected)
+        XCTAssertEqual(readout.label, "Start timer")
+        dnf.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        readout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertFalse(dnf.isSelected)
+
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+        let summary = elements["timer-summary.count"]
+        XCTAssertTrue(summary.exists)
+        summary.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+    }
+
+    @MainActor
     func testTimerSwipeShortcutsPersistAndUseTheExistingSolveFlows() throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
                       "The Duo has a separate touch surface.")

@@ -396,8 +396,8 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let left = TimerSwipeDirection.left
             let right = TimerSwipeDirection.right
-            #expect(left.action(in: fixture.defaults) == .newScramble)
-            #expect(right.action(in: fixture.defaults) == .deleteLastSolve)
+            #expect(left.action(in: fixture.defaults) == .none)
+            #expect(right.action(in: fixture.defaults) == .none)
 
             fixture.defaults.set(TimerSwipeAction.none.rawValue, forKey: left.preferenceKey)
             fixture.defaults.set(TimerSwipeAction.manualEntry.rawValue, forKey: right.preferenceKey)
@@ -405,7 +405,7 @@ struct TimerModelTests {
             #expect(right.action(in: fixture.defaults) == .manualEntry)
 
             fixture.defaults.set("unknown-action", forKey: right.preferenceKey)
-            #expect(right.action(in: fixture.defaults) == .deleteLastSolve)
+            #expect(right.action(in: fixture.defaults) == .none)
         }
     }
 

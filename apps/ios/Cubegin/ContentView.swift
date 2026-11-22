@@ -17,6 +17,8 @@ struct ContentView: View {
     @AppStorage(TimerModel.hapticsKey) private var usesTimerHaptics = true
     @FocusState private var hasTimerKeyboardFocus: Bool
     @State private var idlePageFrame: CGRect?
+    @State private var scrambleFrame: CGRect = .null
+    @State private var postSolveControlsFrame: CGRect = .null
     @State private var padProjectAnchor: CGRect?
     private var isTiming: Bool { model.started != nil }
     @Binding var isInTimerCancelZone: Bool
@@ -836,13 +838,17 @@ struct ContentView: View {
 
     private func timerTouchSurface(cancelZoneTop: CGFloat? = nil) -> some View {
         TimerTouchSurface(
-            onDown: { feedback in
+            isEnabled: canUseTimerInput,
+            scrambleFrame: showsTimingLayout ? .null : scrambleFrame,
+            solveControlsFrame: !showsTimingLayout && model.lastSolve != nil ? postSolveControlsFrame : .null,
+            canHoldOverControls: { canUseTimerTouch && isScrambleReady && entryMethod == .timer },
+            onDown: { feedback, minimumHold in
                 guard canUseTimerTouch, isTiming || isScrambleReady else { return }
                 guard entryMethod == .timer || isTiming else { return }
                 if usesTimerHaptics, !model.usesInspection {
                     feedback.prepare()
                 }
-                model.press(.touch, delayTenths: startDelayTenths) {
+                model.press(.touch, delayTenths: startDelayTenths, minimumHold: minimumHold) {
                     guard usesTimerHaptics, !isInTimerCancelZone else { return }
                     // Request feedback while the touch is still held.
                     feedback.impactOccurred()
@@ -896,6 +902,7 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { scrambleFrame = $0 }
     }
 
     private func scrambleDiagram(alignment: SVGView.ContentAlignment = .bottomTrailing) -> some View {
@@ -1095,6 +1102,7 @@ struct ContentView: View {
                         .accessibilityIdentifier("timer.celebration-replay")
                     }
                 }
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { postSolveControlsFrame = $0 }
             } else {
                 Color.clear
                     .allowsHitTesting(false)
@@ -1331,7 +1339,7 @@ struct ContentView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: controlIconSize, height: controlIconSize)
-                .frame(width: controlRowHeight, height: controlRowHeight)
+                .frame(width: controlRowHeight, height: controlRowHeight, alignment: .trailing)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1459,9 +1467,13 @@ private struct CompactControlTarget: ViewModifier {
     }
 }
 
-// The touch surface sits behind page controls and cancels an armed start on drag.
+// Observe timer touches even when a selectable formula or result button is in front of the surface.
 private struct TimerTouchSurface: UIViewRepresentable {
-    var onDown: (UIImpactFeedbackGenerator) -> Void
+    var isEnabled: Bool
+    var scrambleFrame: CGRect
+    var solveControlsFrame: CGRect
+    var canHoldOverControls: () -> Bool
+    var onDown: (UIImpactFeedbackGenerator, Duration) -> Void
     var onUp: () -> Void
     var onCancel: () -> Void
     var canBeginSwipe: () -> Bool
@@ -1474,46 +1486,123 @@ private struct TimerTouchSurface: UIViewRepresentable {
 
     func makeCoordinator() -> PressRecognizer { PressRecognizer() }
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        context.coordinator.readyFeedback = UIImpactFeedbackGenerator(style: .heavy, view: view)
-        view.addGestureRecognizer(context.coordinator)
-        return view
+    func makeUIView(context: Context) -> Surface {
+        Surface(recognizer: context.coordinator)
     }
 
-    func updateUIView(_ view: UIView, context: Context) {
-        context.coordinator.callbacks = self
+    func updateUIView(_ view: Surface, context: Context) {
+        view.update(with: self)
+    }
+
+    final class Surface: UIView {
+        private let recognizer: PressRecognizer
+        private let coveredRecognizer = PressRecognizer()
+
+        init(recognizer: PressRecognizer) {
+            self.recognizer = recognizer
+            super.init(frame: .zero)
+            coveredRecognizer.observesCoveredTouches = true
+            let feedback = UIImpactFeedbackGenerator(style: .heavy, view: self)
+            for recognizer in [recognizer, coveredRecognizer] {
+                recognizer.surface = self
+                recognizer.readyFeedback = feedback
+            }
+            addGestureRecognizer(recognizer)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        func update(with callbacks: TimerTouchSurface) {
+            for recognizer in [recognizer, coveredRecognizer] {
+                recognizer.callbacks = callbacks
+                if recognizer.isEnabled != callbacks.isEnabled { recognizer.isEnabled = callbacks.isEnabled }
+            }
+        }
+
+        override func willMove(toWindow newWindow: UIWindow?) {
+            if newWindow !== window { window?.removeGestureRecognizer(coveredRecognizer) }
+            super.willMove(toWindow: newWindow)
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if let window, coveredRecognizer.view !== window { window.addGestureRecognizer(coveredRecognizer) }
+        }
     }
 
     final class PressRecognizer: UIGestureRecognizer {
         private enum Movement { case press, cancelZone, swipe }
+        private enum Zone { case timer, scramble, controls }
+        private static let controlHold = Duration.milliseconds(250)
 
         var callbacks: TimerTouchSurface?
         var readyFeedback: UIImpactFeedbackGenerator?
+        weak var surface: Surface?
+        var observesCoveredTouches = false
         private var initialPoint: CGPoint?
         private var movement = Movement.press
         private var canSwipe = false
+        private var zone = Zone.timer
+        private var holdTask: Task<Void, Never>?
+
+        override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
+            // A result button starts tracking on touch-down. Let it track until the timer wins the hold.
+            if zone == .controls { return false }
+            return super.canBePrevented(by: preventingGestureRecognizer)
+        }
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard initialPoint == nil, touches.count == 1, let touch = touches.first, let readyFeedback else {
+            guard initialPoint == nil, touches.count == 1, let touch = touches.first,
+                  let readyFeedback, let callbacks, let surface else {
                 state = .failed
                 return
             }
-            initialPoint = touch.location(in: view?.window)
-            canSwipe = callbacks?.canBeginSwipe() == true
-            callbacks?.onDown(readyFeedback)
+            let point = touch.location(in: surface.window)
+            canSwipe = callbacks.canBeginSwipe()
+            let hitsSurface = touch.view === surface || touch.view?.isDescendant(of: surface) == true
+            guard hitsSurface != observesCoveredTouches else {
+                state = .failed
+                return
+            }
+            if hitsSurface {
+                zone = .timer
+            } else if callbacks.solveControlsFrame.contains(point), callbacks.canHoldOverControls() {
+                zone = .controls
+            } else if callbacks.scrambleFrame.contains(point), canSwipe {
+                zone = .scramble
+                initialPoint = point
+                return
+            } else {
+                state = .failed
+                return
+            }
+            initialPoint = point
+            callbacks.onDown(readyFeedback, zone == .controls ? Self.controlHold : .zero)
+            if zone == .controls {
+                holdTask = Task { [weak self] in
+                    do { try await Task.sleep(for: Self.controlHold) }
+                    catch { return }
+                    guard let self, self.state == .possible, self.movement == .press else { return }
+                    // Take over before release so a long hold can't also activate the button.
+                    self.state = .began
+                }
+            }
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard let point = touches.first?.location(in: view?.window) else { return }
+            guard let point = touches.first?.location(in: surface?.window) else { return }
             trackMovement(to: point)
         }
 
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-            guard let initialPoint, let point = touches.first?.location(in: view?.window) else { return }
+            guard let initialPoint, let point = touches.first?.location(in: surface?.window) else { return }
             trackMovement(to: point)
             guard state != .failed else { return }
             let movement = self.movement
+            if movement == .press, (zone == .scramble || (zone == .controls && state == .possible)) {
+                state = .failed
+                return
+            }
             self.initialPoint = nil
             state = .recognized
             if movement == .swipe {
@@ -1539,7 +1628,8 @@ private struct TimerTouchSurface: UIViewRepresentable {
                 } else if canSwipe, !callbacks.showsReadyFeedback, abs(dx) > abs(dy) {
                     // Abandon the press at its movement limit. A swipe still needs to travel far enough.
                     movement = .swipe
-                    callbacks.onCancel()
+                    if zone != .scramble { callbacks.onCancel() }
+                    if zone != .timer, state == .possible { state = .began }
                 } else {
                     state = .failed
                 }
@@ -1547,7 +1637,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
         }
 
         private func updateCancelZone(at point: CGPoint, callbacks: TimerTouchSurface) {
-            let top = callbacks.cancelZoneTop ?? view?.window?.safeAreaInsets.top ?? 0
+            let top = callbacks.cancelZoneTop ?? surface?.window?.safeAreaInsets.top ?? 0
             let withinUpperBoundary = callbacks.cancelZoneTop == nil || point.y >= top
             callbacks.onCancelZoneChange(withinUpperBoundary && point.y <= top + callbacks.cancelZoneHeight)
         }
@@ -1557,10 +1647,13 @@ private struct TimerTouchSurface: UIViewRepresentable {
         }
 
         override func reset() {
-            if initialPoint != nil { callbacks?.onCancel() }
+            holdTask?.cancel()
+            holdTask = nil
+            if initialPoint != nil, zone != .scramble { callbacks?.onCancel() }
             initialPoint = nil
             movement = .press
             canSwipe = false
+            zone = .timer
             super.reset()
         }
     }

@@ -109,12 +109,7 @@ enum TimerSwipeDirection: String, CaseIterable {
 
     var preferenceKey: String { "timer.swipe.\(rawValue)" }
 
-    var defaultAction: TimerSwipeAction {
-        switch self {
-        case .left: .newScramble
-        case .right: .deleteLastSolve
-        }
-    }
+    var defaultAction: TimerSwipeAction { .none }
 
     func action(in defaults: UserDefaults = .standard) -> TimerSwipeAction {
         TimerSwipeAction(rawValue: defaults.string(forKey: preferenceKey) ?? "") ?? defaultAction
@@ -820,7 +815,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    func press(_ input: TimerInput, delayTenths: Int, onReadyPrompt: (() -> Void)? = nil) {
+    func press(_ input: TimerInput, delayTenths: Int, minimumHold: Duration = .zero,
+               onReadyPrompt: (() -> Void)? = nil) {
         if started != nil {
             stop()
             return
@@ -828,7 +824,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         guard !usesManualEntry, heldInput == nil, scramble != nil, !busy else { return }
         heldInput = input
         let bypassesHoldDelay = usesInspection || inspectionStarted != nil
-        let delay = bypassesHoldDelay ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let configuredDelay = bypassesHoldDelay ? .zero : Duration.milliseconds(min(20, max(0, delayTenths)) * 100)
+        let delay = max(configuredDelay, minimumHold)
         let deadline = now().advanced(by: delay)
         readyAt = deadline
         if delay == .zero { isReady = true }
