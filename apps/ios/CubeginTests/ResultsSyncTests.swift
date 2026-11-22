@@ -6,13 +6,19 @@ import Testing
 
 private actor SyntheticSyncServer: ResultsCloudTransport {
     enum Failure: Error { case offline, interrupted }
+    private enum AccountCheckFailure { case afterUpload, nextCheck }
     private var records: [UUID: SyncRecord] = [:]
     private var online = true
     private var account = "original"
     private var writesUntilFailure: Int?
+    private var accountCheckFailure: AccountCheckFailure?
 
     func switchAccount() { account = "different" }
     func accountID() throws -> String {
+        if accountCheckFailure == .nextCheck {
+            accountCheckFailure = nil
+            throw CloudSyncFailure.network
+        }
         guard online else { throw CloudSyncFailure.network }
         return account
     }
@@ -23,6 +29,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
 
     func setOnline(_ online: Bool) { self.online = online }
     func interruptAfterWrites(_ count: Int?) { writesUntilFailure = count }
+    func interruptAccountCheckAfterUpload() { accountCheckFailure = .afterUpload }
 
     func fetch() throws -> [SyncRecord] {
         guard online else { throw Failure.offline }
@@ -37,6 +44,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
         }
         if let current = records[record.id], !record.wins(over: current) { return current }
         records[record.id] = record
+        if accountCheckFailure == .afterUpload { accountCheckFailure = .nextCheck }
         return record
     }
 }
@@ -357,6 +365,47 @@ struct ResultsSyncTests {
         #expect(reopened.event == "333")
         #expect(reopened.eventGroups.map(\.id) == [initial])
         #expect(reopened.currentGroup?.name == "Practice")
+    }
+
+    @MainActor
+    @Test func preferenceChangeAfterInterruptedSyncUsesANewRevision() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let phoneSuite = "sync-phone-\(UUID())"
+        let tabletSuite = "sync-tablet-\(UUID())"
+        let phoneDefaults = try #require(UserDefaults(suiteName: phoneSuite))
+        let tabletDefaults = try #require(UserDefaults(suiteName: tabletSuite))
+        defer {
+            phoneDefaults.removePersistentDomain(forName: phoneSuite)
+            tabletDefaults.removePersistentDomain(forName: tabletSuite)
+        }
+        let server = SyntheticSyncServer()
+        let phoneStorage = directory.appending(path: "phone.json")
+        let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
+        phone.requestCloudSync()
+        try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
+
+        await server.interruptAccountCheckAfterUpload()
+        phone.standardEvent = "222"
+        try await waitForSync(phone) { if case .failed(.network) = $0 { true } else { false } }
+        let firstPreference = SyncedMetadata.preference(key: "scramble.standard", values: ["222"])
+        let firstRecords = try await server.fetch()
+        let firstUpload = try #require(firstRecords.first { $0.id == firstPreference.id })
+        #expect(firstUpload.metadata == firstPreference)
+
+        let reopened = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
+        reopened.standardEvent = "444"
+        try await waitForSync(reopened) { if case .synced = $0 { true } else { false } }
+        let secondRecords = try await server.fetch()
+        let secondUpload = try #require(secondRecords.first { $0.id == firstPreference.id })
+        #expect(secondUpload.revision > firstUpload.revision)
+
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+                                defaults: tabletDefaults, cloudTransport: server)
+        tablet.requestCloudSync()
+        try await waitForSync(tablet) { if case .synced = $0 { true } else { false } }
+        #expect(reopened.event == "444")
+        #expect(tablet.event == "444")
     }
 
     @MainActor

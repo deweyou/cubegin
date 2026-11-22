@@ -456,17 +456,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             let account = try await cloudTransport.accountID()
             try Task.checkCancellation()
             if let cloudAccount, cloudAccount != account { throw CloudSyncFailure.accountChanged }
-            if cloudState == nil || cloudAccount == nil {
-                var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
-                try replica.importSolves(persistedSolves)
-                guard save(persistedSolves, operation: nil, remoteState: (replica.state, account)) else {
-                    cloudSyncStatus = .failed(.localStorage)
-                    return
-                }
-            }
-            guard let cloudState else { return }
             let generation = cloudGeneration
-            var replica = ResultsSyncReplica(state: cloudState)
+            var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
             // Older builds could save a timed solve without adding it to the sync state.
             try replica.importSolves(persistedSolves)
             replica.importGroups(groups)
@@ -475,6 +466,13 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             for (key, values) in preferences {
                 replica.recordMetadata(.preference(key: key, values: values),
                                        migrationRevision: editedKeys.contains(key) ? nil : 0)
+            }
+            // A partially successful upload must not let a later edit reuse an uploaded revision.
+            if cloudAccount == nil || cloudState?.records != replica.state.records {
+                guard save(persistedSolves, operation: nil, remoteState: (replica.state, account)) else {
+                    cloudSyncStatus = .failed(.localStorage)
+                    return
+                }
             }
             try await cloudTransport.prepareZone(for: account)
             try await replica.sync(with: cloudTransport)
