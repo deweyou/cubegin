@@ -1420,7 +1420,7 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments = ["-app.language", "en", "-scramble.standard", "333",
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
                                "-timer.entryMethod", "timer", "-timer.startDelayTenths", "3",
                                "-timer.wcaInspection", "NO", "-timer.swipe.left", "manualEntry",
                                "-timer.swipe.right", "newScramble"]
@@ -1761,7 +1761,7 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+        app.launchArguments += ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
                                 "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "2",
                                 "-timer.entryMethod", "timer"]
         app.launch()
