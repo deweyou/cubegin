@@ -31,6 +31,8 @@ struct StatisticsCardSection<Card: View>: View {
                 .accessibilityAddTraits(.isHeader)
                 .padding(.leading, 16)
             card
+                .background(Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 24))
         }
         // The enclosing Form supplies the other 12 pt of section spacing.
         .padding(.top, 8)
@@ -152,7 +154,6 @@ struct ResultsCharts: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 24))
         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
             chartWidth = width
             // Snap to width bands so resizing doesn't launch a task for each point.

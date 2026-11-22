@@ -1135,7 +1135,6 @@ private struct ResultsOverview: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 24))
                 }
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
