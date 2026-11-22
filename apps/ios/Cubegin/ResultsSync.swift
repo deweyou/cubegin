@@ -241,7 +241,7 @@ struct ResultsSyncReplica: Sendable {
         }
     }
 
-    func mergedGroups(_ local: [SolveGroup]) -> [SolveGroup] {
+    mutating func mergeGroups(_ local: [SolveGroup]) -> (groups: [SolveGroup], didRecover: Bool) {
         var events = Dictionary(grouping: local, by: \.event)
         var order: [String: [String]] = [:]
         var defaults: [String: String] = [:]
@@ -268,9 +268,11 @@ struct ResultsSyncReplica: Sendable {
         let eventOrder = local.map(\.event).reduce(into: [String]()) { events, event in
             if !events.contains(event) { events.append(event) }
         } + events.keys.filter { !localEvents.contains($0) }.sorted()
-        return eventOrder.flatMap { event -> [SolveGroup] in
+        var didRecover = false
+        let merged = eventOrder.flatMap { event -> [SolveGroup] in
             guard var groups = events[event], !groups.isEmpty else {
-                return [SolveGroup(id: SolveGroup.initialID(for: event), event: event, name: "", isDefault: true)]
+                didRecover = true
+                return [recoverDefaultGroup(for: event)]
             }
             if let order = order[event] {
                 let rank = Dictionary(order.enumerated().map { ($0.element, $0.offset) },
@@ -282,6 +284,21 @@ struct ResultsSyncReplica: Sendable {
             for index in groups.indices { groups[index].isDefault = groups[index].id == defaultID }
             return groups
         }
+        return (merged, didRecover)
+    }
+
+    private mutating func recoverDefaultGroup(for event: String) -> SolveGroup {
+        var id = SolveGroup.initialID(for: event)
+        var generation = 1
+        // Replicas that see the same deletions must recover the same group identity.
+        while state.records[SyncedMetadata.group(event: event, id: id, name: nil).id]?.metadata?.isGroupDeletion == true {
+            id = "recovered:\(event):\(generation)"
+            generation += 1
+        }
+        recordMetadata(.group(event: event, id: id, name: ""))
+        recordMetadata(.groupOrder(event: event, ids: [id]))
+        recordMetadata(.defaultGroup(event: event, id: id))
+        return SolveGroup(id: id, event: event, name: "", isDefault: true)
     }
 
     mutating func recordLocalChanges(from previous: [Solve], to current: [Solve]) throws {

@@ -42,6 +42,50 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
 }
 
 struct ResultsSyncTests {
+    @Test func recoversAStableGroupAfterConcurrentDeletionAndSyncsItsRename() async throws {
+        let server = SyntheticSyncServer()
+        let event = "333"
+        let initial = SolveGroup(id: SolveGroup.initialID(for: event), event: event, name: "", isDefault: true)
+        let practice = SolveGroup(id: "practice", event: event, name: "Practice", isDefault: false)
+        let original = [initial, practice]
+        var phone = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        var tablet = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        phone.importGroups(original)
+        try await phone.sync(with: server)
+        try await tablet.sync(with: server)
+
+        var phoneDefault = practice
+        phoneDefault.isDefault = true
+        phone.recordGroupChanges(from: original, to: [phoneDefault])
+        tablet.recordGroupChanges(from: original, to: [initial])
+        try await phone.sync(with: server)
+        try await tablet.sync(with: server)
+        try await phone.sync(with: server)
+
+        let phoneMerge = phone.mergeGroups([phoneDefault])
+        let tabletMerge = tablet.mergeGroups([initial])
+        #expect(phoneMerge.didRecover)
+        #expect(tabletMerge.didRecover)
+        let recoveredOnPhone = phoneMerge.groups
+        let recoveredOnTablet = tabletMerge.groups
+        var recovered = try #require(recoveredOnPhone.first)
+        #expect(recoveredOnPhone.map(\.id) == recoveredOnTablet.map(\.id))
+        #expect(recovered.id != initial.id)
+        #expect(recovered.id != practice.id)
+        #expect(recovered.isDefault)
+        #expect(phone.metadata.contains(.group(event: event, id: recovered.id, name: "")))
+        recovered.name = "Recovered practice"
+        phone.recordGroupChanges(from: recoveredOnPhone, to: [recovered])
+        try await phone.sync(with: server)
+        try await tablet.sync(with: server)
+        let restoredMerge = tablet.mergeGroups(recoveredOnTablet)
+        #expect(!restoredMerge.didRecover)
+        let restored = restoredMerge.groups
+        #expect(restored.map(\.id) == [recovered.id])
+        #expect(restored.first?.name == recovered.name)
+        #expect(restored.first?.isDefault == true)
+    }
+
     @Test func migratesOriginalGroupsAheadOfLegacyPlaceholders() async throws {
         let server = SyntheticSyncServer()
         let initial = SolveGroup(id: SolveGroup.initialID(for: "333"), event: "333", name: "", isDefault: true)
@@ -57,7 +101,7 @@ struct ResultsSyncTests {
         try await original.sync(with: server)
         try await imported.sync(with: server)
 
-        let restored = imported.mergedGroups([initial, placeholder])
+        let restored = imported.mergeGroups([initial, placeholder]).groups
         #expect(restored.map(\.id) == [competition.id, initial.id])
         #expect(restored.first?.name == "Competition")
         #expect(restored.first?.isDefault == true)

@@ -491,7 +491,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                 return
             }
             deferredCloudApply = false
-            var updatedGroups = replica.mergedGroups(groups)
+            let groupMerge = replica.mergeGroups(groups)
+            var updatedGroups = groupMerge.groups
             var deletedGroups: [String: Set<String>] = [:]
             for case .group(let event, let id, nil) in replica.metadata {
                 deletedGroups[event, default: []].insert(id)
@@ -520,6 +521,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                 cloudSyncStatus = .failed(.localStorage)
                 return
             }
+            if groupMerge.didRecover { needsCloudSync = true }
             solves = (unsaved + updated).sorted(by: Solve.newestFirst)
             let previousDefault = groups.first { $0.event == event && $0.isDefault }?.id
             groups = updatedGroups
