@@ -116,10 +116,10 @@ enum ICloudSyncPreference {
     static let key = "app.icloudSync"
     private static let legacyResultsKey = "results.icloudSync"
 
-    static func isEnabled(in defaults: UserDefaults, supportsResults: Bool) -> Bool {
-        if let enabled = defaults.object(forKey: key) as? Bool { return enabled }
-        if let enabled = defaults.object(forKey: legacyResultsKey) as? Bool { return enabled }
-        return !supportsResults
+    static func isEnabled(in defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: key) != nil { return defaults.bool(forKey: key) }
+        if defaults.object(forKey: legacyResultsKey) != nil { return defaults.bool(forKey: legacyResultsKey) }
+        return true
     }
 }
 
@@ -141,7 +141,7 @@ enum SettingsSync {
     }
 
     private static var isEnabled: Bool {
-        isAvailable && ICloudSyncPreference.isEnabled(in: .standard, supportsResults: CloudKitResultsTransport.isAvailable)
+        isAvailable && ICloudSyncPreference.isEnabled(in: .standard)
     }
 
     static func binding<Value: Equatable>(_ local: Binding<Value>, key: String, encode: @escaping (Value) -> Any) -> Binding<Value> {

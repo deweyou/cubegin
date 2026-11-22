@@ -428,7 +428,7 @@ struct ManualSolveContext: Identifiable {
         self.defaults = defaults
         self.cloudTransport = cloudTransport
         if cloudTransport != nil || SettingsSync.isAvailable {
-            cloudSyncEnabled = ICloudSyncPreference.isEnabled(in: defaults, supportsResults: cloudTransport != nil)
+            cloudSyncEnabled = ICloudSyncPreference.isEnabled(in: defaults)
         }
         if cloudTransport != nil {
             lastSuccessfulCloudSync = defaults.object(forKey: Self.lastCloudSyncKey) as? Date

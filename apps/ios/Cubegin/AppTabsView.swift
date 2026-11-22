@@ -1992,7 +1992,7 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Form {
-                CardSection {
+                CardSection(language.text("通用", "General")) {
                     Picker(language.text("主题", "Theme"), selection: SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }) {
                         ForEach(AppTheme.allCases) { option in
                             Text(option.title(in: language)).tag(option)
@@ -2009,14 +2009,6 @@ private struct SettingsView: View {
                     }
                     if model.supportsCloudSync {
                         iCloudSyncControls
-                    }
-                } header: {
-                    Text(language.text("通用", "General"))
-                } footer: {
-                    if model.supportsCloudSync {
-                        Text(model.supportsResultsSync
-                             ? language.text("在设备间同步成绩和部分设置。", "Sync results and some settings across devices.")
-                             : language.text("在设备间同步部分设置。", "Sync some settings across devices."))
                     }
                 }
                 CardSection(language.text("计时", "Timer")) {

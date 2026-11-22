@@ -244,6 +244,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "0")
         XCTAssertEqual(toggle.label, "iCloud Sync")
+        XCTAssertFalse(app.staticTexts["Sync results and some settings across devices."].exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         let error = app.staticTexts["settings.results.cloudSyncError"]
         let retry = app.buttons["settings.results.retryCloudSync"]

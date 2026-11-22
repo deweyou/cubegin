@@ -180,16 +180,19 @@ struct ResultsSyncTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        #expect(ICloudSyncPreference.isEnabled(in: defaults, supportsResults: false))
-        #expect(!ICloudSyncPreference.isEnabled(in: defaults, supportsResults: true))
-        defaults.set(true, forKey: "results.icloudSync")
+        #expect(ICloudSyncPreference.isEnabled(in: defaults))
+        let fresh = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(fresh.cloudSyncEnabled)
+        defaults.set(false, forKey: "results.icloudSync")
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
+        #expect(!model.cloudSyncEnabled)
+        model.setCloudSyncEnabled(true)
         #expect(model.cloudSyncEnabled)
-        model.setCloudSyncEnabled(false)
-        #expect(!ICloudSyncPreference.isEnabled(in: defaults, supportsResults: false))
-        #expect(!ICloudSyncPreference.isEnabled(in: defaults, supportsResults: true))
+        #expect(ICloudSyncPreference.isEnabled(in: defaults))
         let reopened = TimerModel(storage: storage, defaults: defaults, cloudTransport: SyntheticSyncServer())
-        #expect(!reopened.cloudSyncEnabled)
+        #expect(reopened.cloudSyncEnabled)
+        reopened.setCloudSyncEnabled(false)
+        #expect(!ICloudSyncPreference.isEnabled(in: defaults))
     }
 
     @MainActor
@@ -210,9 +213,9 @@ struct ResultsSyncTests {
         try await replica.sync(with: server)
 
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: server)
-        #expect(!model.cloudSyncEnabled)
+        #expect(model.cloudSyncEnabled)
         #expect(model.solves == [local])
-        model.setCloudSyncEnabled(true)
+        model.requestCloudSync()
         try await waitForSync(model) { if case .synced = $0 { true } else { false } }
         #expect(Set(model.solves.map(\.id)) == [local.id, remote.id])
 
@@ -246,7 +249,7 @@ struct ResultsSyncTests {
         try JSONEncoder().encode([score]).write(to: storage)
         let server = SyntheticSyncServer()
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: server)
-        model.setCloudSyncEnabled(true)
+        model.requestCloudSync()
         try await waitForSync(model) { if case .synced = $0 { true } else { false } }
 
         await server.switchAccount()

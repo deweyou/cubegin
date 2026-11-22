@@ -185,5 +185,5 @@ CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
 验证首次合并、编辑罚时、离线删除后重试，以及更换 iCloud 账号后本机成绩保留。先核对测试设备和专用容器，
 再打开开关。两台设备的测试成绩都可见后再验证删除。改变主题或报时设置，确认两台设备会同步。关掉一台设备上的开关，确认它仍可本地修改设置和成绩，并停止接收另一台设备的新修改。
 
-模拟器用 Debug 启动参数 `--preview-icloud-error` 模拟网络失败，可检查默认关闭、开启、错误提示和重试。
+模拟器用 Debug 启动参数 `--preview-icloud-error` 模拟网络失败，可检查同步开关、错误提示和重试。
 单测用内存服务验证合并和重试，全程使用临时成绩文件。
