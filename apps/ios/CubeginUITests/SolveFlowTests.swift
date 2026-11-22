@@ -275,6 +275,9 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         XCTAssertTrue(retry.exists)
         XCTAssertLessThan(error.frame.maxX, retry.frame.minX)
+        XCTAssertEqual(error.frame.midY, retry.frame.midY, accuracy: 2)
+        // The switch's accessibility frame covers the card. Its control is inset by the card row padding.
+        XCTAssertEqual(retry.frame.maxX, toggle.frame.maxX - 24, accuracy: 1)
         captureScreen("Settings — iCloud sync error")
         retry.tap()
         XCTAssertTrue(syncing.waitForExistence(timeout: 3))
@@ -308,36 +311,47 @@ final class SolveFlowTests: XCTestCase {
     @MainActor
     func testResultsSyncKeepsRefreshAtTheTopOfAMultilineError() {
         continueAfterFailure = false
-        let app = openSyncPreview("--preview-icloud-account-error", largeText: true)
+        let normal = openSyncPreview("--preview-icloud-account-error", language: "en")
+        let normalToggle = normal.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(normalToggle.waitForExistence(timeout: 5))
+        normalToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        let normalError = normal.staticTexts["settings.sync.cloudSyncError"]
+        XCTAssertTrue(normalError.waitForExistence(timeout: 5))
+        let normalToggleHeight = normalToggle.frame.height
+        let normalErrorHeight = normalError.frame.height
+        normal.terminate()
+
+        let app = openSyncPreview("--preview-icloud-account-error", language: "en", largeText: true)
         let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
-
         let error = app.staticTexts["settings.sync.cloudSyncError"]
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         let refresh = app.buttons["settings.sync.refresh"]
-        XCTAssertGreaterThan(error.frame.height, refresh.frame.height)
-        XCTAssertEqual(error.frame.minY, refresh.frame.minY + 10, accuracy: 2)
+        XCTAssertEqual(toggle.frame.height, normalToggleHeight, accuracy: 1)
+        XCTAssertEqual(error.frame.height, normalErrorHeight, accuracy: 1)
+        XCTAssertGreaterThan(error.frame.height, 20)
+        XCTAssertEqual(refresh.frame.midY, error.frame.minY + 8, accuracy: 2)
         captureScreen("Settings — iCloud multiline error")
     }
 
     @MainActor
-    private func openSyncPreview(_ preview: String, largeText: Bool = false) -> XCUIApplication {
+    private func openSyncPreview(_ preview: String, language: String = "zh-Hans", largeText: Bool = false) -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments += ["-app.language", "zh-Hans", preview, "-app.icloudSync", "NO"]
+        app.launchArguments += ["-app.language", language, preview, "-app.icloudSync", "NO"]
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
-        let settings = app.tabBars.buttons["设置"]
+        let settings = app.tabBars.buttons[language == "en" ? "Settings" : "设置"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
         let sync = app.buttons["settings.general.sync"]
         XCTAssertTrue(sync.waitForExistence(timeout: 5))
         tapCardRowEdge(sync)
-        XCTAssertTrue(app.navigationBars["同步"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars[language == "en" ? "Sync" : "同步"].waitForExistence(timeout: 5))
         return app
     }
 

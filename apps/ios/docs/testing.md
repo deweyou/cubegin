@@ -187,5 +187,5 @@ CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
 再切换项目、选择辅助公式方法并调整解法顺序。在另一台设备确认这些改动。改变主题或报时设置，确认两台设备会同步。
 关掉一台设备上的开关，确认它仍可本地修改设置和成绩，并停止接收另一台设备的新修改。重新开启后验证本机离线修改传到另一台设备。
 
-模拟器用 Debug 启动参数 `--preview-icloud-error` 或 `--preview-icloud-success`，可以从「设置 → 通用 → 同步」检查模拟的进度、错误、成功时间和刷新。用 `--preview-icloud-account-error` 配合大字体检查多行错误与刷新图标的对齐。
+模拟器用 Debug 启动参数 `--preview-icloud-error` 或 `--preview-icloud-success`，可以从「设置 → 通用 → 同步」检查模拟的进度、错误、成功时间和刷新。用 `--preview-icloud-account-error` 检查长错误文案换行时刷新图标是否与首行居中，并在系统最大字号下核对应用字体尺寸。
 单测用内存服务验证成绩和分组的合并、偏好同步与重试，全程使用临时成绩文件。

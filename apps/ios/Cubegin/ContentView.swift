@@ -662,7 +662,7 @@ struct ContentView: View {
         let recentValueStyle: Font = usesDuoWideLayout ? .subheadline : .body
         let recentValueTextStyle: UIFont.TextStyle = usesDuoWideLayout ? .subheadline : .body
         let recentColumnWidth = ceil((longestSingle as NSString).size(withAttributes: [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: recentValueTextStyle).pointSize,
+            .font: UIFont.monospacedDigitSystemFont(ofSize: AppTypography.preferredFont(for: recentValueTextStyle).pointSize,
                                                     weight: .regular)
         ]).width)
         let recentColumnGap: CGFloat = 24

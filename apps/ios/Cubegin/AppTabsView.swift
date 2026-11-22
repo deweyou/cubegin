@@ -1502,7 +1502,7 @@ private struct GroupManager: View {
             .font(.body.weight(isSelected ? .medium : .regular))
             .foregroundColor(.primary)
         let starBaselineOffset = (
-            UIFont.preferredFont(forTextStyle: .body).capHeight
+            AppTypography.preferredFont(for: .body).capHeight
             - UIFont.systemFont(ofSize: 11, weight: .medium).capHeight
         ) / 2
         let star = Text(Image(systemName: "star.fill"))
@@ -2042,6 +2042,8 @@ private struct SyncSettingsView: View {
     let model: TimerModel
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
+    private let statusLineHeight = ceil(AppTypography.preferredFont(for: .footnote).lineHeight)
+    private let refreshTargetSize: CGFloat = 44
 
     var body: some View {
         Form {
@@ -2091,22 +2093,19 @@ private struct SyncSettingsView: View {
                 }
                 Text(time.map { language.text("上次同步：\($0)", "Last synced: \($0)") }
                      ?? language.text("等待同步", "Waiting to sync"))
-                    .padding(.top, 10)
                     .accessibilityIdentifier("settings.sync.lastCloudSync")
                 Spacer(minLength: 0)
                 syncButton(language.text("刷新", "Refresh"))
             case .syncing:
                 ProgressView()
                     .controlSize(.small)
-                    .padding(.top, 10)
+                    .frame(width: statusLineHeight, height: statusLineHeight)
                     .accessibilityHidden(true)
                 Text(language.text("正在同步…", "Syncing…"))
-                    .padding(.top, 10)
                     .accessibilityIdentifier("settings.sync.inProgress")
             case .failed(let failure):
                 Text(cloudSyncMessage(failure))
                     .foregroundStyle(failure == .network ? Color.secondary : .red)
-                    .padding(.top, 10)
                     .accessibilityIdentifier("settings.sync.cloudSyncError")
                 Spacer(minLength: 0)
                 syncButton(language.text("重试", "Retry"))
@@ -2115,24 +2114,31 @@ private struct SyncSettingsView: View {
         .font(.footnote)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.leading)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
+        .padding(.horizontal, cardShadowInset)
+        .padding(.top, (refreshTargetSize - statusLineHeight) / 2)
+        .frame(maxWidth: .infinity, minHeight: refreshTargetSize, alignment: .topLeading)
     }
 
     private func syncButton(_ title: String) -> some View {
-        Button {
-            model.requestCloudSync()
-            SettingsSync.refresh()
-        } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 17))
-                .foregroundStyle(Color.accentColor)
-                .padding(.top, 8)
-                .frame(width: 44, height: 44, alignment: .top)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .accessibilityLabel(title)
-        .accessibilityIdentifier("settings.sync.refresh")
+        Color.clear
+            .frame(width: refreshTargetSize, height: statusLineHeight)
+            .overlay(alignment: .trailing) {
+                Button {
+                    model.requestCloudSync()
+                    SettingsSync.refresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(height: statusLineHeight)
+                        // Match the visible trailing edge of the switch above.
+                        .offset(x: 3)
+                        .frame(width: refreshTargetSize, height: refreshTargetSize, alignment: .trailing)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(title)
+                .accessibilityIdentifier("settings.sync.refresh")
+            }
     }
 
     private func cloudSyncMessage(_ failure: CloudSyncFailure) -> String {

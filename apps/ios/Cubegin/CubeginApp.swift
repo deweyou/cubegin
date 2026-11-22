@@ -11,6 +11,7 @@ struct CubeginApp: App {
         WindowGroup {
             LaunchRootView(hasFinishedLaunch: $hasFinishedLaunch)
                 .environment(\.locale, AppLanguage.resolve(languageOverride).locale)
+                .dynamicTypeSize(.large)
                 .preferredColorScheme(theme.colorScheme)
                 .scrollIndicators(.hidden)
                 .task { SettingsSync.refresh() }
@@ -28,6 +29,12 @@ struct CubeginApp: App {
                     }
                 }
         }
+    }
+}
+
+enum AppTypography {
+    static func preferredFont(for style: UIFont.TextStyle) -> UIFont {
+        UIFont.preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large))
     }
 }
 
