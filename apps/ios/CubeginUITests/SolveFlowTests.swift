@@ -251,7 +251,6 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(aboutHeader.exists)
         XCTAssertLessThan(syncHeader.frame.minY, toggle.frame.minY)
         XCTAssertLessThan(toggle.frame.maxY, aboutHeader.frame.minY)
-        XCTAssertTrue(app.staticTexts["Sync results and some settings across devices signed into the same iCloud account."].exists)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         let error = app.staticTexts["settings.sync.cloudSyncError"]
         let retry = app.buttons["settings.sync.retryCloudSync"]

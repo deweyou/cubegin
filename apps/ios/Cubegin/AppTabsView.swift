@@ -1864,10 +1864,25 @@ private struct SettingsView: View {
     private var language: AppLanguage { locale.appLanguage }
 
     @ViewBuilder private var iCloudSyncControls: some View {
-        Toggle(language.text("iCloud 同步", "iCloud Sync"), isOn: Binding(
+        let title = language.text("iCloud 同步", "iCloud Sync")
+        let description = model.supportsResultsSync
+            ? language.text("在登录同一 iCloud 账号的设备间同步成绩和部分设置。", "Sync results and some settings across devices signed into the same iCloud account.")
+            : language.text("在登录同一 iCloud 账号的设备间同步部分设置。", "Sync some settings across devices signed into the same iCloud account.")
+        Toggle(isOn: Binding(
             get: { model.cloudSyncEnabled },
             set: { model.setCloudSyncEnabled($0) }
-        ))
+        )) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                Text(description)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 10)
+        }
+        .accessibilityLabel(title)
+        .accessibilityHint(description)
         .accessibilityIdentifier("settings.sync.icloudSync")
 
         if model.cloudSyncEnabled, model.supportsResultsSync {
@@ -2053,14 +2068,8 @@ private struct SettingsView: View {
                     .accessibilityIdentifier("settings.results.clear")
                 }
                 if model.supportsCloudSync {
-                    CardSection {
+                    CardSection(language.text("同步", "Sync")) {
                         iCloudSyncControls
-                    } header: {
-                        Text(language.text("同步", "Sync"))
-                    } footer: {
-                        Text(model.supportsResultsSync
-                             ? language.text("在登录同一 iCloud 账号的设备间同步成绩和部分设置。", "Sync results and some settings across devices signed into the same iCloud account.")
-                             : language.text("在登录同一 iCloud 账号的设备间同步部分设置。", "Sync some settings across devices signed into the same iCloud account."))
                     }
                 }
                 CardSection(language.text("关于", "About")) {
