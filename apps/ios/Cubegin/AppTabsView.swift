@@ -2115,7 +2115,7 @@ private struct SyncSettingsView: View {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.leading)
         .padding(.horizontal, cardShadowInset)
-        .padding(.top, (refreshTargetSize - statusLineHeight) / 2)
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, minHeight: refreshTargetSize, alignment: .topLeading)
     }
 
