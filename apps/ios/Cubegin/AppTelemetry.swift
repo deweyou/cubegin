@@ -375,8 +375,8 @@ enum AppTelemetry {
             pendingAnalyticsEvents.removeAll()
             boundUserID = nil
             if analyticsEnabled {
-                Analytics.setAnalyticsCollectionEnabled(false)
                 Analytics.setUserID(nil)
+                Analytics.setAnalyticsCollectionEnabled(false)
                 Analytics.resetAnalyticsData()
                 analyticsEnabled = false
             }
@@ -460,8 +460,9 @@ enum AppTelemetry {
             Analytics.setUserID(userID?.uuidString.lowercased())
         } else {
             if FirebaseApp.app() == nil { FirebaseApp.configure() }
-            Analytics.setUserID(userID?.uuidString.lowercased())
+            // Firebase drops user-property writes while collection is disabled.
             Analytics.setAnalyticsCollectionEnabled(true)
+            Analytics.setUserID(userID?.uuidString.lowercased())
             analyticsEnabled = true
         }
         boundUserID = userID
