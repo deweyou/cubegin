@@ -2247,6 +2247,7 @@ private struct SyncSettingsView: View {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.leading)
         .padding(.horizontal, cardShadowInset)
+        // The switch has an additional trailing inset inside its card row.
         .padding(.trailing, cardShadowInset)
         .padding(.top, 6)
         .frame(maxWidth: .infinity, minHeight: refreshTargetSize, alignment: .topLeading)
@@ -2264,6 +2265,8 @@ private struct SyncSettingsView: View {
                     Image(systemName: "arrow.clockwise")
                         .foregroundStyle(Color.accentColor)
                         .frame(height: statusLineHeight)
+                        // Compensate for the symbol's trailing side bearing.
+                        .offset(x: 3)
                         .frame(width: refreshTargetSize, height: refreshTargetSize, alignment: .trailing)
                         .contentShape(Rectangle())
                 }
