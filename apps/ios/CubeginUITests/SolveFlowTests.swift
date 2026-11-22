@@ -509,7 +509,7 @@ final class SolveFlowTests: XCTestCase {
         screenshot.name = "Privacy settings (zh-Hans)"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        let sharingControl = sharing.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+        let sharingControl = sharing.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5))
         sharingControl.tap()
         XCTAssertEqual(sharing.value as? String, "1")
         sharingControl.tap()
@@ -1758,14 +1758,16 @@ final class SolveFlowTests: XCTestCase {
     func testInspectionContinuesAfterSwipeCancellation() {
         continueAfterFailure = false
 
+        XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
-                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "2"]
+                                "-timer.wcaInspection", "YES", "-timer.startDelayTenths", "2",
+                                "-timer.entryMethod", "timer"]
         app.launch()
-        XCUIDevice.shared.orientation = .portrait
 
         let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(app.buttons["timer.formula-hints"].waitForExistence(timeout: 20))
         XCTAssertTrue(timer.waitForExistence(timeout: 20))
         let center = timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()

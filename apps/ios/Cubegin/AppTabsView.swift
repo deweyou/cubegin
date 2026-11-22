@@ -2247,6 +2247,7 @@ private struct SyncSettingsView: View {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.leading)
         .padding(.horizontal, cardShadowInset)
+        .padding(.trailing, cardShadowInset)
         .padding(.top, 6)
         .frame(maxWidth: .infinity, minHeight: refreshTargetSize, alignment: .topLeading)
     }
@@ -2263,8 +2264,6 @@ private struct SyncSettingsView: View {
                     Image(systemName: "arrow.clockwise")
                         .foregroundStyle(Color.accentColor)
                         .frame(height: statusLineHeight)
-                        // Match the visible trailing edge of the switch above.
-                        .offset(x: 3)
                         .frame(width: refreshTargetSize, height: refreshTargetSize, alignment: .trailing)
                         .contentShape(Rectangle())
                 }
