@@ -36,6 +36,7 @@ struct Solve: Codable, Identifiable, Equatable, Sendable {
 }
 struct SolveGroup: Codable, Identifiable {
     static let maximumNameLength = 16
+    static let cloudPlaceholderName = "iCloud"
 
     static func isValidName(_ name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -207,12 +208,19 @@ struct ManualSolveContext: Identifiable {
         for player in inspectionPlayers { player.stop() }
         inspectionPlayers.removeAll()
     }
-    var mode = ScrambleMode.standard
+    private static let projectModeKey = "scramble.mode"
+    private static let standardEventKey = "scramble.standard"
+    private static let trainingEventKey = "scramble.training"
+    private static let editedPreferenceKeysKey = "icloud.editedPreferenceKeys"
+
+    var mode: ScrambleMode {
+        didSet { storeProjectPreference(mode.rawValue, key: Self.projectModeKey) }
+    }
     var standardEvent: String {
-        didSet { defaults.set(standardEvent, forKey: "scramble.standard") }
+        didSet { storeProjectPreference(standardEvent, key: Self.standardEventKey) }
     }
     var trainingEvent: String {
-        didSet { defaults.set(trainingEvent, forKey: "scramble.training") }
+        didSet { storeProjectPreference(trainingEvent, key: Self.trainingEventKey) }
     }
     var event: String { mode == .standard ? standardEvent : trainingEvent }
     var eventSelection: String {
@@ -308,6 +316,56 @@ struct ManualSolveContext: Identifiable {
     @ObservationIgnored private var cloudTask: Task<Void, Never>?
     @ObservationIgnored private var needsCloudSync = false
     @ObservationIgnored private var cloudGeneration = 0
+    @ObservationIgnored private var deferredCloudApply = false
+
+    private func storeProjectPreference(_ value: String, key: String) {
+        guard defaults.string(forKey: key) != value else { return }
+        defaults.set(value, forKey: key)
+        preferenceDidChange(key)
+    }
+
+    func preferenceDidChange(_ key: String) {
+        guard supportsResultsSync, Self.syncsPreference(key) else { return }
+        var edited = editedPreferenceKeys
+        edited.insert(key)
+        defaults.set(edited.sorted(), forKey: Self.editedPreferenceKeysKey)
+        requestCloudSync()
+    }
+
+    private var editedPreferenceKeys: Set<String> {
+        Set(defaults.stringArray(forKey: Self.editedPreferenceKeysKey) ?? [])
+    }
+
+    private static func syncsPreference(_ key: String) -> Bool {
+        key == projectModeKey || key == standardEventKey || key == trainingEventKey || AssistPreferences.isPreferenceKey(key)
+    }
+
+    private var syncedPreferences: [String: [String]] {
+        defaults.dictionaryRepresentation().reduce(into: [:]) { values, entry in
+            guard Self.syncsPreference(entry.key) else { return }
+            if let selection = entry.value as? String { values[entry.key] = [selection] }
+            if let order = entry.value as? [String] { values[entry.key] = order }
+        }
+    }
+
+    private func restoreCloudPreferences(_ metadata: [SyncedMetadata], comparedTo previous: [String: [String]]) {
+        let current = syncedPreferences
+        var projectsChanged = false
+        for entry in metadata {
+            guard case .preference(let key, let values) = entry, Self.syncsPreference(key),
+                  current[key] == previous[key], current[key] != values else { continue }
+            if AssistPreferences.isOrderKey(key) {
+                defaults.set(values, forKey: key)
+            } else if let selection = values.first, values.count == 1 {
+                defaults.set(selection, forKey: key)
+                if !AssistPreferences.isPreferenceKey(key) { projectsChanged = true }
+            }
+        }
+        guard projectsChanged else { return }
+        standardEvent = ScrambleCatalog.restored(Self.standardEventKey, training: false, defaults: defaults)
+        trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
+        mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
+    }
 
     func setCloudSyncEnabled(_ enabled: Bool) {
         guard supportsCloudSync, enabled != cloudSyncEnabled else { return }
@@ -319,6 +377,7 @@ struct ManualSolveContext: Identifiable {
         } else {
             cloudTask?.cancel()
             needsCloudSync = false
+            deferredCloudApply = false
             cloudSyncStatus = .idle
         }
     }
@@ -331,6 +390,7 @@ struct ManualSolveContext: Identifiable {
         }
         needsCloudSync = true
         guard cloudTask == nil else { return }
+        cloudSyncStatus = .syncing
         cloudTask = Task { [weak self] in await self?.syncResults() }
     }
 
@@ -341,7 +401,6 @@ struct ManualSolveContext: Identifiable {
         }
         guard cloudSyncEnabled, !Task.isCancelled, let cloudTransport else { return }
         needsCloudSync = false
-        cloudSyncStatus = .syncing
         do {
             let account = try await cloudTransport.accountID()
             try Task.checkCancellation()
@@ -359,6 +418,13 @@ struct ManualSolveContext: Identifiable {
             var replica = ResultsSyncReplica(state: cloudState)
             // Older builds could save a timed solve without adding it to the sync state.
             try replica.importSolves(persistedSolves)
+            replica.importGroups(groups)
+            let preferences = syncedPreferences
+            let editedKeys = editedPreferenceKeys
+            for (key, values) in preferences {
+                replica.recordMetadata(.preference(key: key, values: values),
+                                       migrationRevision: editedKeys.contains(key) ? nil : 0)
+            }
             try await cloudTransport.prepareZone(for: account)
             try await replica.sync(with: cloudTransport)
             let currentAccount = try await cloudTransport.accountID()
@@ -368,13 +434,31 @@ struct ManualSolveContext: Identifiable {
                 needsCloudSync = true
                 return
             }
-            var updatedGroups = groups
-            for solve in replica.solves {
+            guard started == nil, inspectionStarted == nil, heldInput == nil else {
+                deferredCloudApply = true
+                cloudSyncStatus = .idle
+                return
+            }
+            deferredCloudApply = false
+            var updatedGroups = replica.mergedGroups(groups)
+            var deletedGroups: [String: Set<String>] = [:]
+            for case .group(let event, let id, nil) in replica.metadata {
+                deletedGroups[event, default: []].insert(id)
+            }
+            for var solve in replica.solves {
                 let id = solve.groupID ?? SolveGroup.initialID(for: solve.event)
                 if !updatedGroups.contains(where: { $0.id == id && $0.event == solve.event }) {
+                    if deletedGroups[solve.event]?.contains(id) == true,
+                       let fallback = updatedGroups.first(where: { $0.event == solve.event && $0.isDefault }) {
+                        // Keep a concurrent solve when its group was removed on another device.
+                        solve.groupID = fallback.id
+                        try replica.edit(solve)
+                        needsCloudSync = true
+                        continue
+                    }
                     let hasDefault = updatedGroups.contains { $0.event == solve.event && $0.isDefault }
                     updatedGroups.append(SolveGroup(id: id, event: solve.event,
-                                                   name: id == SolveGroup.initialID(for: solve.event) ? "" : "iCloud",
+                                                   name: id == SolveGroup.initialID(for: solve.event) ? "" : SolveGroup.cloudPlaceholderName,
                                                    isDefault: !hasDefault))
                 }
             }
@@ -386,7 +470,15 @@ struct ManualSolveContext: Identifiable {
                 return
             }
             solves = (unsaved + updated).sorted(by: Solve.newestFirst)
+            let previousDefault = groups.first { $0.event == event && $0.isDefault }?.id
             groups = updatedGroups
+            if selectedGroupID == previousDefault || !eventGroups.contains(where: { $0.id == selectedGroupID }) {
+                selectedGroupID = eventGroups.first(where: \.isDefault)?.id
+            }
+            let currentPreferences = syncedPreferences
+            let processed = editedKeys.filter { currentPreferences[$0] == preferences[$0] }
+            defaults.set(editedPreferenceKeys.subtracting(processed).sorted(), forKey: Self.editedPreferenceKeysKey)
+            restoreCloudPreferences(replica.metadata, comparedTo: preferences)
             if lastSolveWasSaved, let lastSolveID, !updated.contains(where: { $0.id == lastSolveID }) {
                 self.lastSolveID = nil
             }
@@ -435,8 +527,9 @@ struct ManualSolveContext: Identifiable {
         }
         self.now = now
         self.generateScramble = generateScramble
-        self.standardEvent = ScrambleCatalog.restored("scramble.standard", training: false, defaults: defaults)
-        self.trainingEvent = ScrambleCatalog.restored("scramble.training", training: true, defaults: defaults)
+        self.standardEvent = ScrambleCatalog.restored(Self.standardEventKey, training: false, defaults: defaults)
+        self.trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
+        self.mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
         do {
             let data = try Data(contentsOf: storage)
             if let store = try? JSONDecoder().decode(ResultsStore.self, from: data) {
@@ -582,6 +675,7 @@ struct ManualSolveContext: Identifiable {
 
     func refresh(advance: Bool = false) {
         guard started == nil else { return }
+        if deferredCloudApply { requestCloudSync() }
         if selectionEvent != event {
             selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id
             selectionEvent = event
@@ -901,6 +995,7 @@ struct ManualSolveContext: Identifiable {
                 var replica = ResultsSyncReplica(state: cloudState ?? .init(replicaID: UUID()))
                 try replica.importSolves(persistedSolves)
                 try replica.recordLocalChanges(from: persistedSolves, to: results)
+                if let groups { replica.recordGroupChanges(from: self.groups, to: groups) }
                 nextCloudState = replica.state
             }
             let store = ResultsStore(

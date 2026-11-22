@@ -240,17 +240,14 @@ final class SolveFlowTests: XCTestCase {
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
+        let sync = app.buttons["settings.general.sync"]
+        XCTAssertTrue(sync.waitForExistence(timeout: 5))
+        tapCardRowEdge(sync)
+        XCTAssertTrue(app.navigationBars["Sync"].waitForExistence(timeout: 5))
         let toggle = app.switches["settings.sync.icloudSync"]
-        if !toggle.isHittable { app.swipeUp() }
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "0")
         XCTAssertEqual(toggle.label, "iCloud Sync")
-        let syncHeader = app.staticTexts["Sync"]
-        let aboutHeader = app.staticTexts["About"]
-        XCTAssertTrue(syncHeader.exists)
-        XCTAssertTrue(aboutHeader.exists)
-        XCTAssertLessThan(syncHeader.frame.minY, toggle.frame.minY)
-        XCTAssertLessThan(toggle.frame.maxY, aboutHeader.frame.minY)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         let error = app.staticTexts["settings.sync.cloudSyncError"]
         let retry = app.buttons["settings.sync.retryCloudSync"]

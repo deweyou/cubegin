@@ -496,10 +496,10 @@ struct TimerModelTests {
             #expect(model.currentGroup?.id == "default:333.oll")
 
             let reopened = fixture.model()
-            #expect(reopened.mode == .standard)
-            #expect(reopened.event == "222")
-            reopened.mode = .training
+            #expect(reopened.mode == .training)
             #expect(reopened.event == "333.oll")
+            reopened.mode = .standard
+            #expect(reopened.event == "222")
         }
     }
 

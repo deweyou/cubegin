@@ -1847,7 +1847,7 @@ private struct SettingsView: View {
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case gestures, imports, clearResults }
+    private enum Page: Hashable { case gestures, imports, clearResults, sync }
     @State private var path: [Page] = []
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = ""
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
@@ -1862,83 +1862,6 @@ private struct SettingsView: View {
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
-
-    @ViewBuilder private var iCloudSyncControls: some View {
-        let title = language.text("iCloud 同步", "iCloud Sync")
-        let description = model.supportsResultsSync
-            ? language.text("在登录同一 iCloud 账号的设备间同步成绩和部分设置。", "Sync results and some settings across devices signed into the same iCloud account.")
-            : language.text("在登录同一 iCloud 账号的设备间同步部分设置。", "Sync some settings across devices signed into the same iCloud account.")
-        Toggle(isOn: Binding(
-            get: { model.cloudSyncEnabled },
-            set: { model.setCloudSyncEnabled($0) }
-        )) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                Text(description)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 10)
-        }
-        .accessibilityLabel(title)
-        .accessibilityHint(description)
-        .accessibilityIdentifier("settings.sync.icloudSync")
-
-        if model.cloudSyncEnabled, model.supportsResultsSync {
-            switch model.cloudSyncStatus {
-            case .idle, .synced:
-                if let date = model.lastSuccessfulCloudSync {
-                    let time = date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
-                    Text(language.text("上次同步成绩：\(time)", "Results last synced: \(time)"))
-                        .font(.footnote)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.sync.lastCloudSync")
-                }
-            case .syncing:
-                HStack {
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(language.text("正在同步…", "Syncing…"))
-                        .font(.footnote)
-                }
-                .foregroundStyle(.secondary)
-            case .failed(let failure):
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(cloudSyncMessage(failure))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityIdentifier("settings.sync.cloudSyncError")
-                    Button {
-                        model.requestCloudSync()
-                    } label: {
-                        Label(language.text("重试", "Retry"), systemImage: "arrow.clockwise")
-                            .fixedSize()
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityIdentifier("settings.sync.retryCloudSync")
-                }
-                .font(.footnote)
-            }
-        }
-    }
-
-    private func cloudSyncMessage(_ failure: CloudSyncFailure) -> String {
-        switch failure {
-        case .noAccount: language.text("请先在系统设置中登录 iCloud。", "Sign in to iCloud in Settings first.")
-        case .restricted: language.text("此设备限制了 iCloud 访问，请检查系统设置。", "iCloud access is restricted on this device. Check Settings.")
-        case .accountUnavailable: language.text("暂时无法访问 iCloud 账号，请稍后重试。", "Your iCloud account is temporarily unavailable. Try again later.")
-        case .accountChanged: language.text("iCloud 账号已变更，请切回之前同步用的账号。", "Switch back to the iCloud account previously used for sync.")
-        case .authentication: language.text("iCloud 验证失败，请检查账号状态。", "iCloud couldn’t verify your account. Check Settings.")
-        case .network: language.text("网络连接有问题，请检查网络后重试。", "Check your internet connection and try again.")
-        case .storageFull: language.text("iCloud 储存空间不足，请腾出空间后重试。", "Free up iCloud storage, then try again.")
-        case .serviceUnavailable: language.text("iCloud 暂时无法同步，请稍后重试。", "iCloud is temporarily unavailable. Try again later.")
-        case .localStorage: language.text("无法读取或保存本机成绩。", "Couldn’t read or save local results.")
-        case .unknown: language.text("同步失败，请稍后重试。", "Sync failed. Try again later.")
-        }
-    }
 
     private var syncedLanguage: Binding<String> {
         SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }
@@ -2022,6 +1945,15 @@ private struct SettingsView: View {
                             Text(option.name).tag(option)
                         }
                     }
+                    if model.supportsCloudSync {
+                        cardRowButton {
+                            path.append(.sync)
+                        } label: {
+                            settingsLinkLabel(language.text("同步", "Sync"))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("settings.general.sync")
+                    }
                 }
                 CardSection(language.text("计时", "Timer")) {
                     Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 })
@@ -2067,11 +1999,6 @@ private struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
                 }
-                if model.supportsCloudSync {
-                    CardSection(language.text("同步", "Sync")) {
-                        iCloudSyncControls
-                    }
-                }
                 CardSection(language.text("关于", "About")) {
                     LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
                 }
@@ -2081,6 +2008,7 @@ private struct SettingsView: View {
                 case .gestures: TimerGestureSettingsView()
                 case .imports: ResultsImportView(model: model)
                 case .clearResults: ClearResultsView(model: model)
+                case .sync: SyncSettingsView(model: model)
                 }
             }
             .pinnedScrollHeader {
@@ -2103,6 +2031,105 @@ private struct SettingsView: View {
             if !selected { path.removeAll() }
         }
     }
+}
+
+private struct SyncSettingsView: View {
+    let model: TimerModel
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+
+    var body: some View {
+        Form {
+            CardSection {
+                iCloudSyncControls
+            }
+        }
+        .appBackground()
+        .navigationTitle(language.text("同步", "Sync"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+
+    @ViewBuilder private var iCloudSyncControls: some View {
+        let title = language.text("iCloud 同步", "iCloud Sync")
+        let description = model.supportsResultsSync
+            ? language.text("跨设备同步成绩和设置。", "Sync results and settings across devices.")
+            : language.text("跨设备同步常用设置。", "Sync preferences across devices.")
+        Toggle(isOn: Binding(
+            get: { model.cloudSyncEnabled },
+            set: { model.setCloudSyncEnabled($0) }
+        )) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                Text(description)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 10)
+        }
+        .accessibilityLabel(title)
+        .accessibilityHint(description)
+        .accessibilityIdentifier("settings.sync.icloudSync")
+
+        if model.cloudSyncEnabled, model.supportsResultsSync {
+            switch model.cloudSyncStatus {
+            case .idle, .synced:
+                let time = model.lastSuccessfulCloudSync.map {
+                    $0.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
+                }
+                let status = time.map { language.text("上次同步：\($0)", "Last synced: \($0)") }
+                    ?? language.text("等待同步", "Waiting to sync")
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("settings.sync.lastCloudSync")
+            case .syncing:
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(language.text("正在同步…", "Syncing…"))
+                        .font(.footnote)
+                }
+                .foregroundStyle(.secondary)
+            case .failed(let failure):
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(cloudSyncMessage(failure))
+                        .foregroundStyle(failure == .network ? Color.secondary : .red)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .accessibilityIdentifier("settings.sync.cloudSyncError")
+                    Button {
+                        model.requestCloudSync()
+                    } label: {
+                        Label(language.text("重试", "Retry"), systemImage: "arrow.clockwise")
+                            .fixedSize()
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("settings.sync.retryCloudSync")
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
+    private func cloudSyncMessage(_ failure: CloudSyncFailure) -> String {
+        switch failure {
+        case .noAccount: language.text("请先在系统设置中登录 iCloud。", "Sign in to iCloud in Settings first.")
+        case .restricted: language.text("此设备限制了 iCloud 访问，请检查系统设置。", "iCloud access is restricted on this device. Check Settings.")
+        case .accountUnavailable: language.text("暂时无法访问 iCloud 账号，请稍后重试。", "Your iCloud account is temporarily unavailable. Try again later.")
+        case .accountChanged: language.text("iCloud 账号已变更，请切回之前同步用的账号。", "Switch back to the iCloud account previously used for sync.")
+        case .authentication: language.text("iCloud 验证失败，请检查账号状态。", "iCloud couldn’t verify your account. Check Settings.")
+        case .network: language.text("网络连接异常", "Network connection unavailable")
+        case .storageFull: language.text("iCloud 储存空间不足，请腾出空间后重试。", "Free up iCloud storage, then try again.")
+        case .serviceUnavailable: language.text("iCloud 暂时无法同步，请稍后重试。", "iCloud is temporarily unavailable. Try again later.")
+        case .localStorage: language.text("无法读取或保存本机成绩。", "Couldn’t read or save local results.")
+        case .unknown: language.text("同步失败，请稍后重试。", "Sync failed. Try again later.")
+        }
+    }
+
 }
 
 private struct TimerGestureSettingsView: View {

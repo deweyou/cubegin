@@ -174,14 +174,14 @@ struct ContentView: View {
         }
         .sheet(item: assistPresentation(onDuo: false), onDismiss: resumeTimerInput) { scramble in
             if UIDevice.current.userInterfaceIdiom == .pad {
-                AssistFormulaView(scramble: scramble)
+                AssistFormulaView(scramble: scramble, onPreferencesChanged: model.preferenceDidChange)
                     .presentationSizing(.form)
             } else {
-                AssistFormulaView(scramble: scramble)
+                AssistFormulaView(scramble: scramble, onPreferencesChanged: model.preferenceDidChange)
             }
         }
         .fullScreenCover(item: assistPresentation(onDuo: true), onDismiss: resumeTimerInput) { scramble in
-            AssistFormulaModal(scramble: scramble)
+            AssistFormulaModal(scramble: scramble, onPreferencesChanged: model.preferenceDidChange)
                 .presentationBackground(.clear)
         }
         .sheet(item: manualPresentation(edgeToEdge: false), onDismiss: resumeTimerInput) { context in
