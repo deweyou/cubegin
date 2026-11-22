@@ -170,6 +170,24 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 
 签名构建、安装成功、启动成功与真机画面或交互验收应分开记录。
 
+### iCloud 成绩同步验证
+
+成绩同步使用 Cubegin Dev App ID。开发签名必须允许运行 CloudKit，并关联
+`iCloud.io.github.deweyou.cubegin.sync-prototype` 容器。按上面的真机构建命令，
+将空的 `CODE_SIGN_ENTITLEMENTS=` 替换为以下两个构建参数。
+
+```sh
+CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
+'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CUBEGIN_RESULTS_SYNC'
+```
+
+两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 成绩 → iCloud 成绩同步」，
+验证首次合并、编辑罚时、离线删除后重试，以及更换 iCloud 账号后本机成绩保留。先核对测试设备和专用容器，
+再打开开关。这样不会使用正式 App 的成绩。两台设备的测试成绩都可见后再验证删除。
+
+模拟器用 Debug 启动参数 `--preview-icloud-error` 模拟网络失败，可检查默认关闭、开启、错误提示和重试。
+单测用内存服务验证合并和重试，全程使用临时成绩文件。
+
 ## 真机验证故障诊断
 
 在忽略提交的 `apps/ios/TelemetryConfig/` 中放置配置，也可通过

@@ -11,6 +11,8 @@ ASSIST = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A
 ASSISTBUILD = {isa = PBXBuildFile; fileRef = ASSIST; };
 F2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerModel.swift; sourceTree = "<group>"; };
 B2 = {isa = PBXBuildFile; fileRef = F2; };
+RESULTSSYNC = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsSync.swift; sourceTree = "<group>"; };
+RESULTSSYNCBUILD = {isa = PBXBuildFile; fileRef = RESULTSSYNC; };
 F3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 B3 = {isa = PBXBuildFile; fileRef = F3; };
 MANUALSOLVE = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSolveEntryView.swift; sourceTree = "<group>"; };
@@ -31,9 +33,9 @@ LAUNCHSCREEN = {isa = PBXFileReference; lastKnownFileType = file.storyboard; pat
 LAUNCHSCREENBUILD = {isa = PBXBuildFile; fileRef = LAUNCHSCREEN; };
 APP = {isa = PBXFileReference; explicitFileType = wrapper.application; path = cubegin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 ROOT = {isa = PBXGroup; children = (SRC, PRODUCTS); sourceTree = "<group>"; };
-SRC = {isa = PBXGroup; path = Cubegin; children = (F0,TELEMETRY,POLICY,F1,F2,F3,MANUALSOLVE,ASSIST,TABS,DCIMPORT,CHARTS,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
+SRC = {isa = PBXGroup; path = Cubegin; children = (F0,TELEMETRY,POLICY,F1,F2,RESULTSSYNC,F3,MANUALSOLVE,ASSIST,TABS,DCIMPORT,CHARTS,LAUNCH,ASSETS,INSPECTIONAUDIO,LAUNCHSCREEN); sourceTree = "<group>"; };
 PRODUCTS = {isa = PBXGroup; children = (APP); name = Products; sourceTree = "<group>"; };
-SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,TELEMETRYBUILD,B1,B2,B3,MANUALSOLVEBUILD,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
+SOURCES = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0,TELEMETRYBUILD,B1,B2,RESULTSSYNCBUILD,B3,MANUALSOLVEBUILD,ASSISTBUILD,TABSBUILD,DCIMPORTBUILD,CHARTSBUILD,LAUNCHBUILD); runOnlyForDeploymentPostprocessing = 0; };
 FRAMEWORKS = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 RESOURCES = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (POLICYBUILD,ASSETSBUILD,INSPECTIONAUDIOBUILD,LAUNCHSCREENBUILD); runOnlyForDeploymentPostprocessing = 0; };
 TARGET = {isa = PBXNativeTarget; buildConfigurationList = TCL; buildPhases = (SOURCES,FRAMEWORKS,RESOURCES); buildRules = (); dependencies = (); name = CubeginPreview; packageProductDependencies = (); productName = cubegin; productReference = APP; productType = "com.apple.product-type.application"; };

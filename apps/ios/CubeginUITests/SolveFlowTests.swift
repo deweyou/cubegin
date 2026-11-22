@@ -262,6 +262,33 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testResultsSyncShowsRetryAfterAnOptInError() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "--preview-icloud-error", "-results.icloudSync", "NO"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let toggle = app.switches["settings.results.icloudSync"]
+        if !toggle.isHittable { app.swipeUp() }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        let error = app.staticTexts["settings.results.cloudSyncError"]
+        let retry = app.buttons["settings.results.retryCloudSync"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        XCTAssertTrue(retry.exists)
+        retry.tap()
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        XCTAssertFalse(error.exists)
+    }
+
+    @MainActor
     func testDCTimerImportOpensFilesAndCanBeCancelled() {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()

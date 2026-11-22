@@ -65,7 +65,9 @@ struct LaunchRootView: View {
 
     private func prepareTimer() {
         guard timerModel == nil else { return }
-        timerModel = TimerModel(storage: Self.resultsStorage)
+        timerModel = TimerModel(
+            storage: Self.resultsStorage, cloudTransport: CloudKitResultsTransport.configured()
+        )
     }
 
     private static var resultsStorage: URL {
