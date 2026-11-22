@@ -222,6 +222,16 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 
 首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。设备 ID 复制入口由 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 验证。
 
-验证跨设备埋点时，Cubegin Dev 同时使用专用 CloudKit 容器与隔离的 Firebase、Sentry 项目。使用[成绩同步验证](#icloud-成绩同步验证)中的签名授权与编译参数，保留 Firebase 包自己的编译条件。在上面的 Dev 启动参数后附加 `-cubegin-telemetry-qa-consent`，用本机共享选择控制验证上报。用新安装覆盖已有共享 ID、首次创建、离线超时后恢复三种情况。核对自动 `first_open`、`session_start` 实际出现的时机，以及原始数据中的 `user_id`。核对取消共享、关闭 iCloud 同步及切换 iCloud 账号时的身份切换。
+## 产品埋点验证
+
+按[真机验证故障诊断](#真机验证故障诊断)中的启动命令打开 Cubegin Dev，附加 `-cubegin-telemetry-qa-consent` 以使用本机共享选择。实际操作功能，在隔离的 GA4 DebugView 核对事件名称、触发次数和参数。涉及 UID 时，另外核对该事件原始上传数据中的 `user_id`。
+
+验证跨设备埋点时，Cubegin Dev 同时使用专用 CloudKit 容器与隔离的 Firebase、Sentry 项目。使用[成绩同步验证](#icloud-成绩同步验证)中的签名授权与编译参数，保留 Firebase 包自己的编译条件。用新安装覆盖已有共享 ID、首次创建、离线超时后恢复三种情况。核对自动 `first_open`、`session_start` 实际出现的时机，以及原始数据中的 `user_id`。核对取消共享、关闭 iCloud 同步及切换 iCloud 账号时的身份切换。
 
 正式构建使用容器 `iCloud.io.github.deweyou.cubegin`。发布前给正式 Bundle ID 关联此容器，并在 CloudKit Production 部署 `CubeginAnalyticsIdentity` 记录类型及字符串字段 `uuid`。成绩同步仍由 Dev 专用容器承载。GA4 的 `cube_event`、`inspection_voice` 和 `include_dnf_in_worst` 使用事件级自定义维度。
+
+### 2026-11-22 Cubegin Dev 验收
+
+- 实际计时、查看成绩列表和统计、导入 DCTimer 后，DebugView 各收到一条 `wca_inspection_started`、`solve_saved`、`solve_list_viewed`、`statistics_viewed`、`dctimer_import_started` 和 `dctimer_import_completed`。SDK 日志核对了各事件的预期参数。
+- 全新模拟器安装模拟 CloudKit 在 100 毫秒返回共享 UID。Firebase 上传的 `first_open` 和 `session_start` 均无 UID，随后上传的 `statistics_viewed` 带有预期 UID。其余五个业务事件已确认入站，原始上传数据中的 UID 尚未逐条核对。
+- 模拟 UID 在 3.5 秒返回时，App 等满 1 秒后开启采集，UID 到达后没有重发两条自动事件。一台签名 Dev 真机成功读取并设置 CloudKit 共享 UID。真机全新安装及两台真机核对共享 UID 仍待验收。
