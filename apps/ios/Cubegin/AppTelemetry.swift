@@ -1,4 +1,5 @@
 import Foundation
+import CloudKit
 
 #if CUBEGIN_TELEMETRY
 import FirebaseAnalytics
@@ -84,6 +85,154 @@ enum FailureReason: String {
     }
 }
 
+enum ProductEvent: Equatable {
+    case solveSaved(project: String)
+    case statisticsViewed
+    case dctimerImportStarted
+    case dctimerImportCompleted
+    case wcaInspectionStarted(InspectionVoice)
+    case solveListViewed(includesDNF: Bool)
+
+    var name: String {
+        switch self {
+        case .solveSaved: "solve_saved"
+        case .statisticsViewed: "statistics_viewed"
+        case .dctimerImportStarted: "dctimer_import_started"
+        case .dctimerImportCompleted: "dctimer_import_completed"
+        case .wcaInspectionStarted: "wca_inspection_started"
+        case .solveListViewed: "solve_list_viewed"
+        }
+    }
+
+    var fields: [String: String] {
+        switch self {
+        case .solveSaved(let project):
+            let base = ScrambleCatalog.training.contains { $0.id == project }
+                ? project.split(separator: ".", maxSplits: 1).first.map(String.init)
+                : project
+            let supported = ScrambleCatalog.standard.first { $0.id == base }
+            return ["cube_event": supported.map { "event_\($0.id)" } ?? "other"]
+        case .wcaInspectionStarted(let voice):
+            return ["inspection_voice": voice.rawValue]
+        case .solveListViewed(let includesDNF):
+            return ["include_dnf_in_worst": includesDNF ? "on" : "off"]
+        case .statisticsViewed, .dctimerImportStarted, .dctimerImportCompleted:
+            return [:]
+        }
+    }
+}
+
+enum CloudAnalyticsIdentityLookup: Sendable {
+    case found(UUID), missing, unavailable
+}
+
+@MainActor
+final class AnalyticsIdentityStartup {
+    private var lookupTask: Task<Void, Never>?
+    private var deadlineTask: Task<Void, Never>?
+
+    func start(timeout: Duration = .seconds(1),
+               lookup: @escaping @Sendable () async -> CloudAnalyticsIdentityLookup,
+               create: @escaping @Sendable () async -> UUID?,
+               apply: @escaping @MainActor (UUID?) -> Void) {
+        guard lookupTask == nil else { return }
+        var startedWithoutID = false
+        let startWithoutID = {
+            guard !startedWithoutID else { return }
+            startedWithoutID = true
+            apply(nil)
+        }
+        let deadline = Task {
+            do { try await Task.sleep(for: timeout) } catch { return }
+            startWithoutID()
+        }
+        deadlineTask = deadline
+        lookupTask = Task { [weak self] in
+            let result = await lookup()
+            guard !Task.isCancelled else { return }
+            deadline.cancel()
+            defer {
+                if !Task.isCancelled {
+                    self?.lookupTask = nil
+                    self?.deadlineTask = nil
+                }
+            }
+            switch result {
+            case .found(let id):
+                apply(id)
+            case .unavailable:
+                startWithoutID()
+            case .missing:
+                startWithoutID()
+                if let id = await create(), !Task.isCancelled { apply(id) }
+            }
+        }
+    }
+
+    func cancel() {
+        lookupTask?.cancel()
+        deadlineTask?.cancel()
+        lookupTask = nil
+        deadlineTask = nil
+    }
+}
+
+#if CUBEGIN_TELEMETRY
+private actor CloudAnalyticsIdentityStore {
+    static let productionContainerID = "iCloud.io.github.deweyou.cubegin"
+    private static let recordID = CKRecord.ID(recordName: "cubegin-analytics-user-id")
+    private let container: CKContainer
+    private var database: CKDatabase { container.privateCloudDatabase }
+
+    init(containerID: String) {
+        container = CKContainer(identifier: containerID)
+    }
+
+    func lookup() async -> CloudAnalyticsIdentityLookup {
+        do {
+            return .found(try await fetchID())
+        } catch let error as CKError where error.code == .unknownItem {
+            return .missing
+        } catch {
+            return .unavailable
+        }
+    }
+
+    func create() async -> UUID? {
+        do {
+            let account = try await container.userRecordID()
+            let record = CKRecord(recordType: "CubeginAnalyticsIdentity", recordID: Self.recordID)
+            let id = UUID()
+            record["uuid"] = id.uuidString.lowercased()
+            try Task.checkCancellation()
+            let resolved: UUID
+            do {
+                let result = try await database.modifyRecords(
+                    saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged
+                )
+                guard let saved = result.saveResults[Self.recordID] else { return nil }
+                _ = try saved.get()
+                resolved = id
+            } catch let error as CKError where error.code == .serverRecordChanged {
+                resolved = try await fetchID()
+            }
+            guard try await container.userRecordID() == account, !Task.isCancelled else { return nil }
+            return resolved
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchID() async throws -> UUID {
+        let record = try await database.record(for: Self.recordID)
+        guard let raw = record["uuid"] as? String, let id = UUID(uuidString: raw) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return id
+    }
+}
+#endif
+
 @MainActor
 enum AppTelemetry {
     enum SharingChoice: String {
@@ -104,9 +253,9 @@ enum AppTelemetry {
         return .standard
     }()
 
-    static var installationID: String { installationID(in: .standard) }
+    static var deviceID: String { deviceID(in: .standard) }
 
-    static func installationID(in defaults: UserDefaults) -> String {
+    static func deviceID(in defaults: UserDefaults) -> String {
         if let stored = defaults.string(forKey: installationIDKey), UUID(uuidString: stored) != nil {
             return stored
         }
@@ -115,9 +264,23 @@ enum AppTelemetry {
         return id
     }
 
+    static var supportIdentifiers: String {
+#if CUBEGIN_TELEMETRY
+        formatSupportIdentifiers(deviceID: deviceID, userID: boundUserID)
+#else
+        formatSupportIdentifiers(deviceID: deviceID, userID: nil)
+#endif
+    }
+
+    static func formatSupportIdentifiers(deviceID: String, userID: UUID?) -> String {
+        let deviceLine = "did: \(deviceID)"
+        guard let userID else { return deviceLine }
+        return deviceLine + "\nuid: \(userID.uuidString.lowercased())"
+    }
+
     static var showsSharingPreference: Bool {
 #if DEBUG
-        return previewsSharingConsent
+        return previewsSharingConsent || (isDeviceQA && exercisesQAConsent)
 #else
         return supportsReporting && (
             Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil
@@ -162,6 +325,10 @@ enum AppTelemetry {
     }
 
 #if DEBUG
+    private static var exercisesQAConsent: Bool {
+        ProcessInfo.processInfo.arguments.contains("-cubegin-telemetry-qa-consent")
+    }
+
     static var isDeviceQA: Bool {
         Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
             && ProcessInfo.processInfo.arguments.contains("-cubegin-telemetry-qa")
@@ -170,9 +337,30 @@ enum AppTelemetry {
 
     static func startFromPreferences() {
 #if DEBUG
-        setEnabled(isDeviceQA)
+        setEnabled(isDeviceQA && (!exercisesQAConsent || sharingChoice() == .allowed))
 #else
         setEnabled(sharingChoice() == .allowed)
+#endif
+    }
+
+    static func refreshCloudIdentity() {
+#if CUBEGIN_TELEMETRY
+        guard analyticsRequested, boundUserID == nil else { return }
+        guard ICloudSyncPreference.isEnabled(in: .standard), let store = cloudIdentityStore else {
+            applyAnalyticsIdentity(nil)
+            return
+        }
+        identityStartup.start(lookup: { await store.lookup() }, create: { await store.create() },
+                              apply: applyAnalyticsIdentity)
+#endif
+    }
+
+    static func cloudIdentityDidChange() {
+#if CUBEGIN_TELEMETRY
+        guard analyticsRequested else { return }
+        identityStartup.cancel()
+        applyAnalyticsIdentity(nil)
+        refreshCloudIdentity()
 #endif
     }
 
@@ -182,6 +370,10 @@ enum AppTelemetry {
         if enabled {
             startReporting()
         } else {
+            analyticsRequested = false
+            identityStartup.cancel()
+            pendingAnalyticsEvents.removeAll()
+            boundUserID = nil
             if analyticsEnabled {
                 Analytics.setAnalyticsCollectionEnabled(false)
                 Analytics.setUserID(nil)
@@ -203,12 +395,16 @@ enum AppTelemetry {
         return parameters
     }
 
+    static func record(_ event: ProductEvent) {
+#if CUBEGIN_TELEMETRY
+        recordAnalyticsEvent(event.name, fields: event.fields)
+#endif
+    }
+
     static func record(_ operation: FailedOperation, _ reason: FailureReason, impact: FailureImpact = .blocked) {
 #if CUBEGIN_TELEMETRY
         let failure = OperationFailure(operation: operation, reason: reason, impact: impact)
-        if analyticsEnabled {
-            Analytics.logEvent(OperationFailure.eventName, parameters: analyticsParameters(failure.fields))
-        }
+        recordAnalyticsEvent(OperationFailure.eventName, fields: failure.fields)
         guard sentryEnabled, reason.needsDiagnostic(for: operation) else { return }
         let key = "\(operation.rawValue).\(reason.rawValue)"
         let now = ContinuousClock.now
@@ -228,16 +424,57 @@ enum AppTelemetry {
 
 #if CUBEGIN_TELEMETRY
     private static var analyticsEnabled = false
+    private static var analyticsRequested = false
+    private static var boundUserID: UUID?
+    private static var pendingAnalyticsEvents: [(name: String, parameters: [String: String])] = []
+    private static let identityStartup = AnalyticsIdentityStartup()
     private static var sentryEnabled = false
     private static var lastReports: [String: ContinuousClock.Instant] = [:]
 
-    private static func startReporting() {
-        let id = installationID
-        if !analyticsEnabled, Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil {
+    private static let cloudIdentityStore: CloudAnalyticsIdentityStore? = {
+#if targetEnvironment(simulator)
+        nil
+#elseif DEBUG
+        CloudKitResultsTransport.isAvailable
+            ? CloudAnalyticsIdentityStore(containerID: CloudKitResultsTransport.containerID)
+            : nil
+#else
+        CloudAnalyticsIdentityStore(containerID: CloudAnalyticsIdentityStore.productionContainerID)
+#endif
+    }()
+
+    private static func recordAnalyticsEvent(_ name: String, fields: [String: String]) {
+        guard analyticsRequested else { return }
+        let parameters = analyticsParameters(fields)
+        if analyticsEnabled {
+            Analytics.logEvent(name, parameters: parameters)
+        } else if pendingAnalyticsEvents.count < 50 {
+            pendingAnalyticsEvents.append((name, parameters))
+        }
+    }
+
+    private static func applyAnalyticsIdentity(_ userID: UUID?) {
+        guard analyticsRequested else { return }
+        if analyticsEnabled {
+            guard userID != boundUserID else { return }
+            Analytics.setUserID(userID?.uuidString.lowercased())
+        } else {
             if FirebaseApp.app() == nil { FirebaseApp.configure() }
-            Analytics.setUserID(id)
+            Analytics.setUserID(userID?.uuidString.lowercased())
             Analytics.setAnalyticsCollectionEnabled(true)
             analyticsEnabled = true
+        }
+        boundUserID = userID
+        let pending = pendingAnalyticsEvents
+        pendingAnalyticsEvents.removeAll()
+        for event in pending { Analytics.logEvent(event.name, parameters: event.parameters) }
+    }
+
+    private static func startReporting() {
+        let id = deviceID
+        if !analyticsRequested, Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil {
+            analyticsRequested = true
+            refreshCloudIdentity()
         }
         if !sentryEnabled,
            let url = Bundle.main.url(forResource: "sentry-dsn", withExtension: "txt"),

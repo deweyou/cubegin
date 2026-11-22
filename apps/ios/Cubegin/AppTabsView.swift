@@ -62,6 +62,7 @@ struct AppTabsView: View {
     let model: TimerModel
 
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
+    @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @State private var isInTimerCancelZone = false
     private var shouldKeepScreenOn: Bool {
         isActive && scenePhase == .active && selection == .home
@@ -72,6 +73,9 @@ struct AppTabsView: View {
     }
     @State private var selection = Destination.initial
     @State private var resultsPage = ResultsPage.solves
+    private var visibleResultsPage: ResultsPage? {
+        isActive && scenePhase != .background && selection == .results ? resultsPage : nil
+    }
     @State private var isSelectingResults = false
     @State private var interfaceOrientation: UIInterfaceOrientation = .unknown
     @State private var isDuoOuterDisplay = false
@@ -168,6 +172,16 @@ struct AppTabsView: View {
         }
         .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
             UIApplication.shared.isIdleTimerDisabled = keepScreenOn
+        }
+        .onChange(of: visibleResultsPage, initial: true) { _, page in
+            switch page {
+            case .statistics:
+                AppTelemetry.record(.statisticsViewed)
+            case .solves where !model.groupSolves.isEmpty:
+                AppTelemetry.record(.solveListViewed(includesDNF: includesDNFInWorst))
+            default:
+                break
+            }
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
@@ -1935,7 +1949,7 @@ private struct SettingsView: View {
         versionTapCount += 1
         guard versionTapCount == 5 else { return }
         versionTapCount = 0
-        UIPasteboard.general.string = AppTelemetry.installationID
+        UIPasteboard.general.string = AppTelemetry.supportIdentifiers
         copiedDeviceIDAt = ContinuousClock.now
         AccessibilityNotification.Announcement(language.text("已复制设备 ID", "Device ID copied")).post()
     }

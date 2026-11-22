@@ -30,9 +30,14 @@ iPhone Duo 内屏半展开竖屏时，布局通过系统折痕区域分隔。待
 
 在「设置 → 关于」连点五次「版本」可以复制设备 ID。它是 App 首次需要时生成的随机 UUID，保存在本地
 UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设置同步，清除
-App 数据后会重新生成。
+App 数据后会重新生成。剪贴板首行为 `did: …`，当前已取得共享用户 ID 时会另起一行 `uid: …`。
 
-正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于 → 隐私」提供「帮助改进 Cubegin」开关和[隐私政策](../Cubegin/PrivacyPolicy.md)。同意后，iOS App 把同一个 ID 用作 GA4 User-ID 和 Sentry 用户 ID。
+正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于 → 隐私」提供「帮助改进 Cubegin」开关和[隐私政策](../Cubegin/PrivacyPolicy.md)。Sentry 使用设备 ID。
+
+同意共享且启用 iCloud 同步时，App 单独查询 CloudKit 私有数据库中的共享用户 UUID，最多等一秒再配置 Firebase 和开启 GA4。读到 ID 时先设为 GA4 User-ID。超时、记录不存在或 iCloud 不可用时，GA4 先按应用实例采集。晚到的 UUID 应用于后续事件。私有记录缺失时，后台尝试原子创建，冲突时读取已存的 ID。切换 iCloud 账号或关闭同步会清除 GA4 User-ID。撤回共享会停止采集并取消当前查询。
+
+产品埋点使用 `solve_saved`、`statistics_viewed`、`dctimer_import_started`、`dctimer_import_completed`、`wca_inspection_started` 和 `solve_list_viewed`。App 打开与会话继续复用 GA4 的自动事件。业务事件和故障事件都带当前 `app_build`。
+
 GA4 的 `operation_failed` 与 Sentry 手动诊断共用三个字符串字段。
 
 | 字段 | 含义 |

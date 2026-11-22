@@ -203,6 +203,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         inspectionStarted = instant
         reportedInspectionAudioFailure = false
         let voice = InspectionVoice(rawValue: defaults.string(forKey: Self.inspectionVoiceKey) ?? "") ?? .off
+        recordProductEvent(.wcaInspectionStarted(voice))
         guard voice != .off else { return }
         inspectionAudioDelegate = InspectionAudioDelegate { [weak self] id in
             guard let self, self.inspectionAudioDelegate?.inspectionID == id else { return }
@@ -355,6 +356,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     private let loadInspectionPlayer: @MainActor (String) throws -> AVAudioPlayer?
     private let onInspectionAudioFailure: @MainActor (FailureReason) -> Void
     private let generateScramble: @Sendable (String) async throws -> Scramble
+    private let recordProductEvent: @MainActor (ProductEvent) -> Void
 
     private static let lastCloudSyncKey = "results.lastSuccessfulCloudSync"
     private(set) var lastSuccessfulCloudSync: Date?
@@ -433,6 +435,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             deferredCloudApply = false
             cloudSyncStatus = .idle
         }
+        AppTelemetry.cloudIdentityDidChange()
     }
 
     func requestCloudSync() {
@@ -571,6 +574,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         onInspectionAudioFailure: @escaping @MainActor (FailureReason) -> Void = {
             AppTelemetry.record(.playInspectionAudio, $0, impact: .degraded)
         },
+        recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { AppTelemetry.record($0) },
         generateScramble: @escaping @Sendable (String) async throws -> Scramble = Engine.scramble
     ) {
         self.storage = storage
@@ -586,6 +590,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         self.loadInspectionPlayer = loadInspectionPlayer
         self.onInspectionAudioFailure = onInspectionAudioFailure
         self.generateScramble = generateScramble
+        self.recordProductEvent = recordProductEvent
         self.standardEvent = ScrambleCatalog.restored(Self.standardEventKey, training: false, defaults: defaults)
         self.trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
         self.mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
@@ -924,6 +929,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     }
 
     private func finishSolve(_ solve: Solve, saved: Bool) {
+        if saved { recordProductEvent(.solveSaved(project: solve.event)) }
         lastSolveID = solve.id
         lastSolveWasSaved = saved
         solves.insert(solve, at: 0)
@@ -988,7 +994,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         }
         var knownIDs = Set(solves.map(\.id))
         if let cloudState {
-            knownIDs.formUnion(cloudState.records.values.filter { $0.solve == nil }.map(\.id))
+            knownIDs.formUnion(cloudState.records.values.filter { $0.solve == nil && $0.metadata == nil }.map(\.id))
         }
         var updatedGroups = groups
         var imported: [Solve] = []
@@ -1030,6 +1036,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         }
         solves = updated
         groups = updatedGroups
+        recordProductEvent(.dctimerImportCompleted)
         return imported.count
     }
 

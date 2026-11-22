@@ -16,7 +16,104 @@ struct AppLanguageTests {
 }
 
 @MainActor
+struct AnalyticsIdentityStartupTests {
+    @Test func usesAnExistingIdentityBeforeStartingWithoutOne() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let id = UUID()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        startup.start(lookup: { .found(id) }, create: { nil }, apply: { continuation.yield($0) })
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(id))
+        startup.cancel()
+    }
+
+    @Test func startsAfterTimeoutAndAttachesAnIdentityThatArrivesLater() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let (lookup, response) = AsyncStream<CloudAnalyticsIdentityLookup>.makeStream()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        startup.start(timeout: .milliseconds(10), lookup: {
+            var responses = lookup.makeAsyncIterator()
+            return await responses.next() ?? .unavailable
+        }, create: { nil }, apply: { continuation.yield($0) })
+
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(nil))
+        let id = UUID()
+        response.yield(.found(id))
+        #expect(await updates.next() == .some(id))
+        startup.cancel()
+    }
+
+    @Test func startsImmediatelyWhenTheRecordIsMissingAndThenAttachesTheCreatedIdentity() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        let id = UUID()
+        startup.start(lookup: { .missing }, create: { id }, apply: { continuation.yield($0) })
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(nil))
+        #expect(await updates.next() == .some(id))
+        startup.cancel()
+    }
+
+    @Test func onlyRecordsTheNewIdentityAfterReplacingAnInFlightLookup() async throws {
+        let startup = AnalyticsIdentityStartup()
+        let (lookup, response) = AsyncStream<CloudAnalyticsIdentityLookup>.makeStream()
+        let (events, continuation) = AsyncStream<UUID?>.makeStream()
+        startup.start(lookup: {
+            var responses = lookup.makeAsyncIterator()
+            return await responses.next() ?? .unavailable
+        }, create: { nil }, apply: { continuation.yield($0) })
+        startup.cancel()
+        response.yield(.found(UUID()))
+        let newID = UUID()
+        startup.start(lookup: { .found(newID) }, create: { nil }, apply: { continuation.yield($0) })
+        var updates = events.makeAsyncIterator()
+        #expect(await updates.next() == .some(newID))
+        startup.cancel()
+    }
+}
+
+@MainActor
 struct TimerModelTests {
+    @Test func productEventFieldsUseTheApprovedValues() {
+        #expect(ProductEvent.solveSaved(project: "333.pll").fields == ["cube_event": "event_333"])
+        #expect(ProductEvent.solveSaved(project: "333.unknown").fields == ["cube_event": "other"])
+        #expect(ProductEvent.solveSaved(project: "minx").fields == ["cube_event": "event_minx"])
+        #expect(ProductEvent.wcaInspectionStarted(.off).fields == ["inspection_voice": "off"])
+        #expect(ProductEvent.solveListViewed(includesDNF: false).fields == ["include_dnf_in_worst": "off"])
+        #expect(ProductEvent.statisticsViewed.fields.isEmpty)
+        #expect(ProductEvent.dctimerImportStarted.fields.isEmpty)
+        #expect(ProductEvent.dctimerImportCompleted.fields.isEmpty)
+    }
+
+    @Test func recordsNewSolvesOnceAfterSavingAndCountsSilentInspection() async throws {
+        try await withFixture { fixture in
+            var events: [ProductEvent] = []
+            let model = fixture.model(recordProductEvent: { events.append($0) })
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: nil, penalty: .dnf, context: context) == nil)
+            let saved = try #require(model.lastSolve)
+            #expect(model.setPenalty(.plusTwo, for: saved.id) == false)
+            #expect(events == [.solveSaved(project: "333")])
+
+            try await waitForGeneration(model)
+            let second = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 12_000, penalty: nil, context: second) == nil)
+            let editable = try #require(model.lastSolve)
+            #expect(model.setPenalty(.plusTwo, for: editable.id))
+            #expect(events == [.solveSaved(project: "333"), .solveSaved(project: "333")])
+
+            try await waitForGeneration(model)
+            fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
+            model.activateAccessibleTimer()
+            #expect(model.inspectionStarted != nil)
+            #expect(events == [.solveSaved(project: "333"), .solveSaved(project: "333"), .wcaInspectionStarted(.off)])
+            model.interrupt()
+        }
+    }
+
     @Test
     func savesAnExplicitSharingChoicePerInstallation() throws {
         let suite = "sharing-choice-test.\(UUID())"
@@ -42,11 +139,18 @@ struct TimerModelTests {
             first.removePersistentDomain(forName: firstSuite)
             second.removePersistentDomain(forName: secondSuite)
         }
-        let id = AppTelemetry.installationID(in: first)
+        let id = AppTelemetry.deviceID(in: first)
         #expect(UUID(uuidString: id) != nil)
         let reopened = try #require(UserDefaults(suiteName: firstSuite))
-        #expect(AppTelemetry.installationID(in: reopened) == id)
-        #expect(AppTelemetry.installationID(in: second) != id)
+        #expect(AppTelemetry.deviceID(in: reopened) == id)
+        #expect(AppTelemetry.deviceID(in: second) != id)
+    }
+
+    @Test func formatsTheDiagnosticClipboardWithAnOptionalUserID() throws {
+        let uid = try #require(UUID(uuidString: "A0B1C2D3-1074-4908-B6C0-96F36B31F36B"))
+        #expect(AppTelemetry.formatSupportIdentifiers(deviceID: "sample", userID: nil) == "did: sample")
+        #expect(AppTelemetry.formatSupportIdentifiers(deviceID: "sample", userID: uid)
+                == "did: sample\nuid: a0b1c2d3-1074-4908-b6c0-96f36b31f36b")
     }
 
     @Test
@@ -846,10 +950,12 @@ struct TimerModelTests {
                 let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
                 let original = Solve(seconds: 7, event: "333", scramble: "U2")
                 try JSONEncoder().encode([original]).write(to: fixture.storage)
-                let model = fixture.model()
+                var events: [ProductEvent] = []
+                let model = fixture.model(recordProductEvent: { events.append($0) })
                 #expect(try model.importDCTimer(plan, destination: destination, language: .english) == 2)
+                #expect(events == [.dctimerImportCompleted])
 
-                let reopened = fixture.model()
+                let reopened = fixture.model(recordProductEvent: { events.append($0) })
                 #expect(reopened.solves.count == 3)
                 #expect(reopened.solves.contains(original))
                 let clock = try #require(reopened.solves.first { $0.event == "clock" })
@@ -862,6 +968,7 @@ struct TimerModelTests {
                 #expect(newPlan.compatibilityFailure == nil)
                 let otherDestination: DCTimerImportDestination = destination == .defaultGroups ? .originalSessions : .defaultGroups
                 #expect(try reopened.importDCTimer(newPlan, destination: otherDestination, language: .english) == 0)
+                #expect(events == [.dctimerImportCompleted])
                 #expect(reopened.solves.count == 3)
             }
         }
@@ -1051,9 +1158,10 @@ struct TimerModelTests {
         let defaults: UserDefaults
         var storage: URL { directory.appending(path: "solves.json") }
 
-        @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now }) -> TimerModel {
+        @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now },
+                             recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { _ in }) -> TimerModel {
             let generator = ScrambleGenerator()
-            return TimerModel(storage: storage, defaults: defaults, now: now, generateScramble: { event in
+            return TimerModel(storage: storage, defaults: defaults, now: now, recordProductEvent: recordProductEvent, generateScramble: { event in
                 await generator.generate(event)
             })
         }

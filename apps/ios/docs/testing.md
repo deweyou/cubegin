@@ -178,7 +178,7 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 
 ```sh
 CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
-'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CUBEGIN_RESULTS_SYNC'
+'OTHER_SWIFT_FLAGS=$(inherited) -D CUBEGIN_RESULTS_SYNC'
 ```
 
 两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 通用 → 同步」，
@@ -221,3 +221,7 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
 
 首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器可用启动参数 `-cubegin-show-telemetry-consent` 展示共享界面，网络上报仍关闭。设备 ID 复制入口由 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 验证。
+
+验证跨设备埋点时，Cubegin Dev 同时使用专用 CloudKit 容器与隔离的 Firebase、Sentry 项目。使用[成绩同步验证](#icloud-成绩同步验证)中的签名授权与编译参数，保留 Firebase 包自己的编译条件。在上面的 Dev 启动参数后附加 `-cubegin-telemetry-qa-consent`，用本机共享选择控制验证上报。用新安装覆盖已有共享 ID、首次创建、离线超时后恢复三种情况。核对自动 `first_open`、`session_start` 实际出现的时机，以及原始数据中的 `user_id`。核对取消共享、关闭 iCloud 同步及切换 iCloud 账号时的身份切换。
+
+正式构建使用容器 `iCloud.io.github.deweyou.cubegin`。发布前给正式 Bundle ID 关联此容器，并在 CloudKit Production 部署 `CubeginAnalyticsIdentity` 记录类型及字符串字段 `uuid`。成绩同步仍由 Dev 专用容器承载。GA4 的 `cube_event`、`inspection_voice` 和 `include_dnf_in_worst` 使用事件级自定义维度。

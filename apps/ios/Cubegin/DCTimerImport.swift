@@ -373,6 +373,7 @@ struct ResultsImportView: View {
     }
 
     private func read(_ url: URL, removeAfterRead: Bool = false) {
+        AppTelemetry.record(.dctimerImportStarted)
         notice = nil
         noticeIcon = "exclamationmark.circle"
         isReading = true

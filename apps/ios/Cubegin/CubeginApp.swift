@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CloudKit
 
 @main
 struct CubeginApp: App {
@@ -18,6 +19,10 @@ struct CubeginApp: App {
                 .task { SettingsSync.refresh() }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     SettingsSync.refresh()
+                    AppTelemetry.refreshCloudIdentity()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged).receive(on: RunLoop.main)) { _ in
+                    AppTelemetry.cloudIdentityDidChange()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)) {
                     SettingsSync.receive($0)
