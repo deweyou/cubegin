@@ -73,6 +73,7 @@ struct AppTabsView: View {
     }
     @State private var selection = Destination.initial
     @State private var resultsPage = ResultsPage.solves
+    @State private var viewedCharts: Set<ResultsChartMode> = []
     private var visibleResultsPage: ResultsPage? {
         isActive && scenePhase != .background && selection == .results ? resultsPage : nil
     }
@@ -174,6 +175,7 @@ struct AppTabsView: View {
             UIApplication.shared.isIdleTimerDisabled = keepScreenOn
         }
         .onChange(of: visibleResultsPage, initial: true) { _, page in
+            if page != .statistics { viewedCharts.removeAll() }
             switch page {
             case .statistics:
                 AppTelemetry.record(.statisticsViewed)
@@ -224,7 +226,12 @@ struct AppTabsView: View {
             Tab(value: Destination.results) {
                 ResultsView(model: model, page: $resultsPage,
                             isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
-                            contentInsets: isSelectingResults ? nil : contentInsets)
+                            contentInsets: isSelectingResults ? nil : contentInsets,
+                            showsStatistics: visibleResultsPage == .statistics) { mode in
+                    if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
+                        AppTelemetry.record(.featureUsed(.chartViewed(mode)))
+                    }
+                }
                     .labelStyle(.titleAndIcon)
                     .toolbar(usesSideNavigation || isSelectingResults ? .hidden : .automatic, for: .tabBar)
             } label: {
@@ -427,6 +434,8 @@ private struct ResultsView: View {
     @Binding var isSelecting: Bool
     let usesSideNavigation: Bool
     let contentInsets: LandscapeContentInsets?
+    let showsStatistics: Bool
+    let onChartViewed: (ResultsChartMode) -> Void
     @State private var selectedSolveIDs: Set<Solve.ID> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     private var usesTopNavigation: Bool { isPad && horizontalSizeClass == .regular }
@@ -698,7 +707,8 @@ private struct ResultsView: View {
                 Text(language.text("删除后，成绩无法恢复。", "Deleted solves cannot be recovered."))
             }
         case (.statistics, _):
-            ResultsOverview(solves: results, contentInsets: contentInsets)
+            ResultsOverview(solves: results, contentInsets: contentInsets,
+                            tracksChartVisibility: showsStatistics, onChartViewed: onChartViewed)
                 .id(model.currentGroup?.id)
         }
     }
@@ -1045,6 +1055,8 @@ private func resultWorstColor(for colorScheme: ColorScheme) -> Color {
 private struct ResultsOverview: View {
     let solves: [Solve]
     let contentInsets: LandscapeContentInsets?
+    let tracksChartVisibility: Bool
+    let onChartViewed: (ResultsChartMode) -> Void
     @Environment(\.locale) private var locale
     @Environment(\.timeZone) private var timeZone
     @Environment(\.colorScheme) private var colorScheme
@@ -1100,7 +1112,7 @@ private struct ResultsOverview: View {
 
             if !solves.isEmpty {
                 Section {
-                    ResultsCharts(solves: solves)
+                    ResultsCharts(solves: solves, tracksVisibility: tracksChartVisibility, onViewed: onChartViewed)
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }

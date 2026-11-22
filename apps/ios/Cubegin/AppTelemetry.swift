@@ -87,9 +87,12 @@ enum FailureReason: String {
 
 enum FeatureUse: Equatable {
     case assistOpened, assistMethodSelected(AssistMethod), assistReordered
+    case assistMethodViewed(AssistMethod)
     case celebrationReplayed
     case groupCreated, groupReordered, groupSwitched
-    case chartSelected(ResultsChartMode)
+    case resultsMoved(ResultMoveScope)
+    case chartSelected(ResultsChartMode), chartViewed(ResultsChartMode)
+    case dctimerImportUndone
     case settingChanged(from: FeatureSettingValue, to: FeatureSettingValue)
     case syncRequested(isRetry: Bool)
     case resultsCleared(ClearResultsScope)
@@ -100,6 +103,8 @@ enum FeatureUse: Equatable {
             ["feature": "assist_formula", "action": "open"]
         case .assistMethodSelected(let method):
             ["feature": "assist_formula", "action": "select_method", "method": method.rawValue]
+        case .assistMethodViewed(let method):
+            ["feature": "assist_formula", "action": "view_method", "method": method.rawValue]
         case .assistReordered:
             ["feature": "assist_formula", "action": "reorder"]
         case .celebrationReplayed:
@@ -110,8 +115,14 @@ enum FeatureUse: Equatable {
             ["feature": "result_group", "action": "reorder"]
         case .groupSwitched:
             ["feature": "result_group", "action": "switch"]
+        case .resultsMoved(let scope):
+            ["feature": "result_group", "action": "move_results", "scope": scope.rawValue]
         case .chartSelected(let mode):
             ["feature": "statistics_chart", "action": "select", "chart_type": mode.rawValue]
+        case .chartViewed(let mode):
+            ["feature": "statistics_chart", "action": "view", "chart_type": mode.rawValue]
+        case .dctimerImportUndone:
+            ["feature": "dctimer_import", "action": "undo"]
         case .settingChanged(let previous, let current):
             ["feature": "settings", "action": "change", "setting": current.key,
              "setting_value": current.value, "previous_value": previous.value]
@@ -125,6 +136,10 @@ enum FeatureUse: Equatable {
 
 enum ClearResultsScope: String {
     case all, selectedGroups = "selected_groups"
+}
+
+enum ResultMoveScope: String {
+    case single, batch
 }
 
 enum FeatureSettingValue: Equatable {
@@ -168,7 +183,7 @@ enum FeatureSettingValue: Equatable {
 }
 
 enum ProductEvent: Equatable {
-    case solveSaved(project: String)
+    case solveSaved(project: String, entryMethod: SolveEntryMethod)
     case statisticsViewed
     case dctimerImportStarted
     case dctimerImportCompleted
@@ -190,12 +205,13 @@ enum ProductEvent: Equatable {
 
     var fields: [String: String] {
         switch self {
-        case .solveSaved(let project):
+        case .solveSaved(let project, let entryMethod):
             let base = ScrambleCatalog.training.contains { $0.id == project }
                 ? project.split(separator: ".", maxSplits: 1).first.map(String.init)
                 : project
             let supported = ScrambleCatalog.standard.first { $0.id == base }
-            return ["cube_event": supported.map { "event_\($0.id)" } ?? "other"]
+            return ["cube_event": supported.map { "event_\($0.id)" } ?? "other",
+                    "entry_method": entryMethod.rawValue]
         case .wcaInspectionStarted(let voice):
             return ["inspection_voice": voice.rawValue]
         case .solveListViewed(let includesDNF):

@@ -90,6 +90,7 @@ struct AssistFormulaView: View {
     @State private var method: AssistMethod
     @State private var search: Search = .loading
     @State private var retryCount = 0
+    @State private var viewedMethods: Set<AssistMethod> = []
 
     private enum Search {
         case loading
@@ -209,6 +210,9 @@ struct AssistFormulaView: View {
             try Task.checkCancellation()
             guard self.method == method else { return }
             search = .solutions(preferences.ordered(solutions, for: method))
+            if !solutions.isEmpty, viewedMethods.insert(method).inserted {
+                AppTelemetry.record(.featureUsed(.assistMethodViewed(method)))
+            }
         } catch {
             guard !Task.isCancelled, !(error is CancellationError), self.method == method else { return }
             AppTelemetry.record(.loadAssist, error is DecodingError ? .decodeFailed : .engineFailed, impact: .degraded)

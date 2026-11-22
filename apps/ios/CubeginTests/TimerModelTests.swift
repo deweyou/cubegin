@@ -76,9 +76,12 @@ struct AnalyticsIdentityStartupTests {
 @MainActor
 struct TimerModelTests {
     @Test func productEventFieldsUseTheApprovedValues() {
-        #expect(ProductEvent.solveSaved(project: "333.pll").fields == ["cube_event": "event_333"])
-        #expect(ProductEvent.solveSaved(project: "333.unknown").fields == ["cube_event": "other"])
-        #expect(ProductEvent.solveSaved(project: "minx").fields == ["cube_event": "event_minx"])
+        #expect(ProductEvent.solveSaved(project: "333.pll", entryMethod: .timer).fields ==
+                ["cube_event": "event_333", "entry_method": "timer"])
+        #expect(ProductEvent.solveSaved(project: "333.unknown", entryMethod: .timer).fields ==
+                ["cube_event": "other", "entry_method": "timer"])
+        #expect(ProductEvent.solveSaved(project: "minx", entryMethod: .manual).fields ==
+                ["cube_event": "event_minx", "entry_method": "manual"])
         #expect(ProductEvent.wcaInspectionStarted(.off).fields == ["inspection_voice": "off"])
         #expect(ProductEvent.solveListViewed(includesDNF: false).fields == ["include_dnf_in_worst": "off"])
         #expect(ProductEvent.statisticsViewed.fields.isEmpty)
@@ -92,6 +95,14 @@ struct TimerModelTests {
                 ["feature": "assist_formula", "action": "select_method", "method": "xcross"])
         #expect(ProductEvent.featureUsed(.chartSelected(.distribution)).fields ==
                 ["feature": "statistics_chart", "action": "select", "chart_type": "distribution"])
+        #expect(ProductEvent.featureUsed(.chartViewed(.trend)).fields ==
+                ["feature": "statistics_chart", "action": "view", "chart_type": "trend"])
+        #expect(ProductEvent.featureUsed(.assistMethodViewed(.cross)).fields ==
+                ["feature": "assist_formula", "action": "view_method", "method": "cross"])
+        #expect(ProductEvent.featureUsed(.resultsMoved(.batch)).fields ==
+                ["feature": "result_group", "action": "move_results", "scope": "batch"])
+        #expect(ProductEvent.featureUsed(.dctimerImportUndone).fields ==
+                ["feature": "dctimer_import", "action": "undo"])
         #expect(ProductEvent.featureUsed(.resultsCleared(.selectedGroups)).fields ==
                 ["feature": "settings", "action": "clear_results", "scope": "selected_groups"])
     }
@@ -122,20 +133,20 @@ struct TimerModelTests {
             #expect(model.saveManualSolve(milliseconds: nil, penalty: .dnf, context: context) == nil)
             let saved = try #require(model.lastSolve)
             #expect(model.setPenalty(.plusTwo, for: saved.id) == false)
-            #expect(events == [.solveSaved(project: "333")])
+            #expect(events == [.solveSaved(project: "333", entryMethod: .manual)])
 
             try await waitForGeneration(model)
             let second = try #require(model.manualSolveContext())
             #expect(model.saveManualSolve(milliseconds: 12_000, penalty: nil, context: second) == nil)
             let editable = try #require(model.lastSolve)
             #expect(model.setPenalty(.plusTwo, for: editable.id))
-            #expect(events == [.solveSaved(project: "333"), .solveSaved(project: "333")])
+            #expect(events == [.solveSaved(project: "333", entryMethod: .manual), .solveSaved(project: "333", entryMethod: .manual)])
 
             try await waitForGeneration(model)
             fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
             model.activateAccessibleTimer()
             #expect(model.inspectionStarted != nil)
-            #expect(events == [.solveSaved(project: "333"), .solveSaved(project: "333"), .wcaInspectionStarted(.off)])
+            #expect(events == [.solveSaved(project: "333", entryMethod: .manual), .solveSaved(project: "333", entryMethod: .manual), .wcaInspectionStarted(.off)])
             model.interrupt()
         }
     }
@@ -779,7 +790,8 @@ struct TimerModelTests {
             let second = Solve(seconds: 15, event: "333", scramble: "F U", date: Date(timeIntervalSince1970: 90))
             let unrelated = Solve(seconds: 8, event: "222", scramble: "R2", date: Date(timeIntervalSince1970: 80))
             try JSONEncoder().encode([first, second, unrelated]).write(to: fixture.storage)
-            let model = fixture.model()
+            var events: [ProductEvent] = []
+            let model = fixture.model(recordProductEvent: { events.append($0) })
             let initial = try #require(model.currentGroup)
             #expect(initial.id == "default:333")
             #expect(model.groupSolves == [first, second])
@@ -795,7 +807,9 @@ struct TimerModelTests {
             model.selectGroup(initial.id)
             #expect(!model.moveSolves([first.id, unrelated.id], toGroup: practice.id))
             #expect(!model.moveSolve(first.id, toGroup: "default:222"))
+            #expect(events == [.featureUsed(.groupCreated), .featureUsed(.groupReordered)])
             #expect(model.moveSolves([first.id, second.id], toGroup: practice.id))
+            #expect(events.last == .featureUsed(.resultsMoved(.batch)))
             #expect(model.groupSolves.isEmpty)
 
             #expect(model.togglePenalty(.plusTwo, for: first.id))
@@ -805,12 +819,13 @@ struct TimerModelTests {
             #expect(model.togglePenalty(.dnf, for: first.id))
             #expect(model.solves.first?.resultSeconds == first.seconds)
 
-            let reopened = fixture.model()
+            let reopened = fixture.model(recordProductEvent: { events.append($0) })
             #expect(reopened.eventGroups.map(\.id) == [practice.id, initial.id])
             #expect(reopened.groupSolves.map(\.id) == [first.id, second.id])
             #expect(reopened.groupSolves.first?.scramble == first.scramble)
             #expect(reopened.groupSolves.first?.date == first.date)
             #expect(reopened.moveSolve(first.id, toGroup: initial.id))
+            #expect(events.last == .featureUsed(.resultsMoved(.single)))
             #expect(reopened.deleteSolves([second.id]))
             #expect(reopened.saveGroup(id: initial.id, name: "Restored", isDefault: true))
             reopened.selectGroup(practice.id)
@@ -1043,13 +1058,15 @@ struct TimerModelTests {
             #expect(model.moveSolve(added[0].id, toGroup: SolveGroup.initialID(for: "333")))
             #expect(model.deleteSolve(added[1].id))
 
-            let reopened = fixture.model()
+            var events: [ProductEvent] = []
+            let reopened = fixture.model(recordProductEvent: { events.append($0) })
             #expect(reopened.lastImportCount == 1)
             #expect(reopened.undoLastImport() == 1)
             #expect(reopened.lastImportCount == 0)
             #expect(Set(reopened.solves.map(\.id)) == olderIDs)
             #expect(reopened.groups.contains { $0.id == added[1].groupID })
             #expect(reopened.undoLastImport() == nil)
+            #expect(events == [.featureUsed(.dctimerImportUndone)])
             let reloaded = fixture.model()
             #expect(reloaded.lastImportCount == 0)
             #expect(reloaded.solves == reopened.solves)

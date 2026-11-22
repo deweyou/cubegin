@@ -38,7 +38,9 @@ App 数据后会重新生成。剪贴板首行为 `did: …`，当前已取得�
 
 产品埋点使用 `solve_saved`、`statistics_viewed`、`dctimer_import_started`、`dctimer_import_completed`、`wca_inspection_started`、`solve_list_viewed` 和 `feature_used`。App 打开与会话继续复用 GA4 的自动事件。业务事件和故障事件都带当前 `app_build`。
 
-`feature_used` 用 `feature` 和 `action` 记录辅助公式、庆祝重播、成绩分组、图表切换和设置操作。辅助方法和图表记录内置类别。设置变更记录设定项及改前、改后值，清空成绩只记录操作范围。实际修改或执行成功后才采集对应操作。同步刷新和重试统计手动请求，公式、分组名称、成绩明细和隐私操作排除在产品采集范围外。
+`solve_saved` 用 `entry_method` 区分实际成功保存的计时和手动录入，手势打开的录入也归为手动。`feature_used` 用 `feature` 和 `action` 记录辅助公式、庆祝重播、成绩分组、图表、DCTimer 撤回和设置操作。辅助方法在解法准备完成后按面板访问去重。图表在主体达到可见阈值后按统计页访问和类型去重。两种展示和主动选择分别记录。移动成绩和撤回导入在保存成功后记录，移动仅附带单条或批量范围。
+
+设置变更记录设定项及改前、改后值，清空成绩只记录操作范围。同步刷新和重试统计手动请求。公式、分组名称、成绩明细和隐私操作排除在产品采集范围外。
 
 GA4 的 `operation_failed` 与 Sentry 手动诊断共用三个字符串字段。
 

@@ -698,6 +698,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         guard save(updated, operation: .moveSolves) else { return false }
         solves = updated
         if let lastSolveID, ids.contains(lastSolveID) { self.lastSolveID = nil }
+        recordProductEvent(.featureUsed(.resultsMoved(ids.count == 1 ? .single : .batch)))
         return true
     }
 
@@ -901,7 +902,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                           penalty: inspectionPenalty, groupID: currentGroup?.id)
         started = nil
         let saved = save([solve] + solves, operation: .saveSolve)
-        finishSolve(solve, saved: saved)
+        finishSolve(solve, saved: saved, entryMethod: .timer)
     }
 
     func manualSolveContext() -> ManualSolveContext? {
@@ -929,12 +930,12 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             error = previousError
             return message ?? language.text("成绩保存失败。", "Could not save the result.")
         }
-        finishSolve(solve, saved: true)
+        finishSolve(solve, saved: true, entryMethod: .manual)
         return nil
     }
 
-    private func finishSolve(_ solve: Solve, saved: Bool) {
-        if saved { recordProductEvent(.solveSaved(project: solve.event)) }
+    private func finishSolve(_ solve: Solve, saved: Bool, entryMethod: SolveEntryMethod) {
+        if saved { recordProductEvent(.solveSaved(project: solve.event, entryMethod: entryMethod)) }
         lastSolveID = solve.id
         lastSolveWasSaved = saved
         solves.insert(solve, at: 0)
@@ -1048,6 +1049,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     func undoLastImport() -> Int? {
         let count = lastImportCount
         guard deleteSolves(lastImportedSolveIDs, operation: .undoImport) else { return nil }
+        recordProductEvent(.featureUsed(.dctimerImportUndone))
         return count
     }
 
