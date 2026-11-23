@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 1rem;
   min-height: var(--home-footer-height);
-  font-size: .8125rem;
+  font-size: .75rem;
 }
 
 .home-footer a {
