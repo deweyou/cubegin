@@ -32,14 +32,21 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(screenshots.frame.minX, message.frame.minX, accuracy: 2)
         XCTAssertGreaterThan(screenshots.frame.midY, message.frame.midY)
         XCTAssertLessThan(screenshots.frame.midY, email.frame.midY)
-        XCTAssertFalse(send.isEnabled)
+        XCTAssertEqual(email.frame.minX, message.frame.minX, accuracy: 2)
+        let validation = app.descendants(matching: .any).matching(identifier: "settings.feedback.validation").firstMatch
+        send.tap()
+        XCTAssertTrue(validation.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Enter your feedback first."].exists)
+
         message.tap()
         message.typeText("A suggestion")
-        XCTAssertTrue(send.isEnabled)
+        XCTAssertFalse(validation.exists)
 
         email.tap()
         email.typeText("invalid-email")
-        XCTAssertFalse(send.isEnabled)
+        for _ in 0..<2 where !send.isHittable { app.swipeUp() }
+        send.tap()
+        XCTAssertTrue(app.staticTexts["Enter a valid email address."].waitForExistence(timeout: 2))
     }
 
     @MainActor

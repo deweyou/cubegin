@@ -126,12 +126,32 @@ struct FeedbackSettingsView: View {
     @State private var screenshotFailed = false
     @State private var lastSubmission: FeedbackSubmission?
     @State private var status = SubmissionStatus.idle
+    @State private var validationNotice: (message: String, shownAt: ContinuousClock.Instant)?
 
     private enum Field { case message, email }
     private enum SubmissionStatus { case idle, sending, sent, failed, limited }
 
     private var language: AppLanguage { locale.appLanguage }
     private var draft: FeedbackDraft { FeedbackDraft(message: message, email: email, screenshots: screenshots) }
+
+    private var validationMessage: String? {
+        if Self.feedbackEndpoint == nil {
+            return language.text("当前版本暂时无法发送反馈。", "Feedback is unavailable in this build.")
+        }
+        if isPreparing {
+            return language.text("正在处理截图，请稍等。", "Please wait while screenshots are prepared.")
+        }
+        if draft.message.isEmpty {
+            return language.text("请先填写反馈内容。", "Enter your feedback first.")
+        }
+        if !draft.isMessageValid {
+            return language.text("反馈内容不能超过 4,000 字符。", "Feedback must be 4,000 characters or fewer.")
+        }
+        if !draft.isEmailValid {
+            return language.text("请输入有效的邮箱地址。", "Enter a valid email address.")
+        }
+        return nil
+    }
 
     private static let feedbackEndpoint: URL? = {
         if let value = Bundle.main.object(forInfoDictionaryKey: "CubeginFeedbackBaseURL") as? String,
@@ -152,29 +172,17 @@ struct FeedbackSettingsView: View {
     }()
 
     var body: some View {
+        let validationMessage = validationMessage
         Form {
             CardSection {
                 TextField(language.text("请描述你的问题或建议", "Describe your issue or suggestion"), text: $message, axis: .vertical)
                     .lineLimit(5...10)
                     .padding(.vertical, 12)
                     .focused($focusedField, equals: .message)
+                    .accessibilityLabel(language.text("反馈内容", "Feedback"))
                     .accessibilityIdentifier("settings.feedback.message")
                     .disabled(status == .sending)
                 attachmentControls
-            } header: {
-                Text(language.text("反馈内容", "Feedback"))
-            } footer: {
-                if draft.message.utf16.count > 4000 {
-                    Text(language.text("反馈内容不能超过 4,000 字符。", "Feedback must be 4,000 characters or fewer."))
-                        .foregroundStyle(.red)
-                }
-                if screenshotFailed {
-                    Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))
-                        .foregroundStyle(.red)
-                }
-            }
-
-            CardSection {
                 TextField(language.text("回复邮箱（选填）", "Reply email (optional)"), text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
@@ -186,8 +194,8 @@ struct FeedbackSettingsView: View {
                     .accessibilityIdentifier("settings.feedback.email")
                     .disabled(status == .sending)
             } footer: {
-                if !draft.isEmailValid && focusedField != .email {
-                    Text(language.text("请输入有效的邮箱地址。", "Enter a valid email address."))
+                if screenshotFailed {
+                    Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))
                         .foregroundStyle(.red)
                 }
             }
@@ -200,6 +208,7 @@ struct FeedbackSettingsView: View {
                             Text(language.text("正在发送…", "Sending…"))
                         } else {
                             Label(language.text("发送反馈", "Send Feedback"), systemImage: "paperplane.fill")
+                                .foregroundStyle(validationMessage == nil ? Color.white : Color.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -207,14 +216,14 @@ struct FeedbackSettingsView: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
+                .tint(validationMessage == nil ? Color.accentColor : Color(uiColor: .systemGray4))
+                .accessibilityHint(validationMessage ?? "")
                 .accessibilityIdentifier("settings.feedback.send")
-                .disabled(Self.feedbackEndpoint == nil || !draft.isMessageValid || !draft.isEmailValid || status == .sending || isPreparing)
+                .disabled(status == .sending)
                 .listRowInsets(EdgeInsets(top: 0, leading: cardShadowInset, bottom: 0, trailing: cardShadowInset))
                 .listRowBackground(Color.clear)
             } footer: {
-                if Self.feedbackEndpoint == nil {
-                    Text(language.text("当前版本暂时无法发送反馈。", "Feedback is unavailable in this build."))
-                } else if status == .sent {
+                if status == .sent {
                     Text(language.text("反馈已发送，谢谢！", "Feedback sent. Thank you!"))
                         .accessibilityIdentifier("settings.feedback.sent")
                 } else if status == .failed {
@@ -250,6 +259,28 @@ struct FeedbackSettingsView: View {
         .navigationTitle(language.text("反馈与评价", "Feedback & Reviews"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .overlay(alignment: .bottom) {
+            if let validationNotice {
+                Label(validationNotice.message, systemImage: "info.circle")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.black, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.24)))
+                    .padding()
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("settings.feedback.validation")
+            }
+        }
+        .task(id: validationNotice?.shownAt) {
+            guard validationNotice != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(3))
+                validationNotice = nil
+            } catch {}
+        }
+        .onChange(of: validationMessage) { _, _ in validationNotice = nil }
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
@@ -350,9 +381,14 @@ struct FeedbackSettingsView: View {
     }
 
     private func sendFeedback() {
+        guard status != .sending else { return }
+        if let validationMessage {
+            validationNotice = (validationMessage, .now)
+            AccessibilityNotification.Announcement(validationMessage).post()
+            return
+        }
+        guard let endpoint = Self.feedbackEndpoint else { return }
         let draft = draft
-        guard let endpoint = Self.feedbackEndpoint, draft.isMessageValid, draft.isEmailValid,
-              status != .sending, !isPreparing else { return }
 
         let submission = lastSubmission.flatMap { $0.draft == draft ? $0 : nil } ?? FeedbackSubmission(draft: draft)
         lastSubmission = submission
