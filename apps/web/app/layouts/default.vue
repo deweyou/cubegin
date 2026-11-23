@@ -49,9 +49,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <header>
-    <div class="site-frame header-content" :class="{ 'home-header': isHome }">
-      <NuxtLink :to="isEnglish ? '/en' : '/'" class="brand">
+  <slot v-if="isHome" />
+  <component :is="isHome ? 'footer' : 'header'">
+    <div :class="isHome ? 'home-footer' : 'site-frame header-content'">
+      <NuxtLink v-if="!isHome" :to="isEnglish ? '/en' : '/'" class="brand">
         <img :src="cubeginLogo" alt="Cubegin" width="714" height="200" class="brand-light" />
         <img :src="cubeginDarkLogo" alt="Cubegin" width="714" height="200" class="brand-dark" />
       </NuxtLink>
@@ -84,13 +85,16 @@ onBeforeUnmount(() => {
         </Button>
       </div>
     </div>
-  </header>
-  <slot />
+  </component>
+  <slot v-if="!isHome" />
 </template>
 
 <style scoped>
-.home-header {
-  width: auto;
-  margin-inline: clamp(1rem, 4vw, 4rem);
+.home-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: var(--home-footer-height);
+  padding-inline: clamp(1rem, 4vw, 4rem);
 }
 </style>
