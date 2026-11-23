@@ -67,7 +67,7 @@ function showScreenshot(screenshot: Screenshot) {
 </script>
 
 <template>
-  <main class="home">
+  <main>
     <section class="hero" aria-labelledby="home-title">
       <div class="hero-copy">
         <h1 id="home-title" :aria-label="content.title">
@@ -111,10 +111,6 @@ function showScreenshot(screenshot: Screenshot) {
 </template>
 
 <style scoped>
-.home {
-  padding-inline: clamp(.625rem, 2vw, 2rem);
-}
-
 .hero {
   --hero-height: calc(100dvh - var(--site-header-height));
   --glass-fill: light-dark(#ffffffad, #ffffff12);
@@ -126,16 +122,7 @@ function showScreenshot(screenshot: Screenshot) {
   align-items: center;
   gap: clamp(.75rem, 4vw, 4rem);
   min-height: var(--hero-height);
-  padding: clamp(1.25rem, 3dvh, 2.25rem) clamp(1.875rem, 6vw, 6.5rem);
-  border: 1px solid var(--glass-edge);
-  border-radius: clamp(1rem, 2.4vw, 2.125rem);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--gradient-cyan) 22%, var(--background)),
-    var(--background) 52%,
-    color-mix(in srgb, var(--gradient-indigo) 20%, var(--background))
-  );
-  color: var(--foreground);
+  padding: clamp(1.25rem, 3dvh, 2.25rem) clamp(2.5rem, 8vw, 8.5rem);
 }
 
 .hero-copy h1 {
@@ -240,7 +227,7 @@ function showScreenshot(screenshot: Screenshot) {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
     gap: 1.5625rem;
-    padding: 1.5rem clamp(1rem, 5vw, 2.25rem);
+    padding: 1.5rem clamp(1.625rem, 7vw, 4.25rem);
   }
   .hero-copy h1 { font-size: clamp(2rem, 8vw, 3.5rem); }
   .hero-copy h1 br { display: none; }
