@@ -41,7 +41,7 @@ enum FeedbackScreenshot {
 private enum FeedbackError: Error { case invalidImage, rateLimited }
 
 struct FeedbackDraft: Equatable {
-    static let maximumMessageLength = 4000
+    static let maximumMessageLength = 2000
 
     let message: String
     let email: String

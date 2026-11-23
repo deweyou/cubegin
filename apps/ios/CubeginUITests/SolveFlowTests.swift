@@ -29,7 +29,7 @@ final class SolveFlowTests: XCTestCase {
         let email = app.textFields["settings.feedback.email"]
         let count = app.staticTexts["settings.feedback.characterCount"]
         XCTAssertEqual(email.value as? String, "cached@example.com")
-        XCTAssertEqual(count.label, "0 of 4000 characters")
+        XCTAssertEqual(count.label, "0 of 2000 characters")
         XCTAssertTrue(screenshots.exists)
         XCTAssertEqual(screenshots.frame.width, screenshots.frame.height, accuracy: 1)
         XCTAssertEqual(screenshots.frame.minX, message.frame.minX, accuracy: 2)
@@ -44,9 +44,9 @@ final class SolveFlowTests: XCTestCase {
         message.tap()
         message.typeText("A suggestion")
         XCTAssertFalse(validation.exists)
-        XCTAssertEqual(count.label, "12 of 4000 characters")
+        XCTAssertEqual(count.label, "12 of 2000 characters")
         app.buttons["settings.feedback.clearMessage"].tap()
-        XCTAssertEqual(count.label, "0 of 4000 characters")
+        XCTAssertEqual(count.label, "0 of 2000 characters")
         message.tap()
         message.typeText("A suggestion")
 
