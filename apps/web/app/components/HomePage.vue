@@ -10,9 +10,7 @@ const props = defineProps<{ language: 'zh-Hans' | 'en' }>()
 const copy = {
   'zh-Hans': {
     title: '魔方速拧计时器',
-    titleLead: '魔方速拧',
-    titleEnd: '计时器',
-    description: '记录每次还原，看看自己快了多少。',
+    description: '魔方速拧计时、专项训练与成绩统计。',
     platforms: '支持 iPhone、iPhone Duo 和 iPad',
     close: '关闭',
     timer: '计时页',
@@ -22,9 +20,7 @@ const copy = {
   },
   en: {
     title: 'Speedcubing timer',
-    titleLead: 'Speedcubing',
-    titleEnd: 'timer',
-    description: 'Record every solve and see how much faster you’ve gotten.',
+    description: 'Speedcubing timer, targeted practice, and solve statistics.',
     platforms: 'For iPhone, iPhone Duo, and iPad',
     close: 'Close',
     timer: 'Timer',
@@ -68,9 +64,7 @@ function showScreenshot(screenshot: Screenshot) {
   <main>
     <section class="hero" aria-labelledby="home-title">
       <div class="hero-copy">
-        <h1 id="home-title" :aria-label="content.title">
-          {{ content.titleLead }}<br>{{ language === "en" ? " " + content.titleEnd : content.titleEnd }}
-        </h1>
+        <h1 id="home-title">cubegin</h1>
         <p class="description">{{ content.description }}</p>
         <p class="platforms">{{ content.platforms }}</p>
       </div>
@@ -207,7 +201,6 @@ function showScreenshot(screenshot: Screenshot) {
     padding: 1.5rem clamp(1.625rem, 7vw, 4.25rem);
   }
   .hero-copy h1 { font-size: clamp(2rem, 8vw, 3.5rem); }
-  .hero-copy h1 br { display: none; }
   .description { margin-top: .625rem; }
   .platforms { margin-top: .375rem; font-size: .8125rem; }
   .showcase { --shot-width: clamp(6.75rem, 34vw, 11rem); width: min(100%, 26.25rem); }
