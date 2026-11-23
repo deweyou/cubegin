@@ -13,7 +13,7 @@ const props = defineProps<{ language: 'zh-Hans' | 'en' }>()
 const copy = {
   'zh-Hans': {
     title: '魔方速拧计时器',
-    summary: '为魔方速拧设计的计时器，支持专项训练、成绩统计和 iCloud 同步。',
+    summary: ['为魔方速拧设计的计时器，', '支持专项训练、成绩统计和 iCloud 同步。'],
     capabilities: [
       { label: 'WCA 观察', tags: ['语音报时', '超时判罚'] },
       { label: '打乱与训练', tags: ['打乱公式', '打乱图', '辅助公式'] },
@@ -29,7 +29,7 @@ const copy = {
   },
   en: {
     title: 'Speedcubing timer',
-    summary: 'A timer built for speedcubing, with targeted drills, solve statistics, and iCloud sync.',
+    summary: ['A timer built for speedcubing, with targeted drills, solve statistics, and iCloud sync.'],
     capabilities: [
       { label: 'WCA inspection', tags: ['Voice alerts', 'Overtime penalties'] },
       { label: 'Scrambles & drills', tags: ['Scramble notation', 'Scramble diagrams', 'Formula hints'] },
@@ -65,7 +65,7 @@ const darkScreenshotMedia = computed(() => {
 useHead(() => ({ htmlAttrs: { lang: props.language } }))
 useSeoMeta({
   title: () => `Cubegin | ${content.value.title}`,
-  description: () => content.value.summary,
+  description: () => content.value.summary.join(''),
 })
 
 function showScreenshot(screenshot: Screenshot) {
@@ -85,7 +85,9 @@ function showScreenshot(screenshot: Screenshot) {
             <img :src="cubeginWordmark" alt="cubegin" width="702" height="195">
           </picture>
         </h1>
-        <p class="hero-summary">{{ content.summary }}</p>
+        <p class="hero-summary">
+          <span v-for="phrase in content.summary" :key="phrase">{{ phrase }}</span>
+        </p>
         <dl class="capabilities">
           <div v-for="capability in content.capabilities" :key="capability.label" class="capability">
             <dt>{{ capability.label }}</dt>
@@ -165,19 +167,23 @@ function showScreenshot(screenshot: Screenshot) {
 }
 
 .hero-summary {
-  max-width: 32rem;
-  margin: .875rem 0 0;
-  font-size: clamp(1rem, 1.25vw, 1.125rem);
-  line-height: 1.55;
+  max-width: 30rem;
+  margin: 1rem 0 0;
+  font-size: clamp(1.125rem, 1.55vw, 1.375rem);
+  font-weight: 500;
+  line-height: 1.5;
+  text-wrap: balance;
 }
+
+.hero-summary span { display: inline-block; max-width: 100%; }
 
 .capabilities {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: .5rem 1rem;
+  gap: .5625rem 1.125rem;
   max-width: 35rem;
-  margin: 1.125rem 0 0;
-  font-size: .9375rem;
+  margin: 1.375rem 0 0;
+  font-size: 1rem;
   line-height: 1.5;
 }
 
@@ -191,7 +197,7 @@ function showScreenshot(screenshot: Screenshot) {
 .capability dt {
   padding-block: .1875rem;
   color: var(--foreground);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .capability dd {
@@ -208,7 +214,8 @@ function showScreenshot(screenshot: Screenshot) {
   border-radius: .375rem;
   background: color-mix(in srgb, var(--secondary) 75%, transparent);
   color: var(--muted-foreground);
-  font-size: .875rem;
+  font-size: .9375rem;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
@@ -282,18 +289,18 @@ function showScreenshot(screenshot: Screenshot) {
   .hero {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
-    gap: 1.125rem;
-    padding: 1.25rem clamp(1.625rem, 7vw, 4.25rem);
+    gap: 1rem;
+    padding: 1.125rem clamp(1.625rem, 7vw, 4.25rem);
   }
   .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
-  .hero-summary { margin-top: .625rem; font-size: .9375rem; }
+  .hero-summary { margin-top: .625rem; font-size: 1rem; }
   .capabilities {
     grid-template-columns: minmax(4.75rem, 26%) minmax(0, 1fr);
-    gap: .4375rem .625rem;
-    margin-top: 1rem;
-    font-size: .8125rem;
+    gap: .375rem .625rem;
+    margin-top: .875rem;
+    font-size: .875rem;
   }
-  .capability dd span { padding-inline: .375rem; font-size: .8125rem; }
+  .capability dd span { padding-inline: .375rem; font-size: .875rem; line-height: 1.5; }
   .showcase { --shot-width: clamp(6.75rem, 29vw, 11rem); width: min(100%, 26.25rem); }
   .screen { padding: .25rem; }
   .timer { left: 9%; top: 3%; }
