@@ -32,8 +32,9 @@ cargo xtask release --version 0.1.0 --dry-run
 ### Cubegin 官网
 
 官网位于 `apps/web`，使用 Nuxt、Vue、TypeScript、Tailwind CSS 和 shadcn-vue。
-使用 Node 24.15 或同等受 Nuxt 支持的版本。运行以下命令后，可在
-<http://127.0.0.1:4489/privacy> 预览中文政策，英文路由为 `/en/privacy`。
+使用 Node 24.15 或同等受 Nuxt 支持的版本。启动开发服务后，在
+<http://127.0.0.1:4489/> 预览中文首页，英文首页为 `/en`。隐私政策位于
+`/privacy` 和 `/en/privacy`。
 
 ```sh
 pnpm --filter @cubegin/web dev
