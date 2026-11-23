@@ -32,8 +32,8 @@ cargo xtask release --version 0.1.0 --dry-run
 ### Cubegin 官网
 
 官网位于 `apps/web`，使用 Nuxt、Vue、TypeScript、Tailwind CSS 和 shadcn-vue。
-使用 Node 24.15 或同等受 Nuxt 支持的版本。启动开发服务后，在
-<http://127.0.0.1:4489/> 预览中文首页，英文首页为 `/en`。隐私政策位于
+官网开发和 Cloudflare 构建使用仓库根目录版本文件指定的 Node 22.23.4。启动开发服务后，
+在 <http://127.0.0.1:4489/> 预览中文首页，英文首页为 `/en`。隐私政策位于
 `/privacy` 和 `/en/privacy`。
 
 ```sh
@@ -55,6 +55,12 @@ pnpm --filter @cubegin/web generate
 反馈页带 `noindex`，独立反馈 Worker 也声明其接口不可索引。公开页面实际拦截由部署侧执行。
 使用 Cloudflare 托管或代理时，可以在 [AI Crawl Control](https://developers.cloudflare.com/ai-crawl-control/features/manage-ai-crawlers/)
 开启训练爬虫拦截，并保留正常搜索引擎访问。
+
+Cloudflare Workers Static Assets 使用根目录的 `wrangler.jsonc`。连接 GitHub 时，Worker
+名称填 `cubegin-web`，生产分支填 `main`，构建根目录保留为仓库根目录，不要改为
+`apps/web`。构建命令用 `pnpm --filter @cubegin/web generate`，部署命令用
+`pnpm exec wrangler deploy`。预览命令不要使用生产部署命令。部署后直接访问 `/` 和 `/en`，确认首页正常渲染，再核对
+`/privacy`、`/en/privacy`、`/feedback` 和 `/en/feedback`。
 
 ### 反馈与评价
 
@@ -99,6 +105,7 @@ Worker 对每个 IP 每分钟约限制 5 次请求。单个 SQLite Durable Objec
 最多预留 30 次发信尝试，包含上游失败，并在 24 小时内记录提交状态以处理重试。
 部署后分别验证匿名提交、Reply-To 和三张接近 1 MB 的附件，并在 Workers
 观测中核对 CPU 时间。公开域名也可以在 Worker 前配置路径级限流，拦截流量尖峰。
+
 
 ## CI 检查
 
