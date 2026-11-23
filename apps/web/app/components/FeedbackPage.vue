@@ -33,8 +33,6 @@ const copy = computed(() => props.language === 'en' ? {
   removeImage: (index: number) => `Remove screenshot ${index + 1}`,
   screenshotAlt: (index: number) => `Screenshot ${index + 1}`,
   review: 'Review on the App Store',
-  privacy: 'Privacy Policy',
-  privacyPath: '/en/privacy',
 } : {
   title: '反馈与评价',
   message: '反馈内容',
@@ -60,8 +58,6 @@ const copy = computed(() => props.language === 'en' ? {
   removeImage: (index: number) => `移除第 ${index + 1} 张截图`,
   screenshotAlt: (index: number) => `截图 ${index + 1}`,
   review: '在 App Store 评价',
-  privacy: '隐私政策',
-  privacyPath: '/privacy',
 })
 
 const maxMessageLength = 200
@@ -338,15 +334,14 @@ onBeforeUnmount(() => {
         <input id="feedback-website" v-model="website" type="text" tabindex="-1" autocomplete="off">
       </div>
       <div class="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div class="flex flex-wrap items-center gap-x-4 px-1 text-sm text-muted-foreground">
-          <NuxtLink :to="copy.privacyPath" class="inline-flex min-h-11 items-center underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-current">
-            {{ copy.privacy }}
-          </NuxtLink>
-          <a v-if="reviewURL" :href="reviewURL" class="inline-flex min-h-11 items-center gap-1 hover:text-foreground hover:underline">
-            {{ copy.review }}
-            <ArrowUpRight aria-hidden="true" class="size-3.5" />
-          </a>
-        </div>
+        <a
+          v-if="reviewURL"
+          :href="reviewURL"
+          class="inline-flex min-h-11 items-center gap-1 px-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
+          {{ copy.review }}
+          <ArrowUpRight aria-hidden="true" class="size-3.5" />
+        </a>
         <Button
           type="submit" size="lg"
           class="ml-auto h-11 rounded-lg active:translate-y-px"
