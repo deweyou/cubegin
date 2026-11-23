@@ -41,6 +41,8 @@ enum FeedbackScreenshot {
 private enum FeedbackError: Error { case invalidImage, rateLimited }
 
 struct FeedbackDraft: Equatable {
+    static let maximumMessageLength = 4000
+
     let message: String
     let email: String
     let screenshots: [Data]
@@ -51,7 +53,8 @@ struct FeedbackDraft: Equatable {
         self.screenshots = screenshots
     }
 
-    var isMessageValid: Bool { !message.isEmpty && message.utf16.count <= 4000 }
+    var messageLength: Int { message.utf16.count }
+    var isMessageValid: Bool { (1...Self.maximumMessageLength).contains(messageLength) }
 
     var isEmailValid: Bool {
         email.isEmpty || (email.utf16.count <= 254
@@ -117,9 +120,11 @@ struct FeedbackSubmission: Encodable {
 
 struct FeedbackSettingsView: View {
     @Environment(\.locale) private var locale
+    @AppStorage("feedback.replyEmail") private var savedReplyEmail = ""
     @FocusState private var focusedField: Field?
     @State private var message = ""
     @State private var email = ""
+    @State private var didLoadReplyEmail = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var screenshots: [Data] = []
     @State private var isPreparing = false
@@ -141,11 +146,13 @@ struct FeedbackSettingsView: View {
         if isPreparing {
             return language.text("正在处理截图，请稍等。", "Please wait while screenshots are prepared.")
         }
+        let draft = draft
         if draft.message.isEmpty {
             return language.text("请先填写反馈内容。", "Enter your feedback first.")
         }
         if !draft.isMessageValid {
-            return language.text("反馈内容不能超过 4,000 字符。", "Feedback must be 4,000 characters or fewer.")
+            let limit = FeedbackDraft.maximumMessageLength.formatted(.number.locale(locale))
+            return language.text("反馈内容不能超过 \(limit) 字符。", "Feedback must be \(limit) characters or fewer.")
         }
         if !draft.isEmailValid {
             return language.text("请输入有效的邮箱地址。", "Enter a valid email address.")
@@ -175,24 +182,9 @@ struct FeedbackSettingsView: View {
         let validationMessage = validationMessage
         Form {
             CardSection {
-                TextField(language.text("请描述你的问题或建议", "Describe your issue or suggestion"), text: $message, axis: .vertical)
-                    .lineLimit(5...10)
-                    .padding(.vertical, 12)
-                    .focused($focusedField, equals: .message)
-                    .accessibilityLabel(language.text("反馈内容", "Feedback"))
-                    .accessibilityIdentifier("settings.feedback.message")
-                    .disabled(status == .sending)
+                messageEditor
                 attachmentControls
-                TextField(language.text("邮箱（选填）", "Email (optional)"), text: $email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit { focusedField = nil }
-                    .focused($focusedField, equals: .email)
-                    .accessibilityIdentifier("settings.feedback.email")
-                    .disabled(status == .sending)
+                replyEmailField
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(language.text("留下邮箱，方便我们回复你的反馈。", "Leave your email if you’d like a reply."))
@@ -263,6 +255,11 @@ struct FeedbackSettingsView: View {
         .navigationTitle(language.text("反馈与评价", "Feedback & Reviews"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .onAppear {
+            guard !didLoadReplyEmail else { return }
+            email = savedReplyEmail
+            didLoadReplyEmail = true
+        }
         .overlay(alignment: .bottom) {
             if let validationNotice {
                 Label(validationNotice.message, systemImage: "info.circle")
@@ -290,6 +287,69 @@ struct FeedbackSettingsView: View {
             selectedPhotos = []
             addScreenshots(items)
         }
+    }
+
+    private var messageEditor: some View {
+        let count = draft.messageLength
+        let limit = FeedbackDraft.maximumMessageLength
+        return VStack(alignment: .trailing, spacing: 0) {
+            TextField(language.text("请描述你的问题或建议", "Describe your issue or suggestion"), text: $message, axis: .vertical)
+                .lineLimit(5...10)
+                .padding(.top, 12)
+                .focused($focusedField, equals: .message)
+                .accessibilityLabel(language.text("反馈内容", "Feedback"))
+                .accessibilityIdentifier("settings.feedback.message")
+
+            HStack(spacing: 0) {
+                if !message.isEmpty {
+                    clearButton(language.text("清空反馈内容", "Clear feedback"),
+                                identifier: "settings.feedback.clearMessage") { message = "" }
+                }
+                Text("\(count.formatted(.number.grouping(.never))) / \(limit)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(count > limit ? Color.red : Color.secondary)
+                    .accessibilityLabel(language.text("\(count) / \(limit) 字符", "\(count) of \(limit) characters"))
+                    .accessibilityIdentifier("settings.feedback.characterCount")
+            }
+            .frame(minHeight: 44)
+        }
+        .disabled(status == .sending)
+    }
+
+    private var replyEmailField: some View {
+        HStack(spacing: 0) {
+            TextField(language.text("邮箱（选填）", "Email (optional)"), text: $email)
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .onSubmit { focusedField = nil }
+                .focused($focusedField, equals: .email)
+                .accessibilityIdentifier("settings.feedback.email")
+
+            if !email.isEmpty {
+                clearButton(language.text("清空邮箱", "Clear email"),
+                            identifier: "settings.feedback.clearEmail") {
+                    email = ""
+                    savedReplyEmail = ""
+                }
+            }
+        }
+        .disabled(status == .sending)
+    }
+
+    private func clearButton(_ label: String, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
     }
 
     private let attachmentSize: CGFloat = 68
@@ -402,7 +462,8 @@ struct FeedbackSettingsView: View {
             do {
                 try await submission.send(to: endpoint)
                 message = ""
-                email = ""
+                savedReplyEmail = draft.email
+                email = draft.email
                 screenshots = []
                 screenshotFailed = false
                 lastSubmission = nil

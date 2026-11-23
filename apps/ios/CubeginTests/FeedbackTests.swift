@@ -6,9 +6,14 @@ struct FeedbackTests {
     @Test
     func requiresTextAndAcceptsAnEmptyEmail() {
         #expect(!FeedbackDraft(message: " \n", email: "").isMessageValid)
+        #expect(FeedbackDraft(message: " 好\n", email: "").isMessageValid)
         #expect(FeedbackDraft(message: "建议", email: "  ").isEmailValid)
         #expect(!FeedbackDraft(message: "建议", email: "person@").isEmailValid)
-        #expect(!FeedbackDraft(message: String(repeating: "😀", count: 2001), email: "").isMessageValid)
+        let atLimit = String(repeating: "😀", count: 2000)
+        let draft = FeedbackDraft(message: " \(atLimit)\n", email: "")
+        #expect(draft.messageLength == FeedbackDraft.maximumMessageLength)
+        #expect(draft.isMessageValid)
+        #expect(!FeedbackDraft(message: atLimit + "好", email: "").isMessageValid)
     }
 
     @Test(arguments: ["", "user+feedback@example.com"])
