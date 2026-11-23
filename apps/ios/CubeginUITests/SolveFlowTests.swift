@@ -47,10 +47,9 @@ final class SolveFlowTests: XCTestCase {
         message.typeText("A suggestion")
         XCTAssertFalse(validation.exists)
         XCTAssertEqual(count.label, "12 of 200 characters")
-        app.buttons["settings.feedback.clearMessage"].tap()
-        XCTAssertEqual(count.label, "0 of 200 characters")
-        message.tap()
-        message.typeText("A suggestion")
+        XCTAssertFalse(app.buttons["settings.feedback.clearMessage"].exists)
+        message.typeText(XCUIKeyboardKey.delete.rawValue)
+        XCTAssertEqual(count.label, "11 of 200 characters")
 
         app.buttons["settings.feedback.clearEmail"].tap()
         XCTAssertEqual(email.value as? String, "Email (optional)")

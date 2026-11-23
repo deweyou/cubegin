@@ -313,18 +313,12 @@ struct FeedbackSettingsView: View {
         return HStack(alignment: .bottom, spacing: 8) {
             attachmentControls(tileSize: tileSize)
             Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 0) {
-                if !message.isEmpty {
-                    clearButton(language.text("清空反馈内容", "Clear feedback"),
-                                identifier: "settings.feedback.clearMessage") { message = "" }
-                }
-                Text("\(count.formatted(.number.grouping(.never))) / \(limit)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(count > limit ? Color.red : Color.secondary)
-                    .accessibilityLabel(language.text("\(count) / \(limit) 字符", "\(count) of \(limit) characters"))
-                    .accessibilityIdentifier("settings.feedback.characterCount")
-            }
-            .fixedSize()
+            Text("\(count.formatted(.number.grouping(.never))) / \(limit)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(count > limit ? Color.red : Color.secondary)
+                .accessibilityLabel(language.text("\(count) / \(limit) 字符", "\(count) of \(limit) characters"))
+                .accessibilityIdentifier("settings.feedback.characterCount")
+                .fixedSize()
         }
     }
 
@@ -341,27 +335,22 @@ struct FeedbackSettingsView: View {
                 .accessibilityIdentifier("settings.feedback.email")
 
             if !email.isEmpty {
-                clearButton(language.text("清空邮箱", "Clear email"),
-                            identifier: "settings.feedback.clearEmail") {
+                Button {
                     email = ""
                     savedReplyEmail = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.text("清空邮箱", "Clear email"))
+                .accessibilityIdentifier("settings.feedback.clearEmail")
             }
         }
         .disabled(status == .sending)
-    }
-
-    private func clearButton(_ label: String, identifier: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: "xmark.circle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(identifier)
     }
 
     private let attachmentShape = RoundedRectangle(cornerRadius: 10)
