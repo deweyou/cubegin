@@ -12,9 +12,8 @@ const copy = {
     title: '魔方速拧计时器',
     titleLead: '魔方速拧',
     titleEnd: '计时器',
-    description: '练习打乱，记录每次还原。',
+    description: '记录每次还原，看看自己快了多少。',
     platforms: '支持 iPhone、iPhone Duo 和 iPad',
-    screenshots: '查看 App 截图',
     close: '关闭',
     timer: '计时页',
     statistics: '统计页',
@@ -25,9 +24,8 @@ const copy = {
     title: 'Speedcubing timer',
     titleLead: 'Speedcubing',
     titleEnd: 'timer',
-    description: 'Practice scrambles and record every solve.',
+    description: 'Record every solve and see how much faster you’ve gotten.',
     platforms: 'For iPhone, iPhone Duo, and iPad',
-    screenshots: 'View app screenshots',
     close: 'Close',
     timer: 'Timer',
     statistics: 'Statistics',
@@ -75,9 +73,6 @@ function showScreenshot(screenshot: Screenshot) {
         </h1>
         <p class="description">{{ content.description }}</p>
         <p class="platforms">{{ content.platforms }}</p>
-        <Button type="button" class="hero-button" @click="showScreenshot('timer')">
-          {{ content.screenshots }}
-        </Button>
       </div>
       <div class="showcase">
         <button type="button" class="screen statistics" :aria-label="content.enlargeStatistics" @click="showScreenshot('statistics')">
@@ -115,7 +110,6 @@ function showScreenshot(screenshot: Screenshot) {
   --hero-height: calc(100dvh - var(--site-header-height));
   --glass-fill: light-dark(#ffffffad, #ffffff12);
   --glass-edge: light-dark(#ffffffd9, #ffffff24);
-  --glass-button: light-dark(#ffffffdb, #20334aeb);
   --screen-shadow: light-dark(#233b5929, #0000006b);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.13fr);
@@ -146,19 +140,6 @@ function showScreenshot(screenshot: Screenshot) {
   line-height: 1.6;
 }
 
-.hero-button {
-  height: 2.875rem;
-  margin-top: 1.5625rem;
-  border: 1px solid var(--glass-edge);
-  background: var(--glass-button);
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 .25rem 1rem var(--screen-shadow);
-  backdrop-filter: blur(14px);
-  color: var(--primary);
-  font-weight: 700;
-}
-
-.hero-button:hover { background: color-mix(in srgb, var(--accent) 50%, var(--glass-button)); }
-
 .showcase {
   --shot-width: clamp(8rem, min(20.4vw, (var(--hero-height) - 5rem) / 2.7), 18.875rem);
   position: relative;
@@ -178,7 +159,7 @@ function showScreenshot(screenshot: Screenshot) {
   cursor: zoom-in;
 }
 
-.screen:focus-visible, .hero-button:focus-visible {
+.screen:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
@@ -189,11 +170,7 @@ function showScreenshot(screenshot: Screenshot) {
 .statistics { right: 2%; top: 13%; rotate: 8deg; }
 
 @media (prefers-reduced-transparency: reduce) {
-  .hero {
-    --glass-fill: var(--background);
-    --glass-button: var(--background);
-  }
-  .hero-button { backdrop-filter: none; }
+  .hero { --glass-fill: var(--background); }
 }
 
 @media (hover: hover) {
