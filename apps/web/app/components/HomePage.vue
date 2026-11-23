@@ -283,15 +283,22 @@ function showScreenshot(screenshot: Screenshot) {
   .hero {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
-    gap: 1rem;
+    gap: clamp(1.625rem, 6.5vw, 2.75rem);
     padding: 1.125rem clamp(1.625rem, 7vw, 4.25rem);
+  }
+  .hero-copy {
+    display: grid;
+    justify-items: center;
+    text-align: center;
   }
   .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
   .hero-summary { margin-top: .625rem; font-size: 1rem; }
   .capabilities {
     grid-template-columns: minmax(4.75rem, 26%) minmax(0, 1fr);
     gap: .375rem .625rem;
+    width: fit-content;
     margin-top: .875rem;
+    text-align: start;
     font-size: .8125rem;
   }
   .capability dd span { padding-inline: .375rem; line-height: 1.5; }
