@@ -308,4 +308,9 @@ function showScreenshot(screenshot: Screenshot) {
   .timer { left: 9%; top: 3%; }
   .statistics { right: 7%; top: 12%; rotate: 7deg; }
 }
+
+@media (min-width: 360px) and (max-width: 760px) {
+  /* Trailing full-width punctuation makes both centered Chinese lines appear left of the logo. */
+  .hero-summary:lang(zh-Hans) > span { translate: .4em 0; }
+}
 </style>
