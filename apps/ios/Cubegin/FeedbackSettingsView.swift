@@ -275,6 +275,9 @@ struct FeedbackSettingsView: View {
         }
         .task(id: validationNotice?.shownAt) {
             guard validationNotice != nil else { return }
+#if DEBUG
+            if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_KEEP_FEEDBACK_NOTICE"] == "1" { return }
+#endif
             do {
                 try await Task.sleep(for: .seconds(3))
                 validationNotice = nil

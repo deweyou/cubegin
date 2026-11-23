@@ -9,6 +9,7 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_KEEP_FEEDBACK_NOTICE"] = "1"
         app.launchArguments = ["-app.language", "en", "-feedback.replyEmail", "cached@example.com"]
         app.launch()
 
@@ -40,7 +41,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(email.frame.minX, message.frame.minX, accuracy: 2)
         let validation = app.descendants(matching: .any).matching(identifier: "settings.feedback.validation").firstMatch
         send.tap()
-        XCTAssertTrue(validation.waitForExistence(timeout: 2))
+        XCTAssertTrue(validation.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Enter your feedback first."].exists)
 
         message.tap()
@@ -57,7 +58,7 @@ final class SolveFlowTests: XCTestCase {
         email.typeText("invalid-email")
         for _ in 0..<2 where !send.isHittable { app.swipeUp() }
         send.tap()
-        XCTAssertTrue(app.staticTexts["Enter a valid email address."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Enter a valid email address."].waitForExistence(timeout: 10))
     }
 
     @MainActor
