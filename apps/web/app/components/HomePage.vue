@@ -293,12 +293,15 @@ function showScreenshot(screenshot: Screenshot) {
     text-align: center;
   }
   .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
-  .hero-summary { margin-top: .625rem; font-size: 1rem; }
+  .hero-summary {
+    margin-top: clamp(.75rem, 2.5dvh - .6rem, 1.375rem);
+    font-size: 1rem;
+  }
   .capabilities {
     grid-template-columns: minmax(4.75rem, 26%) minmax(0, 1fr);
-    gap: .375rem .625rem;
+    gap: clamp(.375rem, .85dvh, .6875rem) .625rem;
     width: fit-content;
-    margin-top: .875rem;
+    margin-top: clamp(.875rem, 3.3dvh - .8125rem, 1.75rem);
     text-align: start;
     font-size: .8125rem;
   }
