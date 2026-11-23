@@ -183,7 +183,7 @@ function showScreenshot(screenshot: Screenshot) {
   gap: .5625rem 1.125rem;
   max-width: 35rem;
   margin: 1.375rem 0 0;
-  font-size: 1rem;
+  font-size: .875rem;
   line-height: 1.5;
 }
 
@@ -214,15 +214,9 @@ function showScreenshot(screenshot: Screenshot) {
   border-radius: .375rem;
   background: color-mix(in srgb, var(--secondary) 75%, transparent);
   color: var(--muted-foreground);
-  font-size: .9375rem;
+  font-size: .8125rem;
   line-height: 1.6;
   overflow-wrap: anywhere;
-}
-
-.capability:last-child {
-  margin-top: .375rem;
-  padding-top: .75rem;
-  border-top: 1px solid var(--border);
 }
 
 .showcase {
@@ -298,9 +292,9 @@ function showScreenshot(screenshot: Screenshot) {
     grid-template-columns: minmax(4.75rem, 26%) minmax(0, 1fr);
     gap: .375rem .625rem;
     margin-top: .875rem;
-    font-size: .875rem;
+    font-size: .8125rem;
   }
-  .capability dd span { padding-inline: .375rem; font-size: .875rem; line-height: 1.5; }
+  .capability dd span { padding-inline: .375rem; line-height: 1.5; }
   .showcase { --shot-width: clamp(6.75rem, 29vw, 11rem); width: min(100%, 26.25rem); }
   .screen { padding: .25rem; }
   .timer { left: 9%; top: 3%; }
