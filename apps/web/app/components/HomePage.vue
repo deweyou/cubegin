@@ -13,13 +13,16 @@ const props = defineProps<{ language: 'zh-Hans' | 'en' }>()
 const copy = {
   'zh-Hans': {
     title: '魔方速拧计时器',
-    description: '魔方速拧计时、专项训练与成绩统计。',
+    description: 'Cubegin 提供魔方速拧计时、专项训练和成绩统计，支持 iPhone、iPhone Duo 和 iPad。',
     capabilities: [
-      { label: '速拧计时', detail: '触屏或键盘计时，支持 WCA 观察与手动录入。' },
-      { label: '专项训练', detail: '查看各项目的打乱与展开图，专练十字、XCross 与 F2L。' },
-      { label: '成绩统计', detail: '按组记录每次还原，查看单次成绩、Ao5、Ao12 与用时趋势。' },
+      { label: '速拧计时', tags: ['触屏计时', '键盘计时', '手动录入'] },
+      { label: 'WCA 观察', tags: ['语音报时', '超时判罚'] },
+      { label: '打乱与训练', tags: ['打乱公式', '打乱图', '专项训练'] },
+      { label: '辅助公式', tags: ['十字解法', 'XCross 解法', 'F2L 提示'] },
+      { label: '成绩统计', tags: ['成绩分组', '平均成绩', '用时趋势'] },
+      { label: 'iCloud 同步', tags: ['计时偏好', '语言与外观'] },
+      { label: '支持设备', tags: ['iPhone', 'iPhone Duo', 'iPad'] },
     ],
-    platforms: '支持 iPhone、iPhone Duo 和 iPad',
     close: '关闭',
     timer: '计时页',
     statistics: '统计页',
@@ -28,13 +31,16 @@ const copy = {
   },
   en: {
     title: 'Speedcubing timer',
-    description: 'Speedcubing timer, targeted practice, and solve statistics.',
+    description: 'Cubegin is a speedcubing timer with targeted practice and solve statistics for iPhone, iPhone Duo, and iPad.',
     capabilities: [
-      { label: 'Timing', detail: 'Time by touch or keyboard, with WCA inspection and manual entry.' },
-      { label: 'Practice', detail: 'Explore event scrambles and cube diagrams. Drill cross, XCross, and F2L.' },
-      { label: 'Statistics', detail: 'Group your solves and track single times, Ao5, Ao12, and trends.' },
+      { label: 'Timing', tags: ['Touch', 'Keyboard', 'Manual entry'] },
+      { label: 'WCA inspection', tags: ['Voice alerts', 'Overtime penalties'] },
+      { label: 'Scrambles & drills', tags: ['Scramble notation', 'Scramble diagrams', 'Targeted drills'] },
+      { label: 'Formula hints', tags: ['Cross', 'XCross', 'F2L'] },
+      { label: 'Statistics', tags: ['Solve groups', 'Averages', 'Time trends'] },
+      { label: 'iCloud sync', tags: ['Timer preferences', 'Language & appearance'] },
+      { label: 'Devices', tags: ['iPhone', 'iPhone Duo', 'iPad'] },
     ],
-    platforms: 'For iPhone, iPhone Duo, and iPad',
     close: 'Close',
     timer: 'Timer',
     statistics: 'Statistics',
@@ -51,7 +57,6 @@ const screenshotFiles = {
 type Screenshot = keyof typeof screenshotFiles
 
 const content = computed(() => copy[props.language])
-const description = computed(() => `${content.value.description} ${content.value.platforms}`)
 const dialog = useTemplateRef<HTMLDialogElement>('preview')
 const selectedScreenshot = ref<Screenshot>('timer')
 const themePreference = useThemePreference()
@@ -64,7 +69,7 @@ const darkScreenshotMedia = computed(() => {
 useHead(() => ({ htmlAttrs: { lang: props.language } }))
 useSeoMeta({
   title: () => `Cubegin | ${content.value.title}`,
-  description: () => description.value,
+  description: () => content.value.description,
 })
 
 function showScreenshot(screenshot: Screenshot) {
@@ -84,12 +89,14 @@ function showScreenshot(screenshot: Screenshot) {
             <img :src="cubeginWordmark" alt="cubegin" width="702" height="195">
           </picture>
         </h1>
-        <ul class="capabilities" role="list">
-          <li v-for="capability in content.capabilities" :key="capability.label">
-            <strong>{{ capability.label }}</strong> {{ capability.detail }}
-          </li>
-        </ul>
-        <p class="platforms">{{ content.platforms }}</p>
+        <dl class="capabilities">
+          <div v-for="capability in content.capabilities" :key="capability.label" class="capability">
+            <dt>{{ capability.label }}</dt>
+            <dd>
+              <span v-for="tag in capability.tags" :key="tag">{{ tag }}</span>
+            </dd>
+          </div>
+        </dl>
       </div>
       <div class="showcase">
         <button type="button" class="screen statistics" :aria-label="content.enlargeStatistics" @click="showScreenshot('statistics')">
@@ -162,25 +169,49 @@ function showScreenshot(screenshot: Screenshot) {
 
 .capabilities {
   display: grid;
-  gap: .625rem;
-  max-width: 34rem;
-  margin: 1.375rem 0 0;
-  color: var(--muted-foreground);
-  font-size: clamp(.9375rem, 1.25vw, 1.0625rem);
-  line-height: 1.65;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: .5rem 1rem;
+  max-width: 35rem;
+  margin: 1.5rem 0 0;
+  font-size: .9375rem;
+  line-height: 1.5;
 }
 
-.capabilities strong {
-  margin-inline-end: .3em;
+.capability {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: start;
+}
+
+.capability dt {
+  padding-block: .1875rem;
   color: var(--foreground);
-  font-weight: 700;
+  font-weight: 650;
 }
 
-.platforms {
-  margin-top: 1rem;
+.capability dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .375rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.capability dd span {
+  max-width: 100%;
+  padding: .1875rem .5rem;
+  border-radius: .375rem;
+  background: color-mix(in srgb, var(--secondary) 75%, transparent);
   color: var(--muted-foreground);
   font-size: .875rem;
-  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.capability:last-child {
+  margin-top: .375rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
 }
 
 .showcase {
@@ -247,13 +278,18 @@ function showScreenshot(screenshot: Screenshot) {
   .hero {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
-    gap: 1.5625rem;
-    padding: 1.5rem clamp(1.625rem, 7vw, 4.25rem);
+    gap: 1.125rem;
+    padding: 1.25rem clamp(1.625rem, 7vw, 4.25rem);
   }
   .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
-  .capabilities { gap: .375rem; margin-top: .75rem; font-size: .875rem; }
-  .platforms { margin-top: .75rem; font-size: .8125rem; }
-  .showcase { --shot-width: clamp(6.75rem, 34vw, 11rem); width: min(100%, 26.25rem); }
+  .capabilities {
+    grid-template-columns: minmax(4.75rem, 26%) minmax(0, 1fr);
+    gap: .4375rem .625rem;
+    margin-top: 1rem;
+    font-size: .8125rem;
+  }
+  .capability dd span { padding-inline: .375rem; font-size: .8125rem; }
+  .showcase { --shot-width: clamp(6.75rem, 29vw, 11rem); width: min(100%, 26.25rem); }
   .screen { padding: .25rem; }
   .timer { left: 9%; top: 3%; }
   .statistics { right: 7%; top: 12%; rotate: 7deg; }
