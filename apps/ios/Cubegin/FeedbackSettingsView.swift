@@ -183,16 +183,22 @@ struct FeedbackSettingsView: View {
                     .accessibilityIdentifier("settings.feedback.message")
                     .disabled(status == .sending)
                 attachmentControls
-                TextField(language.text("回复邮箱（选填）", "Reply email (optional)"), text: $email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit { focusedField = nil }
-                    .focused($focusedField, equals: .email)
-                    .accessibilityIdentifier("settings.feedback.email")
-                    .disabled(status == .sending)
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField(language.text("邮箱（选填）", "Email (optional)"), text: $email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit { focusedField = nil }
+                        .focused($focusedField, equals: .email)
+                        .accessibilityIdentifier("settings.feedback.email")
+                        .disabled(status == .sending)
+                    Text(language.text("留下邮箱，方便我们回复你的反馈。", "Leave your email if you’d like a reply."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 10)
             } footer: {
                 if screenshotFailed {
                     Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))
