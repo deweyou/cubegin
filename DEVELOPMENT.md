@@ -44,13 +44,14 @@ pnpm --filter @cubegin/web generate
 静态部署目录为 `apps/web/.output/public`。如需按请求 SSR，运行
 `pnpm --filter @cubegin/web build`，再启动 `node apps/web/.output/server/index.mjs`。
 两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
-网页使用的 shadcn-vue Button 按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
+网页使用的 shadcn-vue 组件按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
 
 ### 反馈与评价
 
 App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare Worker 的
-`POST /api/feedback`。两个客户端都可以选填邮箱并附上最多三张截图。客户端会将
-截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
+`POST /api/feedback`。两个客户端都接受去掉首尾空白后 1 至 200 个 UTF-16 单元的正文、
+选填邮箱和最多三张截图。网页会在当前浏览器记住上一次成功提交的邮箱，清空邮箱时删除它。
+客户端会将截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
 附件发送。官网可以静态部署，App Store Support URL 指向对应语言的反馈页。
 
 本地启动 Worker 和官网，对测试收件箱的发信由 Wrangler 模拟。
