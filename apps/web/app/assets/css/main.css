@@ -17,7 +17,7 @@
   --input: var(--border);
   --radius: 0.625rem;
   --site-header-height: 4.25rem;
-  --home-footer-height: 3.25rem;
+  --home-toolbar-height: 3.25rem;
   --gradient-cyan: light-dark(#32ade6, #64d2ff);
   --gradient-indigo: light-dark(#5856d6, #5e5ce6);
 }

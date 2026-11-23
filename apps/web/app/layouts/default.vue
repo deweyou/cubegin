@@ -49,14 +49,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <slot v-if="isHome" />
-  <component :is="isHome ? 'footer' : 'header'">
-    <div :class="isHome ? 'home-footer' : 'site-frame header-content'">
+  <header>
+    <div :class="isHome ? 'home-toolbar' : 'site-frame header-content'">
       <NuxtLink v-if="!isHome" :to="isEnglish ? '/en' : '/'" class="brand">
         <img :src="cubeginLogo" alt="Cubegin" width="714" height="200" class="brand-light" />
         <img :src="cubeginDarkLogo" alt="Cubegin" width="714" height="200" class="brand-dark" />
       </NuxtLink>
-      <div class="flex items-center gap-1" :class="{ 'footer-controls': isHome }">
+      <div class="flex items-center gap-1" :class="{ 'home-controls': isHome }">
         <Button as-child variant="ghost" size="icon" class="size-11">
           <NuxtLink
             :to="languagePath"
@@ -82,16 +81,18 @@ onBeforeUnmount(() => {
         </Button>
       </div>
     </div>
-  </component>
-  <slot v-if="!isHome" />
+  </header>
+  <slot />
 </template>
 
 <style scoped>
-.home-footer {
-  display: grid;
-  place-items: center;
-  min-height: var(--home-footer-height);
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: var(--home-toolbar-height);
   padding-inline: clamp(1rem, 4vw, 4rem);
 }
-.footer-controls { gap: .75rem; }
+
+.home-controls { gap: .75rem; }
 </style>
