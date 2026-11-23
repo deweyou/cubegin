@@ -104,13 +104,19 @@ onBeforeUnmount(() => {
 
 .home-controls { gap: .75rem; }
 
+.home-controls > :is(a, button),
+.home-footer {
+  color: light-dark(#566273, #9eabba);
+}
+
+.home-controls > :is(a, button):hover { color: var(--foreground); }
+
 .home-footer {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 1rem;
   min-height: var(--home-footer-height);
-  color: var(--muted-foreground);
   font-size: .8125rem;
 }
 
