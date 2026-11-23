@@ -68,6 +68,7 @@ body::before {
 }
 
 body.feedback-surface {
+  --feedback-gutter: clamp(1.25rem, 3vw, 3rem);
   --background: light-dark(#ffffff, #1c2129);
   --foreground: light-dark(#1b2430, #eef1f5);
   --muted-foreground: light-dark(#566271, #b3beca);
@@ -79,6 +80,12 @@ body.feedback-surface {
 
 body.feedback-surface::before {
   content: none;
+}
+
+.feedback-surface .header-content,
+.feedback-page {
+  width: 100%;
+  padding-inline: var(--feedback-gutter);
 }
 
 a:focus-visible {

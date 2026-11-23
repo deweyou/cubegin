@@ -222,7 +222,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="site-frame max-w-136 pt-8 pb-16 sm:pt-14">
+  <main class="feedback-page pt-8 pb-16 sm:pt-14">
     <h1 class="mb-5 text-[clamp(1.625rem,1.3rem+1vw,2rem)] leading-tight font-semibold tracking-tight sm:mb-6">
       {{ copy.title }}
     </h1>
@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
           aria-describedby="feedback-character-count"
           :placeholder="copy.placeholder"
           :readonly="status === 'sending'"
-          class="field-sizing-content min-h-34 max-h-64 resize-none rounded-none border-0 px-4 pt-4 leading-relaxed shadow-none focus-visible:ring-inset sm:px-5 sm:pt-5 md:text-base"
+          class="field-sizing-content min-h-34 max-h-64 resize-none rounded-none border-0 px-4 pt-4 leading-relaxed shadow-none focus-visible:bg-secondary/30 focus-visible:ring-0 sm:px-5 sm:pt-5 md:text-base"
         />
         <div class="flex items-end justify-between gap-2 px-4 pb-3 pt-2 sm:px-5 sm:pb-4">
           <div class="flex min-w-0 flex-1 items-center gap-2">
@@ -315,7 +315,7 @@ onBeforeUnmount(() => {
             aria-describedby="feedback-email-help"
             :placeholder="copy.email"
             :readonly="status === 'sending'"
-            class="h-12 rounded-none border-0 px-4 shadow-none focus-visible:ring-inset sm:px-5 md:text-base"
+            class="h-12 rounded-none border-0 px-4 shadow-none focus-visible:bg-secondary/30 focus-visible:ring-0 sm:px-5 md:text-base"
             :class="{ 'pr-14 sm:pr-15': email }"
           />
           <Button
