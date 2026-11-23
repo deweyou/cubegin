@@ -1,12 +1,54 @@
+import ImageIO
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
+
+enum FeedbackScreenshot {
+    static let maximumCount = 3
+    static let maximumBytes = 1_000_000
+
+    nonisolated static func compress(_ data: Data) throws -> Data {
+        guard data.count <= 25_000_000,
+              let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            throw FeedbackError.invalidImage
+        }
+        var dimension = 2048
+        for _ in 0..<6 {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: dimension
+            ]
+            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                throw FeedbackError.invalidImage
+            }
+            let output = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else {
+                throw FeedbackError.invalidImage
+            }
+            CGImageDestinationAddImage(destination, image, [
+                kCGImageDestinationLossyCompressionQuality: 0.87
+            ] as CFDictionary)
+            if CGImageDestinationFinalize(destination), output.length <= maximumBytes {
+                return output as Data
+            }
+            dimension = Int(Double(dimension) * 0.78)
+        }
+        throw FeedbackError.invalidImage
+    }
+}
+
+private enum FeedbackError: Error { case invalidImage, rateLimited }
 
 struct FeedbackDraft: Equatable {
     let message: String
     let email: String
+    let screenshots: [Data]
 
-    init(message: String, email: String) {
+    init(message: String, email: String, screenshots: [Data] = []) {
         self.message = message.trimmingCharacters(in: .whitespacesAndNewlines)
         self.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.screenshots = screenshots
     }
 
     var isMessageValid: Bool { !message.isEmpty && message.utf16.count <= 4000 }
@@ -35,14 +77,36 @@ struct FeedbackSubmission: Encodable {
     func request(to endpoint: URL) throws -> URLRequest {
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(self)
+        if draft.screenshots.isEmpty {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(self)
+        } else {
+            guard draft.screenshots.count <= FeedbackScreenshot.maximumCount,
+                  draft.screenshots.allSatisfy({ !$0.isEmpty && $0.count <= FeedbackScreenshot.maximumBytes }) else {
+                throw FeedbackError.invalidImage
+            }
+            let boundary = "Cubegin-\(UUID().uuidString)"
+            var body = Data()
+            for (name, value) in [("message", draft.message), ("email", draft.email), ("requestId", requestId.uuidString)] {
+                body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+            }
+            for (index, screenshot) in draft.screenshots.enumerated() {
+                let filename = "screenshot-\(index + 1).jpg"
+                body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"images\"; filename=\"\(filename)\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8))
+                body.append(screenshot)
+                body.append(Data("\r\n".utf8))
+            }
+            body.append(Data("--\(boundary)--\r\n".utf8))
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
         return request
     }
 
     func send(to endpoint: URL) async throws {
         struct Receipt: Decodable { let sent: Bool }
         let (data, response) = try await URLSession.shared.data(for: request(to: endpoint))
+        if (response as? HTTPURLResponse)?.statusCode == 429 { throw FeedbackError.rateLimited }
         guard let response = response as? HTTPURLResponse,
               (200..<300).contains(response.statusCode),
               try JSONDecoder().decode(Receipt.self, from: data).sent else {
@@ -56,14 +120,18 @@ struct FeedbackSettingsView: View {
     @FocusState private var focusedField: Field?
     @State private var message = ""
     @State private var email = ""
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var screenshots: [Data] = []
+    @State private var isPreparing = false
+    @State private var screenshotFailed = false
     @State private var lastSubmission: FeedbackSubmission?
     @State private var status = SubmissionStatus.idle
 
     private enum Field { case message, email }
-    private enum SubmissionStatus { case idle, sending, sent, failed }
+    private enum SubmissionStatus { case idle, sending, sent, failed, limited }
 
     private var language: AppLanguage { locale.appLanguage }
-    private var draft: FeedbackDraft { FeedbackDraft(message: message, email: email) }
+    private var draft: FeedbackDraft { FeedbackDraft(message: message, email: email, screenshots: screenshots) }
 
     private static let feedbackEndpoint: URL? = {
         if let value = Bundle.main.object(forInfoDictionaryKey: "CubeginFeedbackBaseURL") as? String,
@@ -71,7 +139,7 @@ struct FeedbackSettingsView: View {
             return url.appending(path: "api/feedback")
         }
 #if DEBUG && targetEnvironment(simulator)
-        return URL(string: "http://localhost:4489/api/feedback")
+        return URL(string: "http://localhost:4490/api/feedback")
 #else
         return nil
 #endif
@@ -123,6 +191,8 @@ struct FeedbackSettingsView: View {
                 }
             }
 
+            screenshotSection
+
             CardSection {
                 cardRowButton(action: sendFeedback) {
                     HStack {
@@ -134,7 +204,7 @@ struct FeedbackSettingsView: View {
                     }
                 }
                 .accessibilityIdentifier("settings.feedback.send")
-                .disabled(Self.feedbackEndpoint == nil || !draft.isMessageValid || !draft.isEmailValid || status == .sending)
+                .disabled(Self.feedbackEndpoint == nil || !draft.isMessageValid || !draft.isEmailValid || status == .sending || isPreparing)
             } footer: {
                 if Self.feedbackEndpoint == nil {
                     Text(language.text("当前版本暂时无法发送反馈。", "Feedback is unavailable in this build."))
@@ -145,6 +215,9 @@ struct FeedbackSettingsView: View {
                     Text(language.text("反馈发送失败，请重试。", "Couldn’t send feedback. Please try again."))
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("settings.feedback.failed")
+                } else if status == .limited {
+                    Text(language.text("反馈提交过于频繁，请稍后重试。", "Feedback is receiving too many requests. Please try again later."))
+                        .foregroundStyle(.red)
                 }
             }
 
@@ -171,12 +244,92 @@ struct FeedbackSettingsView: View {
         .navigationTitle(language.text("反馈与评价", "Feedback & Reviews"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            selectedPhotos = []
+            addScreenshots(items)
+        }
+    }
+
+    private var screenshotSection: some View {
+        CardSection {
+            if !screenshots.isEmpty {
+                HStack(spacing: 12) {
+                    ForEach(screenshots.indices, id: \.self) { index in
+                        VStack(spacing: 3) {
+                            if let image = UIImage(data: screenshots[index]) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 92)
+                                    .accessibilityLabel(language.text("截图 \(index + 1)", "Screenshot \(index + 1)"))
+                            }
+                            Button {
+                                screenshots.remove(at: index)
+                                screenshotFailed = false
+                            } label: {
+                                Image(systemName: "xmark.circle")
+                                    .frame(minWidth: 44, minHeight: 44)
+                            }
+                            .accessibilityLabel(language.text("移除第 \(index + 1) 张截图", "Remove screenshot \(index + 1)"))
+                            .disabled(isPreparing || status == .sending)
+                        }
+                    }
+                }
+                .padding(.top, 10)
+            }
+            if screenshots.count < FeedbackScreenshot.maximumCount {
+                PhotosPicker(
+                    selection: $selectedPhotos,
+                    maxSelectionCount: FeedbackScreenshot.maximumCount - screenshots.count,
+                    matching: .images
+                ) {
+                    Label(language.text("添加截图", "Add Screenshots"), systemImage: "photo")
+                }
+                .accessibilityIdentifier("settings.feedback.screenshots")
+                .disabled(isPreparing || status == .sending)
+            }
+        } header: {
+            Text(language.text("截图（选填）", "Screenshots (optional)"))
+        } footer: {
+            if isPreparing {
+                Text(language.text("正在处理截图…", "Preparing screenshots…"))
+            } else if screenshotFailed {
+                Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))
+                    .foregroundStyle(.red)
+            } else {
+                Text(language.text("最多添加 3 张截图。", "Add up to three screenshots."))
+            }
+        }
+    }
+
+    private func addScreenshots(_ items: [PhotosPickerItem]) {
+        guard !isPreparing, status != .sending else { return }
+        isPreparing = true
+        screenshotFailed = false
+        Task {
+            defer { isPreparing = false }
+            for item in items.prefix(FeedbackScreenshot.maximumCount - screenshots.count) {
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self) else {
+                        throw FeedbackError.invalidImage
+                    }
+                    let screenshot = try await Task.detached(priority: .userInitiated) {
+                        try FeedbackScreenshot.compress(data)
+                    }.value
+                    screenshots.append(screenshot)
+                } catch {
+                    screenshotFailed = true
+                }
+            }
+        }
     }
 
     private func sendFeedback() {
         let draft = draft
         guard let endpoint = Self.feedbackEndpoint, draft.isMessageValid, draft.isEmailValid,
-              status != .sending else { return }
+              status != .sending, !isPreparing else { return }
 
         let submission = lastSubmission.flatMap { $0.draft == draft ? $0 : nil } ?? FeedbackSubmission(draft: draft)
         lastSubmission = submission
@@ -187,8 +340,12 @@ struct FeedbackSettingsView: View {
                 try await submission.send(to: endpoint)
                 message = ""
                 email = ""
+                screenshots = []
+                screenshotFailed = false
                 lastSubmission = nil
                 status = .sent
+            } catch FeedbackError.rateLimited {
+                status = .limited
             } catch {
                 status = .failed
             }

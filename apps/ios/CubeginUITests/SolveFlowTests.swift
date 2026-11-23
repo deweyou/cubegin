@@ -23,6 +23,7 @@ final class SolveFlowTests: XCTestCase {
         feedback.tap()
 
         XCTAssertTrue(app.navigationBars["Feedback & Reviews"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settings.feedback.screenshots"].exists)
         let send = app.buttons["settings.feedback.send"]
         XCTAssertFalse(send.isEnabled)
         let message = app.descendants(matching: .any)["settings.feedback.message"].firstMatch

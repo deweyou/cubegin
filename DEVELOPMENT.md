@@ -48,24 +48,46 @@ pnpm --filter @cubegin/web generate
 
 ### 反馈与评价
 
-App 原生反馈页与官网的 `/feedback` 和 `/en/feedback` 共用 `POST /api/feedback`。部署这两页时用
-Nuxt 服务端构建，可在 Vercel 将项目根目录设为 `apps/web`，并允许构建访问仓库内
-根目录外的 iOS 素材。静态政策站仍可单独生成。
+App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare Worker 的
+`POST /api/feedback`。两个客户端都可以选填邮箱并附上最多三张截图。客户端会将
+截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
+附件发送。官网可以静态部署，App Store Support URL 指向对应语言的反馈页。
 
-| 服务端环境变量 | 用途 |
+本地启动 Worker 和官网，对测试收件箱的发信由 Wrangler 模拟。
+
+```sh
+npx wrangler dev --config apps/feedback/wrangler.toml
+pnpm --filter @cubegin/web dev
+```
+
+验证限流时另启一个空的本地 Worker 实例。在另一个终端运行集成测试。
+
+```sh
+npx wrangler dev --config apps/feedback/wrangler.toml --port 4491 --persist-to "$(mktemp -d)"
+node --test apps/feedback/worker.test.mjs
+```
+
+正式部署前，在 Cloudflare 为发件域名启用 Email Routing，并验证指定的 Gmail
+收件地址。将 `apps/feedback/wrangler.toml` 复制为同目录下的
+`wrangler.production.toml`，填写以下配置。生产配置含私人收件地址，已从 Git 排除。
+
+| 配置 | 用途 |
 | --- | --- |
-| `NUXT_FEEDBACK_RESEND_KEY` | Resend 发送 API 密钥 |
-| `NUXT_FEEDBACK_FROM` | 已在 Resend 验证的发件地址 |
-| `NUXT_FEEDBACK_TO` | 指定的反馈收件邮箱 |
-| `NUXT_PUBLIC_APP_STORE_ID` | Cubegin 在 App Store Connect 的数字 Apple ID |
+| `FEEDBACK_FROM` | 已启用 Email Routing 的域名下的发件地址 |
+| `FEEDBACK_TO` 和 `send_email.destination_address` | 同一个已验证的 Gmail 收件地址 |
+| `FEEDBACK_ORIGINS` | 允许的官网来源，多个来源用逗号分隔 |
+| `NUXT_PUBLIC_FEEDBACK_ENDPOINT` | 官网表单使用的 Worker HTTPS URL，包含 `/api/feedback`。与官网同源时可以省略 |
+| `NUXT_PUBLIC_APP_STORE_ID` | 版本上架后，官网评价入口使用的 App Store 数字 ID |
 
-部署后用空邮箱和可回复邮箱各提交一次测试反馈，核对送达和 Reply-To。对公网的
-`POST /api/feedback` 可在托管平台按来源 IP 限速。App Store Support URL 可以指向对应语言的反馈页。
+部署命令为 `npx wrangler deploy --config apps/feedback/wrangler.production.toml`。
+静态官网应在构建前配置公开变量。iOS 构建将 `CUBEGIN_FEEDBACK_BASE_URL` 设为 Worker
+的 HTTPS 基础地址，并通过 `CUBEGIN_APP_STORE_ID` 配置评价链接。模拟器 Debug
+默认提交到本机 `http://localhost:4490`。
 
-iOS 构建时将 `CUBEGIN_FEEDBACK_BASE_URL` 设为官网的 HTTPS 基础地址，原生表单会
-将反馈提交到该地址下的 `/api/feedback`。没有配置时，模拟器 Debug 构建使用
-`http://localhost:4489`，其他构建仍显示原生页并提示反馈暂不可用。将官网使用的同一个
-数字 Apple ID 传给 iOS 构建设置 `CUBEGIN_APP_STORE_ID`，即可显示原生页的 App Store 评价链接。
+Worker 对每个 IP 每分钟约限制 5 次请求。单个 SQLite Durable Object 在滚动一小时内
+最多预留 30 次发信尝试，包含上游失败，并在 24 小时内记录提交状态以处理重试。
+部署后分别验证匿名提交、Reply-To 和三张接近 1 MB 的附件，并在 Workers
+观测中核对 CPU 时间。公开域名也可以在 Worker 前配置路径级限流，拦截流量尖峰。
 
 ## CI 检查
 

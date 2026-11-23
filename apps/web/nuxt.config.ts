@@ -5,11 +5,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-11-20',
   telemetry: false,
   runtimeConfig: {
-    feedbackResendKey: '',
-    feedbackFrom: '',
-    feedbackTo: '',
     public: {
       appStoreId: '',
+      feedbackEndpoint: '',
     },
   },
   css: ['~/assets/css/main.css'],
@@ -34,7 +32,7 @@ export default defineNuxtConfig({
 
       config.prerender ??= {}
       config.prerender.routes ??= []
-      config.prerender.routes.push('/', '/en', '/privacy', '/en/privacy')
+      config.prerender.routes.push('/', '/en', '/privacy', '/en/privacy', '/feedback', '/en/feedback')
     },
   },
 })

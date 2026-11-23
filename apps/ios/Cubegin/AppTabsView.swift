@@ -91,7 +91,8 @@ struct AppTabsView: View {
         case home, results, settings
 
         @MainActor static var initial: Self {
-            SettingsView.opensAboutForQA || CloudKitResultsTransport.showsSyncPreview ? .settings : .home
+            SettingsView.opensAboutForQA || SettingsView.opensFeedbackForQA
+                || CloudKitResultsTransport.showsSyncPreview ? .settings : .home
         }
 
         func title(in language: AppLanguage) -> String {
@@ -1938,6 +1939,15 @@ private func trackedSetting<Value: Equatable>(
 }
 
 private struct SettingsView: View {
+    static var opensFeedbackForQA: Bool {
+#if DEBUG
+        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+            && ProcessInfo.processInfo.arguments.contains("-cubegin-show-feedback")
+#else
+        false
+#endif
+    }
+
     static var opensAboutForQA: Bool {
 #if DEBUG
         return Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
@@ -1951,7 +1961,7 @@ private struct SettingsView: View {
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
     private enum Page: Hashable { case gestures, imports, clearResults, sync, feedback, privacy }
-    @State private var path: [Page] = []
+    @State private var path: [Page] = opensFeedbackForQA ? [.feedback] : []
     @State private var versionTapCount = 0
     @State private var startDelayBeforeEditing: Int?
     @State private var copiedDeviceIDAt: ContinuousClock.Instant?
