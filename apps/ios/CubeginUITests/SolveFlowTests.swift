@@ -23,15 +23,18 @@ final class SolveFlowTests: XCTestCase {
         feedback.tap()
 
         XCTAssertTrue(app.navigationBars["Feedback & Reviews"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["settings.feedback.screenshots"].exists)
+        let screenshots = app.buttons["settings.feedback.screenshots"]
         let send = app.buttons["settings.feedback.send"]
-        XCTAssertFalse(send.isEnabled)
         let message = app.descendants(matching: .any)["settings.feedback.message"].firstMatch
+        let email = app.textFields["settings.feedback.email"]
+        XCTAssertTrue(screenshots.exists)
+        XCTAssertGreaterThan(screenshots.frame.midY, message.frame.midY)
+        XCTAssertLessThan(screenshots.frame.midY, email.frame.midY)
+        XCTAssertFalse(send.isEnabled)
         message.tap()
         message.typeText("A suggestion")
         XCTAssertTrue(send.isEnabled)
 
-        let email = app.textFields["settings.feedback.email"]
         email.tap()
         email.typeText("invalid-email")
         XCTAssertFalse(send.isEnabled)

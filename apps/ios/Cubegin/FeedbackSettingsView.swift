@@ -160,17 +160,22 @@ struct FeedbackSettingsView: View {
                     .focused($focusedField, equals: .message)
                     .accessibilityIdentifier("settings.feedback.message")
                     .disabled(status == .sending)
+                attachmentControls
             } header: {
-                Text(language.text("反馈内容（必填）", "Feedback (required)"))
+                Text(language.text("反馈内容", "Feedback"))
             } footer: {
                 if draft.message.utf16.count > 4000 {
                     Text(language.text("反馈内容不能超过 4,000 字符。", "Feedback must be 4,000 characters or fewer."))
                         .foregroundStyle(.red)
                 }
+                if screenshotFailed {
+                    Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))
+                        .foregroundStyle(.red)
+                }
             }
 
             CardSection {
-                TextField(language.text("邮箱地址", "Email address"), text: $email)
+                TextField(language.text("回复邮箱（选填）", "Reply email (optional)"), text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -180,31 +185,32 @@ struct FeedbackSettingsView: View {
                     .focused($focusedField, equals: .email)
                     .accessibilityIdentifier("settings.feedback.email")
                     .disabled(status == .sending)
-            } header: {
-                Text(language.text("邮箱（选填）", "Email (optional)"))
             } footer: {
                 if !draft.isEmailValid && focusedField != .email {
                     Text(language.text("请输入有效的邮箱地址。", "Enter a valid email address."))
                         .foregroundStyle(.red)
-                } else {
-                    Text(language.text("如果希望收到回复，请留下邮箱。", "Leave your email if you’d like a reply."))
                 }
             }
 
-            screenshotSection
-
-            CardSection {
-                cardRowButton(action: sendFeedback) {
-                    HStack {
-                        Text(language.text("发送反馈", "Send Feedback"))
+            Section {
+                Button(action: sendFeedback) {
+                    HStack(spacing: 8) {
                         if status == .sending {
-                            Spacer()
                             ProgressView()
+                            Text(language.text("正在发送…", "Sending…"))
+                        } else {
+                            Label(language.text("发送反馈", "Send Feedback"), systemImage: "paperplane.fill")
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
                 .accessibilityIdentifier("settings.feedback.send")
                 .disabled(Self.feedbackEndpoint == nil || !draft.isMessageValid || !draft.isEmailValid || status == .sending || isPreparing)
+                .listRowInsets(EdgeInsets(top: 0, leading: cardShadowInset, bottom: 0, trailing: cardShadowInset))
+                .listRowBackground(Color.clear)
             } footer: {
                 if Self.feedbackEndpoint == nil {
                     Text(language.text("当前版本暂时无法发送反馈。", "Feedback is unavailable in this build."))
@@ -251,8 +257,8 @@ struct FeedbackSettingsView: View {
         }
     }
 
-    private var screenshotSection: some View {
-        CardSection {
+    private var attachmentControls: some View {
+        VStack(alignment: .leading, spacing: 0) {
             if !screenshots.isEmpty {
                 HStack(spacing: 12) {
                     ForEach(screenshots.indices, id: \.self) { index in
@@ -279,28 +285,35 @@ struct FeedbackSettingsView: View {
                 }
                 .padding(.top, 10)
             }
-            if screenshots.count < FeedbackScreenshot.maximumCount {
-                PhotosPicker(
-                    selection: $selectedPhotos,
-                    maxSelectionCount: FeedbackScreenshot.maximumCount - screenshots.count,
-                    matching: .images
-                ) {
-                    Label(language.text("添加截图", "Add Screenshots"), systemImage: "photo")
+            HStack(spacing: 8) {
+                if screenshots.count < FeedbackScreenshot.maximumCount {
+                    PhotosPicker(
+                        selection: $selectedPhotos,
+                        maxSelectionCount: FeedbackScreenshot.maximumCount - screenshots.count,
+                        matching: .images
+                    ) {
+                        Label(language.text("添加截图", "Add Screenshots"), systemImage: "photo.badge.plus")
+                            .font(.subheadline)
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("settings.feedback.screenshots")
+                    .disabled(isPreparing || status == .sending)
                 }
-                .accessibilityIdentifier("settings.feedback.screenshots")
-                .disabled(isPreparing || status == .sending)
+                if isPreparing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(language.text("正在处理截图", "Preparing screenshots"))
+                } else if !screenshots.isEmpty {
+                    Text("\(screenshots.count)/\(FeedbackScreenshot.maximumCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(language.text(
+                            "已添加 \(screenshots.count) 张截图，最多 \(FeedbackScreenshot.maximumCount) 张",
+                            "\(screenshots.count) of \(FeedbackScreenshot.maximumCount) screenshots attached"
+                        ))
+                }
             }
-        } header: {
-            Text(language.text("截图（选填）", "Screenshots (optional)"))
-        } footer: {
-            if isPreparing {
-                Text(language.text("正在处理截图…", "Preparing screenshots…"))
-            } else if screenshotFailed {
-                Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))
-                    .foregroundStyle(.red)
-            } else {
-                Text(language.text("最多添加 3 张截图。", "Add up to three screenshots."))
-            }
+            .frame(minHeight: 44)
         }
     }
 
