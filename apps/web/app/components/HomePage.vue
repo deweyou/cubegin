@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import statisticsScreenshot from '~/assets/images/iphone-statistics.jpg?url'
-import timerScreenshot from '~/assets/images/iphone-timer.jpg?url'
+import darkStatisticsScreenshot from '~/assets/images/iphone-statistics-dark.jpg?url'
+import lightStatisticsScreenshot from '~/assets/images/iphone-statistics-light.jpg?url'
+import darkTimerScreenshot from '~/assets/images/iphone-timer-dark.jpg?url'
+import lightTimerScreenshot from '~/assets/images/iphone-timer-light.jpg?url'
 import { Button } from '~/components/ui/button'
 
 const props = defineProps<{ language: 'zh-Hans' | 'en' }>()
@@ -35,8 +37,8 @@ const copy = {
 }
 
 const screenshotFiles = {
-  timer: timerScreenshot,
-  statistics: statisticsScreenshot,
+  timer: { light: lightTimerScreenshot, dark: darkTimerScreenshot },
+  statistics: { light: lightStatisticsScreenshot, dark: darkStatisticsScreenshot },
 }
 
 type Screenshot = keyof typeof screenshotFiles
@@ -45,6 +47,12 @@ const content = computed(() => copy[props.language])
 const description = computed(() => `${content.value.description} ${content.value.platforms}`)
 const dialog = useTemplateRef<HTMLDialogElement>('preview')
 const selectedScreenshot = ref<Screenshot>('timer')
+const themePreference = useThemePreference()
+const darkScreenshotMedia = computed(() => {
+  if (themePreference.value === 'dark') return 'all'
+  if (themePreference.value === 'light') return 'not all'
+  return '(prefers-color-scheme: dark)'
+})
 
 useHead(() => ({ htmlAttrs: { lang: props.language } }))
 useSeoMeta({
@@ -73,10 +81,16 @@ function showScreenshot(screenshot: Screenshot) {
       </div>
       <div class="showcase">
         <button type="button" class="screen statistics" :aria-label="content.enlargeStatistics" @click="showScreenshot('statistics')">
-          <img :src="screenshotFiles.statistics" :alt="content.statistics" width="659" height="1434">
+          <picture>
+            <source :media="darkScreenshotMedia" :srcset="screenshotFiles.statistics.dark">
+            <img :src="screenshotFiles.statistics.light" :alt="content.statistics" width="659" height="1434">
+          </picture>
         </button>
         <button type="button" class="screen timer" :aria-label="content.enlargeTimer" @click="showScreenshot('timer')">
-          <img :src="screenshotFiles.timer" :alt="content.timer" width="659" height="1434" fetchpriority="high">
+          <picture>
+            <source :media="darkScreenshotMedia" :srcset="screenshotFiles.timer.dark">
+            <img :src="screenshotFiles.timer.light" :alt="content.timer" width="659" height="1434" fetchpriority="high">
+          </picture>
         </button>
       </div>
     </section>
@@ -88,7 +102,10 @@ function showScreenshot(screenshot: Screenshot) {
           <Button type="submit" variant="ghost" autofocus>{{ content.close }}</Button>
         </form>
       </div>
-      <img :src="screenshotFiles[selectedScreenshot]" :alt="content[selectedScreenshot]">
+      <picture>
+        <source :media="darkScreenshotMedia" :srcset="screenshotFiles[selectedScreenshot].dark">
+        <img :src="screenshotFiles[selectedScreenshot].light" :alt="content[selectedScreenshot]">
+      </picture>
     </dialog>
   </main>
 </template>
@@ -161,7 +178,7 @@ function showScreenshot(screenshot: Screenshot) {
   padding: .375rem;
   border: 1px solid #25365148;
   border-radius: clamp(.9375rem, 1.65vw, 1.625rem);
-  background: #f9fafa;
+  background: light-dark(#f9fafa, #25282e);
   box-shadow: 0 1.5rem 3.4375rem #071d4661;
   cursor: zoom-in;
 }
@@ -171,9 +188,10 @@ function showScreenshot(screenshot: Screenshot) {
   outline-offset: 3px;
 }
 
+.screen picture { display: block; border-radius: inherit; }
 .screen img { display: block; width: 100%; height: auto; border-radius: inherit; }
 .timer { z-index: 1; left: 2%; top: 1%; rotate: -8deg; }
-.statistics { right: 2%; top: 13%; rotate: 8deg; background: #25282e; }
+.statistics { right: 2%; top: 13%; rotate: 8deg; }
 
 @media (hover: hover) {
   .screen:hover { translate: 0 -.3125rem; }

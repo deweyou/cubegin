@@ -12,6 +12,7 @@ const languagePath = computed(() => isEnglish.value ? route.path.slice('/en'.len
 const languageLabel = computed(() => isEnglish.value ? 'Switch to Simplified Chinese' : '切换到英文')
 const isDark = ref(false)
 const themeReady = ref(false)
+const themePreference = useThemePreference()
 const themeLabel = computed(() => {
   if (isEnglish.value) return isDark.value ? 'Switch to light mode' : 'Switch to dark mode'
   return isDark.value ? '切换到浅色主题' : '切换到深色主题'
@@ -20,7 +21,8 @@ let systemTheme: MediaQueryList | undefined
 
 function syncTheme() {
   const preferredTheme = document.documentElement.dataset.theme
-  isDark.value = preferredTheme ? preferredTheme === 'dark' : systemTheme?.matches === true
+  themePreference.value = preferredTheme === 'light' || preferredTheme === 'dark' ? preferredTheme : undefined
+  isDark.value = themePreference.value ? themePreference.value === 'dark' : systemTheme?.matches === true
 }
 
 function toggleTheme() {

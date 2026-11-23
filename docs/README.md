@@ -15,7 +15,7 @@ Time solves or enter results manually, practice with event and training scramble
 
 [Explore the iOS app](https://github.com/deweyou/cubegin/blob/main/apps/ios/README.md)
 
-The Cubegin website includes an app preview with iPhone screenshots in English and Simplified Chinese.
+The Cubegin website has English and Simplified Chinese homepages with iPhone screenshots that follow the website’s light or dark theme.
 
 ## Cube engine
 
