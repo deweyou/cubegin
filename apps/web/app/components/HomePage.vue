@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import cubeginMark from '../../../ios/Design/LegacyIcons/brand/svg/cubegin-mark.svg?raw'
+import cubeginWordmarkDark from '../../../ios/Design/LegacyIcons/brand/svg/cubegin-wordmark-dark.svg?url'
+import cubeginWordmark from '../../../ios/Design/LegacyIcons/brand/svg/cubegin-wordmark.svg?url'
 import darkStatisticsScreenshot from '~/assets/images/iphone-statistics-dark.jpg?url'
 import lightStatisticsScreenshot from '~/assets/images/iphone-statistics-light.jpg?url'
 import darkTimerScreenshot from '~/assets/images/iphone-timer-dark.jpg?url'
@@ -64,7 +67,13 @@ function showScreenshot(screenshot: Screenshot) {
   <main>
     <section class="hero" aria-labelledby="home-title">
       <div class="hero-copy">
-        <h1 id="home-title">cubegin</h1>
+        <h1 id="home-title" class="hero-logo">
+          <span class="hero-mark" aria-hidden="true" v-html="cubeginMark"></span>
+          <picture>
+            <source :media="darkScreenshotMedia" :srcset="cubeginWordmarkDark">
+            <img :src="cubeginWordmark" alt="cubegin" width="702" height="195">
+          </picture>
+        </h1>
         <p class="description">{{ content.description }}</p>
         <p class="platforms">{{ content.platforms }}</p>
       </div>
@@ -113,12 +122,28 @@ function showScreenshot(screenshot: Screenshot) {
   padding: clamp(1.25rem, 3dvh, 2.25rem) clamp(2.5rem, 8vw, 8.5rem);
 }
 
-.hero-copy h1 {
+.hero-logo {
+  display: flex;
+  align-items: center;
+  gap: .12em;
   margin: 0;
   font-size: clamp(2.6rem, 6.1vw, 6rem);
-  font-weight: 755;
-  line-height: 1.04;
-  letter-spacing: -.07em;
+}
+
+.hero-mark, .hero-mark :deep(svg) { display: block; width: 1em; height: 1em; }
+.hero-logo img { display: block; width: auto; height: .64em; }
+.hero-mark :deep(rect:last-of-type) {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: rotate(18deg);
+}
+
+@keyframes cubegin-turn {
+  0% {
+    transform: rotate(18deg);
+    animation-timing-function: cubic-bezier(.16, .67, .27, 1);
+  }
+  22%, 100% { transform: rotate(378deg); }
 }
 
 .description {
@@ -173,6 +198,7 @@ function showScreenshot(screenshot: Screenshot) {
 
 @media (prefers-reduced-motion: no-preference) {
   .screen { transition: translate .16s ease-out; }
+  .hero-mark :deep(rect:last-of-type) { animation: cubegin-turn 5s infinite; }
 }
 
 .preview {
@@ -200,7 +226,7 @@ function showScreenshot(screenshot: Screenshot) {
     gap: 1.5625rem;
     padding: 1.5rem clamp(1.625rem, 7vw, 4.25rem);
   }
-  .hero-copy h1 { font-size: clamp(2rem, 8vw, 3.5rem); }
+  .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
   .description { margin-top: .625rem; }
   .platforms { margin-top: .375rem; font-size: .8125rem; }
   .showcase { --shot-width: clamp(6.75rem, 34vw, 11rem); width: min(100%, 26.25rem); }
