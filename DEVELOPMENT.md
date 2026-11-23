@@ -32,7 +32,7 @@ cargo xtask release --version 0.1.0 --dry-run
 ### Cubegin 官网
 
 官网位于 `apps/web`，使用 Nuxt、Vue、TypeScript、Tailwind CSS 和 shadcn-vue。
-使用 Node 24.15 或同等受 Nuxt 支持的版本。运行以下命令后，可在
+官网开发和 Cloudflare 构建使用仓库根目录版本文件指定的 Node 22.23.4。运行以下命令后，可在
 <http://127.0.0.1:4489/privacy> 预览中文政策，英文路由为 `/en/privacy`。
 
 ```sh
@@ -45,6 +45,12 @@ pnpm --filter @cubegin/web generate
 `pnpm --filter @cubegin/web build`，再启动 `node apps/web/.output/server/index.mjs`。
 两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
 网页使用的 shadcn-vue Button 按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
+
+Cloudflare Workers Static Assets 使用根目录的 `wrangler.jsonc`。连接 GitHub 时，Worker
+名称填 `cubegin-web`，生产分支填 `main`，构建根目录保留为仓库根目录，不要改为
+`apps/web`。构建命令用 `pnpm --filter @cubegin/web generate`，部署命令用
+`pnpm exec wrangler deploy`。预览命令不要使用生产部署命令。部署后直接访问
+`/privacy` 和 `/en/privacy`，验证两种语言的政策页面。
 
 ## CI 检查
 
