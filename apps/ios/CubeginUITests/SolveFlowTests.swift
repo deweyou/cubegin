@@ -28,6 +28,8 @@ final class SolveFlowTests: XCTestCase {
         let message = app.descendants(matching: .any)["settings.feedback.message"].firstMatch
         let email = app.textFields["settings.feedback.email"]
         XCTAssertTrue(screenshots.exists)
+        XCTAssertEqual(screenshots.frame.width, screenshots.frame.height, accuracy: 1)
+        XCTAssertEqual(screenshots.frame.minX, message.frame.minX, accuracy: 2)
         XCTAssertGreaterThan(screenshots.frame.midY, message.frame.midY)
         XCTAssertLessThan(screenshots.frame.midY, email.frame.midY)
         XCTAssertFalse(send.isEnabled)

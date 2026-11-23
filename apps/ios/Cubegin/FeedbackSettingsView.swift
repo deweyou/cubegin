@@ -257,64 +257,74 @@ struct FeedbackSettingsView: View {
         }
     }
 
+    private let attachmentSize: CGFloat = 68
+    private let attachmentShape = RoundedRectangle(cornerRadius: 10)
+
     private var attachmentControls: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if !screenshots.isEmpty {
-                HStack(spacing: 12) {
-                    ForEach(screenshots.indices, id: \.self) { index in
-                        VStack(spacing: 3) {
-                            if let image = UIImage(data: screenshots[index]) {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 92)
-                                    .accessibilityLabel(language.text("截图 \(index + 1)", "Screenshot \(index + 1)"))
-                            }
-                            Button {
-                                screenshots.remove(at: index)
-                                screenshotFailed = false
-                            } label: {
-                                Image(systemName: "xmark.circle")
-                                    .frame(minWidth: 44, minHeight: 44)
-                            }
-                            .accessibilityLabel(language.text("移除第 \(index + 1) 张截图", "Remove screenshot \(index + 1)"))
-                            .disabled(isPreparing || status == .sending)
+        HStack(spacing: 8) {
+            ForEach(screenshots.indices, id: \.self) { index in
+                screenshotTile(at: index)
+            }
+            if screenshots.count < FeedbackScreenshot.maximumCount {
+                PhotosPicker(
+                    selection: $selectedPhotos,
+                    maxSelectionCount: FeedbackScreenshot.maximumCount - screenshots.count,
+                    matching: .images
+                ) {
+                    ZStack {
+                        attachmentShape.fill(Color.accentColor.opacity(0.05))
+                        attachmentShape.strokeBorder(Color.accentColor.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        if isPreparing {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "plus")
+                                .font(.system(size: 19, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
+                    .frame(width: attachmentSize, height: attachmentSize)
+                    .contentShape(attachmentShape)
                 }
-                .padding(.top, 10)
+                .accessibilityLabel(isPreparing
+                    ? language.text("正在处理截图", "Preparing screenshots")
+                    : language.text("添加截图", "Add Screenshots"))
+                .accessibilityIdentifier("settings.feedback.screenshots")
+                .disabled(isPreparing || status == .sending)
             }
-            HStack(spacing: 8) {
-                if screenshots.count < FeedbackScreenshot.maximumCount {
-                    PhotosPicker(
-                        selection: $selectedPhotos,
-                        maxSelectionCount: FeedbackScreenshot.maximumCount - screenshots.count,
-                        matching: .images
-                    ) {
-                        Label(language.text("添加截图", "Add Screenshots"), systemImage: "photo.badge.plus")
-                            .font(.subheadline)
-                            .frame(minHeight: 44)
-                    }
-                    .accessibilityIdentifier("settings.feedback.screenshots")
-                    .disabled(isPreparing || status == .sending)
-                }
-                if isPreparing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel(language.text("正在处理截图", "Preparing screenshots"))
-                } else if !screenshots.isEmpty {
-                    Text("\(screenshots.count)/\(FeedbackScreenshot.maximumCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(language.text(
-                            "已添加 \(screenshots.count) 张截图，最多 \(FeedbackScreenshot.maximumCount) 张",
-                            "\(screenshots.count) of \(FeedbackScreenshot.maximumCount) screenshots attached"
-                        ))
-                }
-            }
-            .frame(minHeight: 44)
         }
+        .padding(.vertical, 12)
+    }
+
+    private func screenshotTile(at index: Int) -> some View {
+        attachmentShape.fill(.quaternary)
+            .overlay {
+                if let image = UIImage(data: screenshots[index]) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: attachmentSize, height: attachmentSize)
+                        .clipShape(attachmentShape)
+                        .accessibilityLabel(language.text("截图 \(index + 1)", "Screenshot \(index + 1)"))
+                }
+            }
+            .frame(width: attachmentSize, height: attachmentSize)
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    screenshots.remove(at: index)
+                    screenshotFailed = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 19, height: 19)
+                        .background(.black.opacity(0.72), in: Circle())
+                        .padding(4)
+                        .frame(width: 44, height: 44, alignment: .topTrailing)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(language.text("移除第 \(index + 1) 张截图", "Remove screenshot \(index + 1)"))
+                .disabled(isPreparing || status == .sending)
+            }
     }
 
     private func addScreenshots(_ items: [PhotosPickerItem]) {
