@@ -12,7 +12,7 @@ useHead(() => ({
 </script>
 
 <template>
-  <main class="site-frame policy-page">
+  <main class="site-frame site-page">
     <h1>{{ heading }}</h1>
     <article class="policy-body" v-html="policy.html" />
   </main>

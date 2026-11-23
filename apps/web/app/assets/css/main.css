@@ -126,11 +126,11 @@ a:focus-visible {
   }
 }
 
-.policy-page {
+.site-page {
   padding-block: clamp(1.5rem, 5vw, 3.5rem) 4rem;
 }
 
-.policy-page h1 {
+.site-page h1 {
   margin-bottom: clamp(1.75rem, 4vw, 2.75rem);
   font-size: clamp(1.875rem, 4.6vw, 2.75rem);
   font-weight: 750;

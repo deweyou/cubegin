@@ -218,10 +218,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="site-frame pt-8 pb-16 sm:pt-14">
-    <h1 class="mb-5 text-[clamp(1.625rem,1.3rem+1vw,2rem)] leading-tight font-semibold tracking-tight sm:mb-6">
-      {{ copy.title }}
-    </h1>
+  <main class="site-frame site-page">
+    <h1>{{ copy.title }}</h1>
     <form class="grid gap-3" novalidate @submit.prevent="sendFeedback">
       <Card class="gap-0 overflow-hidden rounded-xl py-0 shadow-none">
         <Textarea
