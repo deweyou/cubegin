@@ -16,6 +16,9 @@
   --ring: light-dark(#2067b2, #80baff);
   --input: var(--border);
   --radius: 0.625rem;
+  --site-header-height: 4.25rem;
+  --home-toolbar-height: 3.25rem;
+  --home-footer-height: 2.75rem;
   --gradient-cyan: light-dark(#32ade6, #64d2ff);
   --gradient-indigo: light-dark(#5856d6, #5e5ce6);
 }
@@ -31,6 +34,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
@@ -66,6 +70,20 @@ body::before {
   pointer-events: none;
 }
 
+body.feedback-surface {
+  --background: light-dark(#ffffff, #1c2129);
+  --foreground: light-dark(#1b2430, #eef1f5);
+  --muted-foreground: light-dark(#566271, #b3beca);
+  --border: light-dark(#dce2ea, #343f4d);
+  --secondary: light-dark(#e7ecf2, #2d3642);
+  --secondary-foreground: light-dark(#405064, #d5dfe9);
+  background: light-dark(#f5f7fa, #141920);
+}
+
+body.feedback-surface::before {
+  content: none;
+}
+
 a:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
@@ -80,7 +98,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 4.25rem;
+  min-height: var(--site-header-height);
 }
 
 .brand {
@@ -111,13 +129,13 @@ a:focus-visible {
   }
 }
 
-.policy-page {
+.site-page {
   padding-block: clamp(1.5rem, 5vw, 3.5rem) 4rem;
 }
 
-.policy-page h1 {
+.site-page h1 {
   margin-bottom: clamp(1.75rem, 4vw, 2.75rem);
-  font-size: clamp(1.875rem, 4.6vw, 2.75rem);
+  font-size: clamp(1.625rem, 1.3rem + 1.25vw, 2.125rem);
   font-weight: 750;
   letter-spacing: -0.035em;
   line-height: 1.18;

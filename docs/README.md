@@ -15,6 +15,8 @@ Time solves or enter results manually, practice with event and training scramble
 
 [Explore the iOS app](https://github.com/deweyou/cubegin/blob/main/apps/ios/README.md)
 
+The Cubegin website has English and Simplified Chinese homepages with iPhone screenshots that follow the website’s light or dark theme.
+
 ## Cube engine
 
 The Rust engine provides standard and training scrambles, full and auxiliary solving, SVG puzzle diagrams, and 3D move playback. It is available through Swift, Kotlin and Web/WASM.

@@ -15,6 +15,8 @@ Cubegin 是一个魔方速拧计时和训练项目，包含原生 iPhone、iPad 
 
 [了解 iOS App](https://github.com/deweyou/cubegin/blob/main/apps/ios/README_ZH.md)
 
+Cubegin 官网提供中英文首页。iPhone 界面预览跟随网站的浅色或深色主题。
+
 ## 魔方引擎
 
 Rust 引擎提供标准打乱、训练打乱、完整求解和辅助求解、SVG 展开图与 3D 转动回放。应用可通过 Swift、Kotlin 或 Web/WASM 使用这些能力。

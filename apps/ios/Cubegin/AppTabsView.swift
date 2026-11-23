@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -90,7 +91,8 @@ struct AppTabsView: View {
         case home, results, settings
 
         @MainActor static var initial: Self {
-            SettingsView.opensAboutForQA || CloudKitResultsTransport.showsSyncPreview ? .settings : .home
+            SettingsView.opensAboutForQA || SettingsView.opensFeedbackForQA
+                || CloudKitResultsTransport.showsSyncPreview ? .settings : .home
         }
 
         func title(in language: AppLanguage) -> String {
@@ -226,6 +228,7 @@ struct AppTabsView: View {
             Tab(value: Destination.results) {
                 ResultsView(model: model, page: $resultsPage,
                             isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
+                            isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
                             showsStatistics: visibleResultsPage == .statistics) { mode in
                     if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
@@ -403,6 +406,22 @@ private enum ResultsPage: String, CaseIterable, Identifiable {
     }
 }
 
+enum ResultsReviewEligibility {
+    static func qualifies(_ solves: [Solve], calendar: Calendar = .current) -> Bool {
+        guard solves.count >= 12 else { return false }
+        var validCount = 0
+        var practiceDays: Set<Date> = []
+        for solve in solves where solve.resultSeconds != nil {
+            validCount += 1
+            if practiceDays.count < 3 {
+                practiceDays.insert(calendar.startOfDay(for: solve.date))
+            }
+            if validCount >= 12, practiceDays.count >= 3 { return true }
+        }
+        return false
+    }
+}
+
 private struct AverageDestination: Hashable {
     let kind: SolveAverage
     let newestSolveID: Solve.ID
@@ -416,6 +435,9 @@ private struct AverageHighlightInput: Equatable {
 
 private struct ResultsView: View {
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
+    @AppStorage("results.didRequestAppStoreReview") private var didRequestAppStoreReview = false
+    @Environment(\.requestReview) private var requestReview
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -433,6 +455,7 @@ private struct ResultsView: View {
     @State private var showsMoveGroups = false
     @Binding var isSelecting: Bool
     let usesSideNavigation: Bool
+    let isReviewContextActive: () -> Bool
     let contentInsets: LandscapeContentInsets?
     let showsStatistics: Bool
     let onChartViewed: (ResultsChartMode) -> Void
@@ -447,6 +470,16 @@ private struct ResultsView: View {
     }
     private var results: [Solve] {
         model.groupSolves.sorted(by: Solve.newestFirst)
+    }
+
+    private var canRequestReview: Bool {
+        guard isReviewContextActive(), scenePhase == .active, page == .solves, !didRequestAppStoreReview,
+              !isSelecting, detailPath.isEmpty, !showsMoveGroups, !showsProjects, !showsGroups,
+              model.error == nil, !model.groupSolves.isEmpty else { return false }
+#if DEBUG
+        if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"] != nil { return false }
+#endif
+        return ResultsReviewEligibility.qualifies(model.solves)
     }
 
     var body: some View {
@@ -523,6 +556,18 @@ private struct ResultsView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 8)
             }
+        }
+        .task(id: canRequestReview) {
+            guard canRequestReview else { return }
+            do {
+                try await Task.sleep(for: .seconds(1))
+                try Task.checkCancellation()
+            } catch {
+                return
+            }
+            guard canRequestReview else { return }
+            didRequestAppStoreReview = true
+            requestReview()
         }
     }
 
@@ -1894,6 +1939,15 @@ private func trackedSetting<Value: Equatable>(
 }
 
 private struct SettingsView: View {
+    static var opensFeedbackForQA: Bool {
+#if DEBUG
+        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+            && ProcessInfo.processInfo.arguments.contains("-cubegin-show-feedback")
+#else
+        false
+#endif
+    }
+
     static var opensAboutForQA: Bool {
 #if DEBUG
         return Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
@@ -1906,8 +1960,8 @@ private struct SettingsView: View {
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case gestures, imports, clearResults, sync, privacy }
-    @State private var path: [Page] = []
+    private enum Page: Hashable { case gestures, imports, clearResults, sync, feedback, privacy }
+    @State private var path: [Page] = opensFeedbackForQA ? [.feedback] : []
     @State private var versionTapCount = 0
     @State private var startDelayBeforeEditing: Int?
     @State private var copiedDeviceIDAt: ContinuousClock.Instant?
@@ -2098,6 +2152,13 @@ private struct SettingsView: View {
                 }
                 CardSection(language.text("关于", "About")) {
                     cardRowButton {
+                        path.append(.feedback)
+                    } label: {
+                        settingsLinkLabel(language.text("反馈与评价", "Feedback & Reviews"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.feedback")
+                    cardRowButton {
                         path.append(.privacy)
                     } label: {
                         settingsLinkLabel(language.text("隐私", "Privacy"))
@@ -2120,6 +2181,7 @@ private struct SettingsView: View {
                 case .imports: ResultsImportView(model: model)
                 case .clearResults: ClearResultsView(model: model)
                 case .sync: SyncSettingsView(model: model)
+                case .feedback: FeedbackSettingsView()
                 case .privacy: PrivacySettingsView()
                 }
             }

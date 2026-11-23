@@ -4,6 +4,64 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testFeedbackOpensNativeFormWithOptionalEmail() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_KEEP_FEEDBACK_NOTICE"] = "1"
+        app.launchArguments = ["-app.language", "en", "-feedback.replyEmail", "cached@example.com"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let feedback = app.buttons["settings.about.feedback"]
+        for _ in 0..<4 where !feedback.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(feedback.isHittable)
+        feedback.tap()
+
+        XCTAssertTrue(app.navigationBars["Feedback & Reviews"].waitForExistence(timeout: 5))
+        let screenshots = app.buttons["settings.feedback.screenshots"]
+        let send = app.buttons["settings.feedback.send"]
+        let message = app.descendants(matching: .any)["settings.feedback.message"].firstMatch
+        let email = app.textFields["settings.feedback.email"]
+        let count = app.staticTexts["settings.feedback.characterCount"]
+        XCTAssertEqual(email.value as? String, "cached@example.com")
+        XCTAssertEqual(count.label, "0 of 200 characters")
+        XCTAssertTrue(screenshots.exists)
+        XCTAssertEqual(screenshots.frame.width, screenshots.frame.height, accuracy: 1)
+        XCTAssertEqual(screenshots.frame.minX, message.frame.minX, accuracy: 2)
+        XCTAssertEqual(screenshots.frame.maxY, count.frame.maxY, accuracy: 2)
+        XCTAssertGreaterThan(count.frame.minX, screenshots.frame.maxX)
+        XCTAssertGreaterThan(screenshots.frame.midY, message.frame.midY)
+        XCTAssertLessThan(screenshots.frame.midY, email.frame.midY)
+        XCTAssertEqual(email.frame.minX, message.frame.minX, accuracy: 2)
+        let validation = app.descendants(matching: .any).matching(identifier: "settings.feedback.validation").firstMatch
+        send.tap()
+        XCTAssertTrue(validation.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Enter your feedback first."].exists)
+
+        message.tap()
+        message.typeText("A suggestion")
+        XCTAssertFalse(validation.exists)
+        XCTAssertEqual(count.label, "12 of 200 characters")
+        XCTAssertFalse(app.buttons["settings.feedback.clearMessage"].exists)
+        message.typeText(XCUIKeyboardKey.delete.rawValue)
+        XCTAssertEqual(count.label, "11 of 200 characters")
+
+        app.buttons["settings.feedback.clearEmail"].tap()
+        XCTAssertEqual(email.value as? String, "Email (optional)")
+        email.tap()
+        email.typeText("invalid-email")
+        for _ in 0..<2 where !send.isHittable { app.swipeUp() }
+        send.tap()
+        XCTAssertTrue(app.staticTexts["Enter a valid email address."].waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     func testVersionCopiesHiddenDeviceIDOnFifthTap() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -21,10 +79,13 @@ final class SolveFlowTests: XCTestCase {
         }
         XCTAssertTrue(version.isHittable)
         let privacy = app.buttons["settings.about.privacy"]
+        let feedback = app.descendants(matching: .any)["settings.about.feedback"].firstMatch
         let importResults = app.buttons["settings.results.import"]
         let clearResults = app.buttons["settings.results.clear"]
         let includeDNF = app.switches["settings.results.includeDNFInWorst"]
         XCTAssertTrue(privacy.exists && importResults.exists && clearResults.exists && includeDNF.exists)
+        XCTAssertTrue(feedback.exists)
+        XCTAssertLessThan(feedback.frame.midY, privacy.frame.midY)
         XCTAssertLessThan(privacy.frame.midY, version.frame.midY)
         XCTAssertLessThan(importResults.frame.midY, clearResults.frame.midY)
         XCTAssertLessThan(clearResults.frame.midY, includeDNF.frame.midY)

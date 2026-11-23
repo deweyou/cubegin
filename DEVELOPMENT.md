@@ -32,8 +32,9 @@ cargo xtask release --version 0.1.0 --dry-run
 ### Cubegin 官网
 
 官网位于 `apps/web`，使用 Nuxt、Vue、TypeScript、Tailwind CSS 和 shadcn-vue。
-官网开发和 Cloudflare 构建使用仓库根目录版本文件指定的 Node 22.23.4。运行以下命令后，可在
-<http://127.0.0.1:4489/privacy> 预览中文政策，英文路由为 `/en/privacy`。
+官网开发和 Cloudflare 构建使用仓库根目录版本文件指定的 Node 22.23.4。启动开发服务后，
+在 <http://127.0.0.1:4489/> 预览中文首页，英文首页为 `/en`。隐私政策位于
+`/privacy` 和 `/en/privacy`。
 
 ```sh
 pnpm --filter @cubegin/web dev
@@ -44,13 +45,67 @@ pnpm --filter @cubegin/web generate
 静态部署目录为 `apps/web/.output/public`。如需按请求 SSR，运行
 `pnpm --filter @cubegin/web build`，再启动 `node apps/web/.output/server/index.mjs`。
 两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
-网页使用的 shadcn-vue Button 按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
+网页使用的 shadcn-vue 组件按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
+
+正式官网设置 `NUXT_PUBLIC_SITE_URL` 为根域名，例如 `https://example.com`。静态站在构建前设置，SSR 在运行时设置。
+该值用于生成 canonical、语言互链、分享图绝对地址和 `/sitemap.xml`。网站地图包含中英文首页及隐私政策。
+未配置正式域名时省略这些绝对地址，`robots.txt` 也省略网站地图声明。
+
+官网的 `robots.txt` 允许搜索引擎抓取公开页面，限制已知的训练爬虫及 `/api/`。
+反馈页带 `noindex`，独立反馈 Worker 也声明其接口不可索引。公开页面实际拦截由部署侧执行。
+使用 Cloudflare 托管或代理时，可以在 [AI Crawl Control](https://developers.cloudflare.com/ai-crawl-control/features/manage-ai-crawlers/)
+开启训练爬虫拦截，并保留正常搜索引擎访问。
 
 Cloudflare Workers Static Assets 使用根目录的 `wrangler.jsonc`。连接 GitHub 时，Worker
 名称填 `cubegin-web`，生产分支填 `main`，构建根目录保留为仓库根目录，不要改为
 `apps/web`。构建命令用 `pnpm --filter @cubegin/web generate`，部署命令用
-`pnpm exec wrangler deploy`。预览命令不要使用生产部署命令。部署后直接访问
-`/privacy` 和 `/en/privacy`，验证两种语言的政策页面。
+`pnpm exec wrangler deploy`。预览命令不要使用生产部署命令。部署后直接访问 `/` 和 `/en`，确认首页正常渲染，再核对
+`/privacy`、`/en/privacy`、`/feedback` 和 `/en/feedback`。
+
+### 反馈与评价
+
+App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare Worker 的
+`POST /api/feedback`。两个客户端都接受去掉首尾空白后 1 至 200 个 UTF-16 单元的正文、
+选填邮箱和最多三张截图。网页会在当前浏览器记住上一次成功提交的邮箱，清空邮箱时删除它。
+客户端会将截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
+附件发送。官网可以静态部署，App Store Support URL 指向对应语言的反馈页。
+
+本地启动 Worker 和官网，对测试收件箱的发信由 Wrangler 模拟。
+
+```sh
+npx wrangler dev --config apps/feedback/wrangler.toml
+pnpm --filter @cubegin/web dev
+```
+
+验证限流时另启一个空的本地 Worker 实例。在另一个终端运行集成测试。
+
+```sh
+npx wrangler dev --config apps/feedback/wrangler.toml --port 4491 --persist-to "$(mktemp -d)"
+node --test apps/feedback/worker.test.mjs
+```
+
+正式部署前，在 Cloudflare 为发件域名启用 Email Routing，并验证指定的 Gmail
+收件地址。将 `apps/feedback/wrangler.toml` 复制为同目录下的
+`wrangler.production.toml`，填写以下配置。生产配置含私人收件地址，已从 Git 排除。
+
+| 配置 | 用途 |
+| --- | --- |
+| `FEEDBACK_FROM` | 已启用 Email Routing 的域名下的发件地址 |
+| `FEEDBACK_TO` 和 `send_email.destination_address` | 同一个已验证的 Gmail 收件地址 |
+| `FEEDBACK_ORIGINS` | 允许的官网来源，多个来源用逗号分隔 |
+| `NUXT_PUBLIC_FEEDBACK_ENDPOINT` | 官网表单使用的 Worker HTTPS URL，包含 `/api/feedback`。与官网同源时可以省略 |
+| `NUXT_PUBLIC_APP_STORE_ID` | 版本上架后，官网评价入口使用的 App Store 数字 ID |
+
+部署命令为 `npx wrangler deploy --config apps/feedback/wrangler.production.toml`。
+静态官网应在构建前配置公开变量。iOS 构建将 `CUBEGIN_FEEDBACK_BASE_URL` 设为 Worker
+的 HTTPS 基础地址，并通过 `CUBEGIN_APP_STORE_ID` 配置评价链接。模拟器 Debug
+默认提交到本机 `http://localhost:4490`。
+
+Worker 对每个 IP 每分钟约限制 5 次请求。单个 SQLite Durable Object 在滚动一小时内
+最多预留 30 次发信尝试，包含上游失败，并在 24 小时内记录提交状态以处理重试。
+部署后分别验证匿名提交、Reply-To 和三张接近 1 MB 的附件，并在 Workers
+观测中核对 CPU 时间。公开域名也可以在 Worker 前配置路径级限流，拦截流量尖峰。
+
 
 ## CI 检查
 
