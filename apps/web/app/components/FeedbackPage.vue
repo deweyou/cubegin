@@ -222,7 +222,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="feedback-page pt-8 pb-16 sm:pt-14">
+  <main class="site-frame pt-8 pb-16 sm:pt-14">
     <h1 class="mb-5 text-[clamp(1.625rem,1.3rem+1vw,2rem)] leading-tight font-semibold tracking-tight sm:mb-6">
       {{ copy.title }}
     </h1>
