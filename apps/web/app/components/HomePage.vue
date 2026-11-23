@@ -130,7 +130,7 @@ function showScreenshot(screenshot: Screenshot) {
 
 <style scoped>
 .hero {
-  --hero-height: calc(100dvh - var(--home-toolbar-height));
+  --hero-height: calc(100dvh - var(--home-toolbar-height) - var(--home-footer-height));
   --glass-fill: light-dark(#ffffffad, #ffffff12);
   --glass-edge: light-dark(#ffffffd9, #ffffff24);
   --screen-shadow: light-dark(#233b5929, #0000006b);

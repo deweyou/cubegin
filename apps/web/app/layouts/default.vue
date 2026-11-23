@@ -83,6 +83,14 @@ onBeforeUnmount(() => {
     </div>
   </header>
   <slot />
+  <footer v-if="isHome" class="home-footer">
+    <NuxtLink :to="isEnglish ? '/en/feedback' : '/feedback'">
+      {{ isEnglish ? 'Product feedback' : '产品反馈' }}
+    </NuxtLink>
+    <NuxtLink :to="isEnglish ? '/en/privacy' : '/privacy'">
+      {{ isEnglish ? 'Privacy policy' : '隐私政策' }}
+    </NuxtLink>
+  </footer>
 </template>
 
 <style scoped>
@@ -95,4 +103,27 @@ onBeforeUnmount(() => {
 }
 
 .home-controls { gap: .75rem; }
+
+.home-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: var(--home-footer-height);
+  color: var(--muted-foreground);
+  font-size: .8125rem;
+}
+
+.home-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--home-footer-height);
+  padding-inline: .375rem;
+}
+
+.home-footer a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
 </style>
