@@ -48,7 +48,7 @@ pnpm --filter @cubegin/web generate
 
 ### 反馈与评价
 
-官网的 `/feedback` 和 `/en/feedback` 共用 `POST /api/feedback`。部署这两页时用
+App 原生反馈页与官网的 `/feedback` 和 `/en/feedback` 共用 `POST /api/feedback`。部署这两页时用
 Nuxt 服务端构建，可在 Vercel 将项目根目录设为 `apps/web`，并允许构建访问仓库内
 根目录外的 iOS 素材。静态政策站仍可单独生成。
 
@@ -62,9 +62,10 @@ Nuxt 服务端构建，可在 Vercel 将项目根目录设为 `apps/web`，并�
 部署后用空邮箱和可回复邮箱各提交一次测试反馈，核对送达和 Reply-To。对公网的
 `POST /api/feedback` 可在托管平台按来源 IP 限速。App Store Support URL 可以指向对应语言的反馈页。
 
-iOS 构建时将 `CUBEGIN_FEEDBACK_BASE_URL` 设为官网的 HTTPS 基础地址，App 会按语言
-打开反馈页。没有配置时，模拟器 Debug 构建使用本机 `127.0.0.1:4489`，其他构建隐藏入口。
-App Store 评价链接在配置数字 Apple ID 后显示。
+iOS 构建时将 `CUBEGIN_FEEDBACK_BASE_URL` 设为官网的 HTTPS 基础地址，原生表单会
+将反馈提交到该地址下的 `/api/feedback`。没有配置时，模拟器 Debug 构建使用
+`http://localhost:4489`，其他构建仍显示原生页并提示反馈暂不可用。将官网使用的同一个
+数字 Apple ID 传给 iOS 构建设置 `CUBEGIN_APP_STORE_ID`，即可显示原生页的 App Store 评价链接。
 
 ## CI 检查
 

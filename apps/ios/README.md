@@ -26,4 +26,4 @@ Cubegin Dev builds configured with CloudKit also sync results, result groups, th
 
 To copy the device ID and the shared user ID when available, tap **Version** five times under **Settings → About**. Choose whether to share diagnostics and usage data on first launch. Change your choice or open the [privacy policy](Cubegin/PrivacyPolicy.md#cubegin-privacy-policy) under **Settings → About → Privacy**.
 
-In builds connected to the Cubegin website, open **Settings → About → Feedback & Reviews** to send feedback or leave an App Store review.
+Open **Settings → About → Feedback & Reviews** to send feedback from the app. An email address is optional. Tap **Review on the App Store** to leave a rating or review.

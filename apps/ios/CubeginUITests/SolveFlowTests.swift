@@ -4,6 +4,39 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testFeedbackOpensNativeFormWithOptionalEmail() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en"]
+        app.launch()
+
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let feedback = app.buttons["settings.about.feedback"]
+        for _ in 0..<4 where !feedback.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(feedback.isHittable)
+        feedback.tap()
+
+        XCTAssertTrue(app.navigationBars["Feedback & Reviews"].waitForExistence(timeout: 5))
+        let send = app.buttons["settings.feedback.send"]
+        XCTAssertFalse(send.isEnabled)
+        let message = app.descendants(matching: .any)["settings.feedback.message"].firstMatch
+        message.tap()
+        message.typeText("A suggestion")
+        XCTAssertTrue(send.isEnabled)
+
+        let email = app.textFields["settings.feedback.email"]
+        email.tap()
+        email.typeText("invalid-email")
+        XCTAssertFalse(send.isEnabled)
+    }
+
+    @MainActor
     func testVersionCopiesHiddenDeviceIDOnFifthTap() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

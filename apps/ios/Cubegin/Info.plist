@@ -4,6 +4,8 @@
 <dict>
     <key>CubeginFeedbackBaseURL</key>
     <string>$(CUBEGIN_FEEDBACK_BASE_URL)</string>
+    <key>CubeginAppStoreID</key>
+    <string>$(CUBEGIN_APP_STORE_ID)</string>
     <key>FirebaseAppDelegateProxyEnabled</key>
     <false/>
     <key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>

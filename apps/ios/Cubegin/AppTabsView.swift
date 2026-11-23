@@ -1950,7 +1950,7 @@ private struct SettingsView: View {
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case gestures, imports, clearResults, sync, privacy }
+    private enum Page: Hashable { case gestures, imports, clearResults, sync, feedback, privacy }
     @State private var path: [Page] = []
     @State private var versionTapCount = 0
     @State private var startDelayBeforeEditing: Int?
@@ -1968,21 +1968,6 @@ private struct SettingsView: View {
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
-
-    private var feedbackURL: URL? {
-        let configuredURL = Bundle.main.object(forInfoDictionaryKey: "CubeginFeedbackBaseURL") as? String
-        let baseURL: URL
-        if let configuredURL, let url = URL(string: configuredURL), url.scheme == "https", url.host != nil {
-            baseURL = url
-        } else {
-#if DEBUG && targetEnvironment(simulator)
-            baseURL = URL(string: "http://127.0.0.1:4489")!
-#else
-            return nil
-#endif
-        }
-        return baseURL.appending(path: language == .english ? "en/feedback" : "feedback")
-    }
 
     private var syncedLanguage: Binding<String> {
         trackedSetting(SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }) {
@@ -2156,13 +2141,13 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
                 CardSection(language.text("关于", "About")) {
-                    if let feedbackURL {
-                        Link(destination: feedbackURL) {
-                            settingsLinkLabel(language.text("反馈与评价", "Feedback & Reviews"))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("settings.about.feedback")
+                    cardRowButton {
+                        path.append(.feedback)
+                    } label: {
+                        settingsLinkLabel(language.text("反馈与评价", "Feedback & Reviews"))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.feedback")
                     cardRowButton {
                         path.append(.privacy)
                     } label: {
@@ -2186,6 +2171,7 @@ private struct SettingsView: View {
                 case .imports: ResultsImportView(model: model)
                 case .clearResults: ClearResultsView(model: model)
                 case .sync: SyncSettingsView(model: model)
+                case .feedback: FeedbackSettingsView()
                 case .privacy: PrivacySettingsView()
                 }
             }
