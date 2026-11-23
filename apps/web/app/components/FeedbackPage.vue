@@ -101,6 +101,7 @@ const validationMessage = computed(() => {
 useHead(() => ({
   title: `${copy.value.title} | Cubegin`,
   htmlAttrs: { lang: props.language },
+  bodyAttrs: { class: 'feedback-surface' },
 }))
 
 function dismissValidationNotice() {
@@ -221,10 +222,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="site-frame policy-page">
-    <h1>{{ copy.title }}</h1>
-    <form class="grid max-w-xl gap-3" novalidate @submit.prevent="sendFeedback">
-      <Card class="gap-0 overflow-hidden rounded-2xl py-0">
+  <main class="site-frame max-w-136 pt-8 pb-16 sm:pt-14">
+    <h1 class="mb-5 text-[clamp(1.625rem,1.3rem+1vw,2rem)] leading-tight font-semibold tracking-tight sm:mb-6">
+      {{ copy.title }}
+    </h1>
+    <form class="grid gap-3" novalidate @submit.prevent="sendFeedback">
+      <Card class="gap-0 overflow-hidden rounded-xl py-0 shadow-none">
         <Textarea
           id="feedback-message"
           v-model="message"
@@ -235,14 +238,14 @@ onBeforeUnmount(() => {
           aria-describedby="feedback-character-count"
           :placeholder="copy.placeholder"
           :readonly="status === 'sending'"
-          class="field-sizing-content min-h-32 max-h-64 resize-none rounded-none border-0 px-4 pt-4 shadow-none focus-visible:ring-inset sm:px-5 md:text-base"
+          class="field-sizing-content min-h-34 max-h-64 resize-none rounded-none border-0 px-4 pt-4 leading-relaxed shadow-none focus-visible:ring-inset sm:px-5 sm:pt-5 md:text-base"
         />
-        <div class="flex items-end justify-between gap-2 px-4 pb-4 pt-2 sm:px-5">
+        <div class="flex items-end justify-between gap-2 px-4 pb-3 pt-2 sm:px-5 sm:pb-4">
           <div class="flex min-w-0 flex-1 items-center gap-2">
             <div
               v-for="(screenshot, index) in screenshots"
               :key="screenshot.preview"
-              class="relative aspect-square w-17 min-w-0 rounded-md bg-secondary"
+              class="relative aspect-square w-14 min-w-0 rounded-md bg-secondary sm:w-16"
             >
               <img :src="screenshot.preview" :alt="copy.screenshotAlt(index)" class="absolute inset-0 size-full rounded-md object-cover" />
               <Button
@@ -271,13 +274,13 @@ onBeforeUnmount(() => {
             <Button
               v-if="screenshots.length < maxScreenshots"
               type="button" variant="outline" size="icon"
-              class="aspect-square h-auto w-17 min-w-0 shrink border-dashed border-primary/65 bg-primary/5 text-primary shadow-none hover:bg-primary/10 hover:text-primary"
+              class="aspect-square h-auto w-14 min-w-0 shrink border-dashed border-border bg-secondary/40 text-muted-foreground shadow-none hover:border-primary/50 hover:bg-secondary hover:text-primary sm:w-16"
               :aria-label="isPreparing ? copy.processing : copy.addScreenshots"
               :disabled="isPreparing || status === 'sending'"
               @click="screenshotInput?.click()"
             >
               <LoaderCircle v-if="isPreparing" aria-hidden="true" class="size-5 motion-safe:animate-spin" />
-              <Plus v-else aria-hidden="true" class="size-5" />
+              <Plus v-else aria-hidden="true" class="size-4" />
             </Button>
           </div>
           <div class="grid shrink-0 justify-items-end">
@@ -300,7 +303,7 @@ onBeforeUnmount(() => {
             </span>
           </div>
         </div>
-        <div class="mx-4 border-t border-border sm:mx-5" />
+        <div class="mx-4 border-t border-border/75 sm:mx-5" />
         <div class="relative flex items-center">
           <Input
             id="feedback-email"
@@ -326,7 +329,7 @@ onBeforeUnmount(() => {
           </Button>
         </div>
       </Card>
-      <div class="px-4 text-sm text-muted-foreground sm:px-5">
+      <div class="px-1 text-sm leading-relaxed text-muted-foreground">
         <p id="feedback-email-help">{{ copy.emailHelp }}</p>
         <p v-if="screenshotError" role="alert" class="mt-1 text-destructive">{{ copy[screenshotError] }}</p>
       </div>
@@ -334,29 +337,31 @@ onBeforeUnmount(() => {
         <label for="feedback-website">Website</label>
         <input id="feedback-website" v-model="website" type="text" tabindex="-1" autocomplete="off">
       </div>
-      <Button
-        type="submit" size="lg"
-        class="h-12 w-full rounded-full"
-        :variant="validationMessage ? 'secondary' : 'default'"
-        :aria-describedby="validationNotice ? 'feedback-validation' : undefined"
-        :disabled="status === 'sending'"
-      >
-        <LoaderCircle v-if="status === 'sending'" aria-hidden="true" class="motion-safe:animate-spin" />
-        <Send v-else aria-hidden="true" />
-        {{ status === 'sending' ? copy.sending : copy.send }}
-      </Button>
-      <p v-if="status === 'sent'" role="status" class="px-4 text-sm sm:px-5">{{ copy.sent }}</p>
-      <p v-if="status === 'failed'" role="alert" class="px-4 text-sm text-destructive sm:px-5">{{ copy.failed }}</p>
-      <p v-if="status === 'limited'" role="alert" class="px-4 text-sm text-destructive sm:px-5">{{ copy.limited }}</p>
-      <Button v-if="reviewURL" as-child variant="outline" class="h-11 justify-between rounded-xl border-border px-4 sm:px-5">
-        <a :href="reviewURL">
-          {{ copy.review }}
-          <ArrowUpRight aria-hidden="true" />
-        </a>
-      </Button>
-      <NuxtLink :to="copy.privacyPath" class="w-fit text-sm text-primary underline underline-offset-4">
-        {{ copy.privacy }}
-      </NuxtLink>
+      <div class="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div class="flex flex-wrap items-center gap-x-4 px-1 text-sm text-muted-foreground">
+          <NuxtLink :to="copy.privacyPath" class="inline-flex min-h-11 items-center underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-current">
+            {{ copy.privacy }}
+          </NuxtLink>
+          <a v-if="reviewURL" :href="reviewURL" class="inline-flex min-h-11 items-center gap-1 hover:text-foreground hover:underline">
+            {{ copy.review }}
+            <ArrowUpRight aria-hidden="true" class="size-3.5" />
+          </a>
+        </div>
+        <Button
+          type="submit" size="lg"
+          class="ml-auto h-11 rounded-lg active:translate-y-px"
+          :variant="validationMessage ? 'secondary' : 'default'"
+          :aria-describedby="validationNotice ? 'feedback-validation' : undefined"
+          :disabled="status === 'sending'"
+        >
+          <LoaderCircle v-if="status === 'sending'" aria-hidden="true" class="motion-safe:animate-spin" />
+          <Send v-else aria-hidden="true" />
+          {{ status === 'sending' ? copy.sending : copy.send }}
+        </Button>
+      </div>
+      <p v-if="status === 'sent'" role="status" class="px-1 text-right text-sm">{{ copy.sent }}</p>
+      <p v-if="status === 'failed'" role="alert" class="px-1 text-right text-sm text-destructive">{{ copy.failed }}</p>
+      <p v-if="status === 'limited'" role="alert" class="px-1 text-right text-sm text-destructive">{{ copy.limited }}</p>
     </form>
     <div class="pointer-events-none fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-10 flex justify-center">
       <Card

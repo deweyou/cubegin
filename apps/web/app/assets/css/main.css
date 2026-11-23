@@ -67,6 +67,20 @@ body::before {
   pointer-events: none;
 }
 
+body.feedback-surface {
+  --background: light-dark(#ffffff, #1c2129);
+  --foreground: light-dark(#1b2430, #eef1f5);
+  --muted-foreground: light-dark(#566271, #b3beca);
+  --border: light-dark(#dce2ea, #343f4d);
+  --secondary: light-dark(#e7ecf2, #2d3642);
+  --secondary-foreground: light-dark(#405064, #d5dfe9);
+  background: light-dark(#f5f7fa, #141920);
+}
+
+body.feedback-surface::before {
+  content: none;
+}
+
 a:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
