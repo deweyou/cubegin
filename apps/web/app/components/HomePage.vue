@@ -14,6 +14,11 @@ const copy = {
   'zh-Hans': {
     title: '魔方速拧计时器',
     description: '魔方速拧计时、专项训练与成绩统计。',
+    capabilities: [
+      { label: '速拧计时', detail: '用触屏或实体键盘计时，支持 WCA 观察和手动录入。' },
+      { label: '专项训练', detail: '按项目生成打乱，查看魔方展开图，练习十字、XCross 和 F2L。' },
+      { label: '成绩统计', detail: '分组管理成绩，查看 Ao5、Ao12 和趋势图，还能导入 DCTimer 的历史成绩。' },
+    ],
     platforms: '支持 iPhone、iPhone Duo 和 iPad',
     close: '关闭',
     timer: '计时页',
@@ -24,6 +29,11 @@ const copy = {
   en: {
     title: 'Speedcubing timer',
     description: 'Speedcubing timer, targeted practice, and solve statistics.',
+    capabilities: [
+      { label: 'Timing', detail: 'Time solves by touch or keyboard, use WCA inspection, or enter times manually.' },
+      { label: 'Practice', detail: 'Generate scrambles by event, see cube diagrams, and drill cross, XCross, and F2L.' },
+      { label: 'Statistics', detail: 'Organize solves by group, track Ao5, Ao12, and trends, and import your DCTimer history.' },
+    ],
     platforms: 'For iPhone, iPhone Duo, and iPad',
     close: 'Close',
     timer: 'Timer',
@@ -74,7 +84,11 @@ function showScreenshot(screenshot: Screenshot) {
             <img :src="cubeginWordmark" alt="cubegin" width="702" height="195">
           </picture>
         </h1>
-        <p class="description">{{ content.description }}</p>
+        <ul class="capabilities" role="list">
+          <li v-for="capability in content.capabilities" :key="capability.label">
+            <strong>{{ capability.label }}</strong> {{ capability.detail }}
+          </li>
+        </ul>
         <p class="platforms">{{ content.platforms }}</p>
       </div>
       <div class="showcase">
@@ -146,14 +160,24 @@ function showScreenshot(screenshot: Screenshot) {
   22%, 100% { transform: rotate(378deg); }
 }
 
-.description {
-  margin-top: 1.375rem;
-  font-size: clamp(1rem, 1.45vw, 1.25rem);
-  line-height: 1.55;
+.capabilities {
+  display: grid;
+  gap: .625rem;
+  max-width: 34rem;
+  margin: 1.375rem 0 0;
+  color: var(--muted-foreground);
+  font-size: clamp(.9375rem, 1.25vw, 1.0625rem);
+  line-height: 1.65;
+}
+
+.capabilities strong {
+  margin-inline-end: .3em;
+  color: var(--foreground);
+  font-weight: 700;
 }
 
 .platforms {
-  margin-top: .6875rem;
+  margin-top: 1rem;
   color: var(--muted-foreground);
   font-size: .875rem;
   line-height: 1.6;
@@ -227,8 +251,8 @@ function showScreenshot(screenshot: Screenshot) {
     padding: 1.5rem clamp(1.625rem, 7vw, 4.25rem);
   }
   .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
-  .description { margin-top: .625rem; }
-  .platforms { margin-top: .375rem; font-size: .8125rem; }
+  .capabilities { gap: .375rem; margin-top: .75rem; font-size: .875rem; }
+  .platforms { margin-top: .75rem; font-size: .8125rem; }
   .showcase { --shot-width: clamp(6.75rem, 34vw, 11rem); width: min(100%, 26.25rem); }
   .screen { padding: .25rem; }
   .timer { left: 9%; top: 3%; }

@@ -56,7 +56,7 @@ onBeforeUnmount(() => {
         <img :src="cubeginLogo" alt="Cubegin" width="714" height="200" class="brand-light" />
         <img :src="cubeginDarkLogo" alt="Cubegin" width="714" height="200" class="brand-dark" />
       </NuxtLink>
-      <div class="flex items-center gap-1">
+      <div class="flex items-center gap-1" :class="{ 'footer-controls': isHome }">
         <Button as-child variant="ghost" size="icon" class="size-11">
           <NuxtLink
             :to="languagePath"
@@ -88,10 +88,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .home-footer {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  display: grid;
+  place-items: center;
   min-height: var(--home-footer-height);
   padding-inline: clamp(1rem, 4vw, 4rem);
 }
+.footer-controls { gap: .75rem; }
 </style>
