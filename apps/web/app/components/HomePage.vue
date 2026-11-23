@@ -17,8 +17,7 @@ const copy = {
     capabilities: [
       { label: '速拧计时', tags: ['触屏计时', '键盘计时', '手动录入'] },
       { label: 'WCA 观察', tags: ['语音报时', '超时判罚'] },
-      { label: '打乱与训练', tags: ['打乱公式', '打乱图', '专项训练'] },
-      { label: '辅助公式', tags: ['十字解法', 'XCross 解法', 'F2L 提示'] },
+      { label: '打乱与训练', tags: ['打乱公式', '打乱图', '辅助公式'] },
       { label: '成绩统计', tags: ['成绩分组', '平均成绩', '用时趋势'] },
       { label: 'iCloud 同步', tags: ['计时偏好', '语言与外观'] },
       { label: '支持设备', tags: ['iPhone', 'iPhone Duo', 'iPad'] },
@@ -35,8 +34,7 @@ const copy = {
     capabilities: [
       { label: 'Timing', tags: ['Touch', 'Keyboard', 'Manual entry'] },
       { label: 'WCA inspection', tags: ['Voice alerts', 'Overtime penalties'] },
-      { label: 'Scrambles & drills', tags: ['Scramble notation', 'Scramble diagrams', 'Targeted drills'] },
-      { label: 'Formula hints', tags: ['Cross', 'XCross', 'F2L'] },
+      { label: 'Scrambles & drills', tags: ['Scramble notation', 'Scramble diagrams', 'Formula hints'] },
       { label: 'Statistics', tags: ['Solve groups', 'Averages', 'Time trends'] },
       { label: 'iCloud sync', tags: ['Timer preferences', 'Language & appearance'] },
       { label: 'Devices', tags: ['iPhone', 'iPhone Duo', 'iPad'] },
