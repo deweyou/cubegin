@@ -1,0 +1,8 @@
+{
+  "name": "cubegin-web",
+  "compatibility_date": "2026-11-23",
+  "assets": {
+    "directory": "./apps/web/.output/public",
+    "not_found_handling": "404-page"
+  }
+}
