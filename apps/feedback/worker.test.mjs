@@ -35,6 +35,13 @@ function upload(files, requestId = crypto.randomUUID()) {
 }
 
 test('accepts screenshots, protects the inbox and enforces one shared rolling cap', async () => {
+  const robots = await fetch(new URL('/robots.txt', endpoint))
+  assert.equal(robots.status, 200)
+  assert.equal(await robots.text(), 'User-agent: *\nDisallow: /\n')
+  const apiGet = await fetch(api)
+  assert.equal(apiGet.status, 405)
+  assert.equal(apiGet.headers.get('X-Robots-Tag'), 'noindex')
+
   assert.equal((await inbox()).length, 0, 'Start Wrangler with a fresh local inbox')
 
   const screenshot = new Blob([png], { type: 'image/png' })

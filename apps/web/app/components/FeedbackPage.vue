@@ -94,11 +94,16 @@ const validationMessage = computed(() => {
   return ''
 })
 
-useHead(() => ({
-  title: `${copy.value.title} | Cubegin`,
-  htmlAttrs: { lang: props.language },
-  bodyAttrs: { class: 'feedback-surface' },
-}))
+useSiteSeo(
+  'feedback',
+  () => props.language,
+  () => `${copy.value.title} | Cubegin`,
+  () => props.language === 'en'
+    ? 'Send feedback about Cubegin, describe an issue, and attach screenshots if needed.'
+    : '向 Cubegin 提交问题或建议，可附上截图和回复邮箱。',
+)
+
+useHead({ bodyAttrs: { class: 'feedback-surface' } })
 
 function dismissValidationNotice() {
   clearTimeout(noticeTimer)

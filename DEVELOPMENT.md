@@ -47,6 +47,15 @@ pnpm --filter @cubegin/web generate
 两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
 网页使用的 shadcn-vue 组件按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
 
+正式官网设置 `NUXT_PUBLIC_SITE_URL` 为根域名，例如 `https://example.com`。静态站在构建前设置，SSR 在运行时设置。
+该值用于生成 canonical、语言互链、分享图绝对地址和 `/sitemap.xml`。网站地图包含中英文首页及隐私政策。
+未配置正式域名时省略这些绝对地址，`robots.txt` 也省略网站地图声明。
+
+官网的 `robots.txt` 允许搜索引擎抓取公开页面，限制已知的训练爬虫及 `/api/`。
+反馈页带 `noindex`，独立反馈 Worker 也声明其接口不可索引。公开页面实际拦截由部署侧执行。
+使用 Cloudflare 托管或代理时，可以在 [AI Crawl Control](https://developers.cloudflare.com/ai-crawl-control/features/manage-ai-crawlers/)
+开启训练爬虫拦截，并保留正常搜索引擎访问。
+
 ### 反馈与评价
 
 App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare Worker 的

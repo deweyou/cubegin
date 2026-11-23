@@ -62,9 +62,15 @@ function imageType(bytes, end) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin')
+    const headers = { Vary: 'Origin', 'X-Robots-Tag': 'noindex' }
+    const { pathname } = new URL(request.url)
+    if (pathname === '/robots.txt' && (request.method === 'GET' || request.method === 'HEAD')) {
+      return new Response(request.method === 'HEAD' ? null : 'User-agent: *\nDisallow: /\n', {
+        headers: { ...headers, 'Content-Type': 'text/plain; charset=utf-8' },
+      })
+    }
+    if (pathname !== '/api/feedback') return reply(404, headers, 'not_found')
     const allowedOrigins = env.FEEDBACK_ORIGINS.split(',').map(value => value.trim())
-    const headers = { Vary: 'Origin' }
-    if (new URL(request.url).pathname !== '/api/feedback') return reply(404, headers, 'not_found')
     if (origin && !allowedOrigins.includes(origin)) return reply(403, headers, 'origin_not_allowed')
     if (origin) headers['Access-Control-Allow-Origin'] = origin
 

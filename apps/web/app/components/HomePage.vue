@@ -62,11 +62,12 @@ const darkScreenshotMedia = computed(() => {
   return '(prefers-color-scheme: dark)'
 })
 
-useHead(() => ({ htmlAttrs: { lang: props.language } }))
-useSeoMeta({
-  title: () => `Cubegin | ${content.value.title}`,
-  description: () => content.value.summary.join(''),
-})
+useSiteSeo(
+  'home',
+  () => props.language,
+  () => `Cubegin | ${content.value.title}`,
+  () => content.value.summary.join(''),
+)
 
 function showScreenshot(screenshot: Screenshot) {
   selectedScreenshot.value = screenshot
