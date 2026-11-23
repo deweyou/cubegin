@@ -112,25 +112,30 @@ function showScreenshot(screenshot: Screenshot) {
 
 <style scoped>
 .home {
-  min-height: calc(100dvh - 4.25rem);
   padding-inline: clamp(.625rem, 2vw, 2rem);
-  padding-bottom: clamp(3.5rem, 10dvh, 6.5rem);
 }
 
 .hero {
-  --brand-blue: #2f7ce0;
-  --hero-fill: color-mix(in srgb, var(--primary) 68%, var(--brand-blue));
-  --hero-foreground: #f9fcff;
-  --hero-muted: #e2eeff;
+  --hero-height: calc(100dvh - var(--site-header-height));
+  --glass-fill: light-dark(#ffffffad, #ffffff12);
+  --glass-edge: light-dark(#ffffffd9, #ffffff24);
+  --glass-button: light-dark(#ffffffdb, #20334aeb);
+  --screen-shadow: light-dark(#233b5929, #0000006b);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.13fr);
   align-items: center;
   gap: clamp(.75rem, 4vw, 4rem);
-  min-height: clamp(30rem, calc(100dvh - 9.5rem), 49rem);
-  padding: 2.2rem clamp(1.875rem, 6vw, 6.5rem);
+  min-height: var(--hero-height);
+  padding: clamp(1.25rem, 3dvh, 2.25rem) clamp(1.875rem, 6vw, 6.5rem);
+  border: 1px solid var(--glass-edge);
   border-radius: clamp(1rem, 2.4vw, 2.125rem);
-  background: light-dark(var(--hero-fill), #193d73);
-  color: var(--hero-foreground);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--gradient-cyan) 22%, var(--background)),
+    var(--background) 52%,
+    color-mix(in srgb, var(--gradient-indigo) 20%, var(--background))
+  );
+  color: var(--foreground);
 }
 
 .hero-copy h1 {
@@ -149,7 +154,7 @@ function showScreenshot(screenshot: Screenshot) {
 
 .platforms {
   margin-top: .6875rem;
-  color: var(--hero-muted);
+  color: var(--muted-foreground);
   font-size: .875rem;
   line-height: 1.6;
 }
@@ -157,18 +162,21 @@ function showScreenshot(screenshot: Screenshot) {
 .hero-button {
   height: 2.875rem;
   margin-top: 1.5625rem;
-  background: #f8fbff;
-  color: #0755a2;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-button);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 .25rem 1rem var(--screen-shadow);
+  backdrop-filter: blur(14px);
+  color: var(--primary);
   font-weight: 700;
 }
 
-.hero-button:hover { background: #e4f0ff; }
+.hero-button:hover { background: color-mix(in srgb, var(--accent) 50%, var(--glass-button)); }
 
 .showcase {
-  --shot-width: clamp(9.6875rem, min(20.4vw, 35dvh), 18.875rem);
+  --shot-width: clamp(8rem, min(20.4vw, (var(--hero-height) - 5rem) / 2.7), 18.875rem);
   position: relative;
   width: min(100%, 36.875rem);
-  height: clamp(26.25rem, 68dvh, 39rem);
+  height: calc(var(--shot-width) * 2.68);
   margin-inline: auto;
 }
 
@@ -176,15 +184,15 @@ function showScreenshot(screenshot: Screenshot) {
   position: absolute;
   width: var(--shot-width);
   padding: .375rem;
-  border: 1px solid #25365148;
+  border: 1px solid var(--glass-edge);
   border-radius: clamp(.9375rem, 1.65vw, 1.625rem);
-  background: light-dark(#f9fafa, #25282e);
-  box-shadow: 0 1.5rem 3.4375rem #071d4661;
+  background: var(--glass-fill);
+  box-shadow: 0 1.0625rem 2.5rem var(--screen-shadow);
   cursor: zoom-in;
 }
 
 .screen:focus-visible, .hero-button:focus-visible {
-  outline: 2px solid var(--hero-foreground);
+  outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
 
@@ -192,6 +200,14 @@ function showScreenshot(screenshot: Screenshot) {
 .screen img { display: block; width: 100%; height: auto; border-radius: inherit; }
 .timer { z-index: 1; left: 2%; top: 1%; rotate: -8deg; }
 .statistics { right: 2%; top: 13%; rotate: 8deg; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .hero {
+    --glass-fill: var(--background);
+    --glass-button: var(--background);
+  }
+  .hero-button { backdrop-filter: none; }
+}
 
 @media (hover: hover) {
   .screen:hover { translate: 0 -.3125rem; }
@@ -220,19 +236,17 @@ function showScreenshot(screenshot: Screenshot) {
 .preview img { display: block; max-width: 100%; max-height: calc(100dvh - 6.25rem); margin-inline: auto; border-radius: .625rem; }
 
 @media (max-width: 760px) {
-  .home { padding-bottom: 1.75rem; }
   .hero {
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
     gap: 1.5625rem;
-    min-height: calc(100dvh - 6rem);
-    padding: 1.75rem clamp(1rem, 5vw, 2.25rem) .375rem;
+    padding: 1.5rem clamp(1rem, 5vw, 2.25rem);
   }
   .hero-copy h1 { font-size: clamp(2rem, 8vw, 3.5rem); }
   .hero-copy h1 br { display: none; }
   .description { margin-top: .625rem; }
   .platforms { margin-top: .375rem; font-size: .8125rem; }
-  .showcase { --shot-width: clamp(6.75rem, 34vw, 11rem); height: clamp(17.1875rem, 45dvh, 26rem); width: min(100%, 26.25rem); }
+  .showcase { --shot-width: clamp(6.75rem, 34vw, 11rem); width: min(100%, 26.25rem); }
   .screen { padding: .25rem; }
   .timer { left: 9%; top: 3%; }
   .statistics { right: 7%; top: 12%; rotate: 7deg; }

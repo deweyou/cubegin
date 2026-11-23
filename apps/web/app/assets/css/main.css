@@ -16,6 +16,7 @@
   --ring: light-dark(#2067b2, #80baff);
   --input: var(--border);
   --radius: 0.625rem;
+  --site-header-height: 4.25rem;
   --gradient-cyan: light-dark(#32ade6, #64d2ff);
   --gradient-indigo: light-dark(#5856d6, #5e5ce6);
 }
@@ -95,7 +96,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 4.25rem;
+  min-height: var(--site-header-height);
 }
 
 .brand {
