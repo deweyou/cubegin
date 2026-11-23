@@ -13,9 +13,8 @@ const props = defineProps<{ language: 'zh-Hans' | 'en' }>()
 const copy = {
   'zh-Hans': {
     title: '魔方速拧计时器',
-    description: 'Cubegin 提供魔方速拧计时、专项训练和成绩统计，支持 iPhone、iPhone Duo 和 iPad。',
+    summary: '为魔方速拧设计的计时器，支持专项训练、成绩统计和 iCloud 同步。',
     capabilities: [
-      { label: '速拧计时', tags: ['触屏计时', '键盘计时', '手动录入'] },
       { label: 'WCA 观察', tags: ['语音报时', '超时判罚'] },
       { label: '打乱与训练', tags: ['打乱公式', '打乱图', '辅助公式'] },
       { label: '成绩统计', tags: ['成绩分组', '平均成绩', '用时趋势'] },
@@ -30,9 +29,8 @@ const copy = {
   },
   en: {
     title: 'Speedcubing timer',
-    description: 'Cubegin is a speedcubing timer with targeted practice and solve statistics for iPhone, iPhone Duo, and iPad.',
+    summary: 'A timer built for speedcubing, with targeted drills, solve statistics, and iCloud sync.',
     capabilities: [
-      { label: 'Timing', tags: ['Touch', 'Keyboard', 'Manual entry'] },
       { label: 'WCA inspection', tags: ['Voice alerts', 'Overtime penalties'] },
       { label: 'Scrambles & drills', tags: ['Scramble notation', 'Scramble diagrams', 'Formula hints'] },
       { label: 'Statistics', tags: ['Solve groups', 'Averages', 'Time trends'] },
@@ -67,7 +65,7 @@ const darkScreenshotMedia = computed(() => {
 useHead(() => ({ htmlAttrs: { lang: props.language } }))
 useSeoMeta({
   title: () => `Cubegin | ${content.value.title}`,
-  description: () => content.value.description,
+  description: () => content.value.summary,
 })
 
 function showScreenshot(screenshot: Screenshot) {
@@ -87,6 +85,7 @@ function showScreenshot(screenshot: Screenshot) {
             <img :src="cubeginWordmark" alt="cubegin" width="702" height="195">
           </picture>
         </h1>
+        <p class="hero-summary">{{ content.summary }}</p>
         <dl class="capabilities">
           <div v-for="capability in content.capabilities" :key="capability.label" class="capability">
             <dt>{{ capability.label }}</dt>
@@ -165,12 +164,19 @@ function showScreenshot(screenshot: Screenshot) {
   22%, 100% { transform: rotate(378deg); }
 }
 
+.hero-summary {
+  max-width: 32rem;
+  margin: .875rem 0 0;
+  font-size: clamp(1rem, 1.25vw, 1.125rem);
+  line-height: 1.55;
+}
+
 .capabilities {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: .5rem 1rem;
   max-width: 35rem;
-  margin: 1.5rem 0 0;
+  margin: 1.125rem 0 0;
   font-size: .9375rem;
   line-height: 1.5;
 }
@@ -280,6 +286,7 @@ function showScreenshot(screenshot: Screenshot) {
     padding: 1.25rem clamp(1.625rem, 7vw, 4.25rem);
   }
   .hero-logo { font-size: clamp(2.6rem, 9vw, 3.5rem); }
+  .hero-summary { margin-top: .625rem; font-size: .9375rem; }
   .capabilities {
     grid-template-columns: minmax(4.75rem, 26%) minmax(0, 1fr);
     gap: .4375rem .625rem;
