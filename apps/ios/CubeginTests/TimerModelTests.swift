@@ -152,6 +152,24 @@ struct TimerModelTests {
     }
 
     @Test
+    func reviewInvitationRequiresTwelveValidResultsAcrossThreeDays() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let day = Date(timeIntervalSince1970: 0)
+        let firstEleven = (0..<11).map { index in
+            Solve(seconds: 10, event: "333", scramble: "", date: day.addingTimeInterval(Double(index % 2) * 86_400))
+        }
+        let thirdDay = day.addingTimeInterval(172_800)
+        let dnf = Solve(seconds: 10, event: "333", scramble: "", date: thirdDay, penalty: .dnf)
+        let sameDay = Solve(seconds: 10, event: "333", scramble: "", date: day)
+        let qualifying = Solve(seconds: 10, event: "333", scramble: "", date: thirdDay, penalty: .plusTwo)
+
+        #expect(!ResultsReviewEligibility.qualifies(firstEleven, calendar: calendar))
+        #expect(!ResultsReviewEligibility.qualifies(firstEleven + [dnf, sameDay], calendar: calendar))
+        #expect(ResultsReviewEligibility.qualifies(firstEleven + [qualifying], calendar: calendar))
+    }
+
+    @Test
     func savesAnExplicitSharingChoicePerInstallation() throws {
         let suite = "sharing-choice-test.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

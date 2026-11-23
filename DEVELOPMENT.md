@@ -46,6 +46,26 @@ pnpm --filter @cubegin/web generate
 两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
 网页使用的 shadcn-vue Button 按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
 
+### 反馈与评价
+
+官网的 `/feedback` 和 `/en/feedback` 共用 `POST /api/feedback`。部署这两页时用
+Nuxt 服务端构建，可在 Vercel 将项目根目录设为 `apps/web`，并允许构建访问仓库内
+根目录外的 iOS 素材。静态政策站仍可单独生成。
+
+| 服务端环境变量 | 用途 |
+| --- | --- |
+| `NUXT_FEEDBACK_RESEND_KEY` | Resend 发送 API 密钥 |
+| `NUXT_FEEDBACK_FROM` | 已在 Resend 验证的发件地址 |
+| `NUXT_FEEDBACK_TO` | 指定的反馈收件邮箱 |
+| `NUXT_PUBLIC_APP_STORE_ID` | Cubegin 在 App Store Connect 的数字 Apple ID |
+
+部署后用空邮箱和可回复邮箱各提交一次测试反馈，核对送达和 Reply-To。对公网的
+`POST /api/feedback` 可在托管平台按来源 IP 限速。App Store Support URL 可以指向对应语言的反馈页。
+
+iOS 构建时将 `CUBEGIN_FEEDBACK_BASE_URL` 设为官网的 HTTPS 基础地址，App 会按语言
+打开反馈页。没有配置时，模拟器 Debug 构建使用本机 `127.0.0.1:4489`，其他构建隐藏入口。
+App Store 评价链接在配置数字 Apple ID 后显示。
+
 ## CI 检查
 
 各 workflow 根据自己声明的路径触发。Rust Core 改动会触发 Rust、Web、Apple 和

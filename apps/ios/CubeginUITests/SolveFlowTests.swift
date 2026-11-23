@@ -21,10 +21,13 @@ final class SolveFlowTests: XCTestCase {
         }
         XCTAssertTrue(version.isHittable)
         let privacy = app.buttons["settings.about.privacy"]
+        let feedback = app.descendants(matching: .any)["settings.about.feedback"].firstMatch
         let importResults = app.buttons["settings.results.import"]
         let clearResults = app.buttons["settings.results.clear"]
         let includeDNF = app.switches["settings.results.includeDNFInWorst"]
         XCTAssertTrue(privacy.exists && importResults.exists && clearResults.exists && includeDNF.exists)
+        XCTAssertTrue(feedback.exists)
+        XCTAssertLessThan(feedback.frame.midY, privacy.frame.midY)
         XCTAssertLessThan(privacy.frame.midY, version.frame.midY)
         XCTAssertLessThan(importResults.frame.midY, clearResults.frame.midY)
         XCTAssertLessThan(clearResults.frame.midY, includeDNF.frame.midY)

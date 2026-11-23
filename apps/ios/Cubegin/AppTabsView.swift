@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -226,6 +227,7 @@ struct AppTabsView: View {
             Tab(value: Destination.results) {
                 ResultsView(model: model, page: $resultsPage,
                             isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
+                            isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
                             showsStatistics: visibleResultsPage == .statistics) { mode in
                     if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
@@ -403,6 +405,22 @@ private enum ResultsPage: String, CaseIterable, Identifiable {
     }
 }
 
+enum ResultsReviewEligibility {
+    static func qualifies(_ solves: [Solve], calendar: Calendar = .current) -> Bool {
+        guard solves.count >= 12 else { return false }
+        var validCount = 0
+        var practiceDays: Set<Date> = []
+        for solve in solves where solve.resultSeconds != nil {
+            validCount += 1
+            if practiceDays.count < 3 {
+                practiceDays.insert(calendar.startOfDay(for: solve.date))
+            }
+            if validCount >= 12, practiceDays.count >= 3 { return true }
+        }
+        return false
+    }
+}
+
 private struct AverageDestination: Hashable {
     let kind: SolveAverage
     let newestSolveID: Solve.ID
@@ -416,6 +434,9 @@ private struct AverageHighlightInput: Equatable {
 
 private struct ResultsView: View {
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
+    @AppStorage("results.didRequestAppStoreReview") private var didRequestAppStoreReview = false
+    @Environment(\.requestReview) private var requestReview
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -433,6 +454,7 @@ private struct ResultsView: View {
     @State private var showsMoveGroups = false
     @Binding var isSelecting: Bool
     let usesSideNavigation: Bool
+    let isReviewContextActive: () -> Bool
     let contentInsets: LandscapeContentInsets?
     let showsStatistics: Bool
     let onChartViewed: (ResultsChartMode) -> Void
@@ -447,6 +469,16 @@ private struct ResultsView: View {
     }
     private var results: [Solve] {
         model.groupSolves.sorted(by: Solve.newestFirst)
+    }
+
+    private var canRequestReview: Bool {
+        guard isReviewContextActive(), scenePhase == .active, page == .solves, !didRequestAppStoreReview,
+              !isSelecting, detailPath.isEmpty, !showsMoveGroups, !showsProjects, !showsGroups,
+              model.error == nil, !model.groupSolves.isEmpty else { return false }
+#if DEBUG
+        if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"] != nil { return false }
+#endif
+        return ResultsReviewEligibility.qualifies(model.solves)
     }
 
     var body: some View {
@@ -523,6 +555,18 @@ private struct ResultsView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 8)
             }
+        }
+        .task(id: canRequestReview) {
+            guard canRequestReview else { return }
+            do {
+                try await Task.sleep(for: .seconds(1))
+                try Task.checkCancellation()
+            } catch {
+                return
+            }
+            guard canRequestReview else { return }
+            didRequestAppStoreReview = true
+            requestReview()
         }
     }
 
@@ -1925,6 +1969,21 @@ private struct SettingsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
 
+    private var feedbackURL: URL? {
+        let configuredURL = Bundle.main.object(forInfoDictionaryKey: "CubeginFeedbackBaseURL") as? String
+        let baseURL: URL
+        if let configuredURL, let url = URL(string: configuredURL), url.scheme == "https", url.host != nil {
+            baseURL = url
+        } else {
+#if DEBUG && targetEnvironment(simulator)
+            baseURL = URL(string: "http://127.0.0.1:4489")!
+#else
+            return nil
+#endif
+        }
+        return baseURL.appending(path: language == .english ? "en/feedback" : "feedback")
+    }
+
     private var syncedLanguage: Binding<String> {
         trackedSetting(SettingsSync.binding($languageOverride, key: AppLanguage.preferenceKey) { $0 }) {
             .language(AppLanguage(rawValue: $0))
@@ -2097,6 +2156,13 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
                 CardSection(language.text("关于", "About")) {
+                    if let feedbackURL {
+                        Link(destination: feedbackURL) {
+                            settingsLinkLabel(language.text("反馈与评价", "Feedback & Reviews"))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("settings.about.feedback")
+                    }
                     cardRowButton {
                         path.append(.privacy)
                     } label: {
