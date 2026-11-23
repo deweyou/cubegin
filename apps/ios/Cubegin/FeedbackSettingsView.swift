@@ -41,7 +41,7 @@ enum FeedbackScreenshot {
 private enum FeedbackError: Error { case invalidImage, rateLimited }
 
 struct FeedbackDraft: Equatable {
-    static let maximumMessageLength = 2000
+    static let maximumMessageLength = 200
 
     let message: String
     let email: String
@@ -183,7 +183,6 @@ struct FeedbackSettingsView: View {
         Form {
             CardSection {
                 messageEditor
-                attachmentControls
                 replyEmailField
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
@@ -290,9 +289,7 @@ struct FeedbackSettingsView: View {
     }
 
     private var messageEditor: some View {
-        let count = draft.messageLength
-        let limit = FeedbackDraft.maximumMessageLength
-        return VStack(alignment: .trailing, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             TextField(language.text("请描述你的问题或建议", "Describe your issue or suggestion"), text: $message, axis: .vertical)
                 .lineLimit(5...10)
                 .padding(.top, 12)
@@ -300,7 +297,23 @@ struct FeedbackSettingsView: View {
                 .accessibilityLabel(language.text("反馈内容", "Feedback"))
                 .accessibilityIdentifier("settings.feedback.message")
 
-            HStack(spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                editorFooter(tileSize: 68)
+                editorFooter(tileSize: 56)
+                editorFooter(tileSize: 48)
+            }
+            .padding(.vertical, 12)
+        }
+        .disabled(status == .sending)
+    }
+
+    private func editorFooter(tileSize: CGFloat) -> some View {
+        let count = draft.messageLength
+        let limit = FeedbackDraft.maximumMessageLength
+        return HStack(alignment: .bottom, spacing: 8) {
+            attachmentControls(tileSize: tileSize)
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 0) {
                 if !message.isEmpty {
                     clearButton(language.text("清空反馈内容", "Clear feedback"),
                                 identifier: "settings.feedback.clearMessage") { message = "" }
@@ -311,9 +324,8 @@ struct FeedbackSettingsView: View {
                     .accessibilityLabel(language.text("\(count) / \(limit) 字符", "\(count) of \(limit) characters"))
                     .accessibilityIdentifier("settings.feedback.characterCount")
             }
-            .frame(minHeight: 44)
+            .fixedSize()
         }
-        .disabled(status == .sending)
     }
 
     private var replyEmailField: some View {
@@ -352,13 +364,12 @@ struct FeedbackSettingsView: View {
         .accessibilityIdentifier(identifier)
     }
 
-    private let attachmentSize: CGFloat = 68
     private let attachmentShape = RoundedRectangle(cornerRadius: 10)
 
-    private var attachmentControls: some View {
+    private func attachmentControls(tileSize: CGFloat) -> some View {
         HStack(spacing: 8) {
             ForEach(screenshots.indices, id: \.self) { index in
-                screenshotTile(at: index)
+                screenshotTile(at: index, size: tileSize)
             }
             if screenshots.count < FeedbackScreenshot.maximumCount {
                 PhotosPicker(
@@ -377,7 +388,7 @@ struct FeedbackSettingsView: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                     }
-                    .frame(width: attachmentSize, height: attachmentSize)
+                    .frame(width: tileSize, height: tileSize)
                     .contentShape(attachmentShape)
                 }
                 .accessibilityLabel(isPreparing
@@ -387,22 +398,21 @@ struct FeedbackSettingsView: View {
                 .disabled(isPreparing || status == .sending)
             }
         }
-        .padding(.vertical, 12)
     }
 
-    private func screenshotTile(at index: Int) -> some View {
+    private func screenshotTile(at index: Int, size: CGFloat) -> some View {
         attachmentShape.fill(.quaternary)
             .overlay {
                 if let image = UIImage(data: screenshots[index]) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: attachmentSize, height: attachmentSize)
+                        .frame(width: size, height: size)
                         .clipShape(attachmentShape)
                         .accessibilityLabel(language.text("截图 \(index + 1)", "Screenshot \(index + 1)"))
                 }
             }
-            .frame(width: attachmentSize, height: attachmentSize)
+            .frame(width: size, height: size)
             .overlay(alignment: .topTrailing) {
                 Button {
                     screenshots.remove(at: index)

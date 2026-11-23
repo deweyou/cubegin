@@ -9,7 +9,7 @@ struct FeedbackTests {
         #expect(FeedbackDraft(message: " 好\n", email: "").isMessageValid)
         #expect(FeedbackDraft(message: "建议", email: "  ").isEmailValid)
         #expect(!FeedbackDraft(message: "建议", email: "person@").isEmailValid)
-        let atLimit = String(repeating: "😀", count: 1000)
+        let atLimit = String(repeating: "😀", count: 100)
         let draft = FeedbackDraft(message: " \(atLimit)\n", email: "")
         #expect(draft.messageLength == FeedbackDraft.maximumMessageLength)
         #expect(draft.isMessageValid)
