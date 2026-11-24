@@ -11,6 +11,8 @@ notation. No full 5x5–7x7 or Megaminx solver. Scrambles are not WCA certified.
 
 Use `eventCatalog`, `typeCatalog`, `trainingCases` and `assistMethods` to discover
 IDs. `playerFrame` returns platform-neutral piece geometry; `playerSvg` returns a
-projected frame. View widgets and product controls belong to the consumer.
+projected frame with optional camera offsets in radians. View widgets and product controls belong to the consumer.
+
+Try the SDK from **Playground** in the Cubegin website navigation.
 
 [Development guide](https://github.com/deweyou/cubegin/blob/main/sdk/web/DEVELOPMENT.md)

@@ -1,4 +1,4 @@
-import type {Engine,TrainingOptions,AssistOptions} from './index.js';
+import type {Engine,TrainingOptions,AssistOptions,CameraOffset} from './index.js';
 export type AsyncEngine = { [K in keyof Engine]:(...args:Parameters<Engine[K]>)=>Promise<ReturnType<Engine[K]>> };
 export interface WorkerClient { engine:AsyncEngine; dispose():void }
 /** Owns a dedicated Worker. dispose terminates ongoing work and rejects pending calls. */
@@ -19,7 +19,8 @@ export function createWorkerClient():WorkerClient {
   const engine={
     playerTimeline:(event:string,algorithm:string)=>invoke('playerTimeline',[event,algorithm]),
     playerFrame:(event:string,algorithm:string,completed:number,progress:number)=>invoke('playerFrame',[event,algorithm,completed,progress]),
-    playerSvg:(event:string,algorithm:string,completed:number,progress:number)=>invoke('playerSvg',[event,algorithm,completed,progress]),
+    playerSvg:(event:string,algorithm:string,completed:number,progress:number,camera?:CameraOffset)=>
+      invoke('playerSvg',[event,algorithm,completed,progress,camera]),
     validateFmc:(scramble:string,solution:string)=>invoke('validateFmc',[scramble,solution]),
     generateBatch:(id:string,seed:number,count:number,options:TrainingOptions={})=>invoke('generateBatch',[id,seed,count,options]),
     typeCatalog:()=>invoke('typeCatalog',[]),

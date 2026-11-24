@@ -13,6 +13,8 @@ export interface AssistOptions {targets?:string[];max_depth?:number;max_solution
 export interface AssistSolution {method:string;target:string;targetLabel:string;setupRotation:string;solution:string;depth:number;metric:{ftm:number;qtm:number}}
 export interface AssistResult {method:string;scramble:string;solutions:AssistSolution[]}
 export interface PlayerModel {cameraDistance:number;cameraOrbit?:{yaw:number;pitch:number};pieces:Record<string,unknown>[]}
+/** Angles in radians relative to the puzzle's default view. */
+export interface CameraOffset {yaw:number;pitch:number}
 export interface PlayerTimeline {schemaVersion:number;eventId:string;model:PlayerModel;steps:{notation:string;operations:Record<string,unknown>[];durationMs:number}[];totalDurationMs:number}
 export interface FmcValidation {rawSolution:string;normalizedSolution:string|null;moveCount:number|null;executionMoveCount:number|null;status:"valid"|"dnf"|"suspected-inverse";reason:string|null;inverseMatchLength:number}
 export interface Engine {
@@ -20,7 +22,7 @@ export interface Engine {
   validateFmc(scramble:string,solution:string):FmcValidation;
   playerTimeline(event:string,algorithm:string):PlayerTimeline;
   playerFrame(event:string,algorithm:string,completed:number,progress:number):PlayerModel;
-  playerSvg(event:string,algorithm:string,completed:number,progress:number):string;
+  playerSvg(event:string,algorithm:string,completed:number,progress:number,camera?:CameraOffset):string;
   typeCatalog():Record<string,Record<string,unknown>>;
   trainingCases(id:string):{id:string;natural_weight:number}[];
   generateTraining(id:string,seed:number,options?:TrainingOptions):TrainingScramble;
@@ -50,7 +52,12 @@ export async function createCubegin(source?:BufferSource | URL | string):Promise
   return {
     playerTimeline:(event,algorithm)=>call(()=>JSON.parse(wasm.player_timeline(event,algorithm))),
     playerFrame:(event,algorithm,completed,progress)=>call(()=>{u32(completed);return JSON.parse(wasm.player_frame(event,algorithm,completed,progress));}),
-    playerSvg:(event,algorithm,completed,progress)=>call(()=>{u32(completed);return wasm.player_svg(event,algorithm,completed,progress);}),
+    playerSvg:(event,algorithm,completed,progress,camera)=>call(()=>{
+      u32(completed);
+      return camera
+        ? wasm.player_svg_with_camera(event,algorithm,completed,progress,camera.yaw,camera.pitch)
+        : wasm.player_svg(event,algorithm,completed,progress);
+    }),
     validateFmc:(scramble,solution)=>JSON.parse(wasm.validate_fmc(scramble,solution)),
     generateBatch:(id,seed,count,options={})=>call(()=>{u32(seed);u32(count);return JSON.parse(wasm.generate_batch(id,seed,count,JSON.stringify(options)));}),
     typeCatalog:()=>call(()=>JSON.parse(wasm.type_catalog())),

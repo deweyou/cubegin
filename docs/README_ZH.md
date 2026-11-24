@@ -19,7 +19,7 @@ Cubegin 官网提供中英文首页。iPhone 界面预览跟随网站的浅色�
 
 ## 魔方引擎
 
-Rust 引擎提供标准打乱、训练打乱、完整求解和辅助求解、SVG 展开图与 3D 转动回放。应用可通过 Swift、Kotlin 或 Web/WASM 使用这些能力。
+Rust 引擎提供标准打乱、训练打乱、完整求解和辅助求解、SVG 展开图与 3D 转动回放。应用可通过 Swift、Kotlin 或 Web/WASM 使用这些能力。打开官网导航中的 **Playground** 即可试用 Web SDK。
 
 [Swift SDK](https://github.com/deweyou/cubegin/blob/main/sdk/swift/README_ZH.md) · [Android SDK](https://github.com/deweyou/cubegin/blob/main/sdk/android/README_ZH.md) · [Web SDK](https://github.com/deweyou/cubegin/blob/main/sdk/web/README_ZH.md)
 

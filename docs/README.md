@@ -19,7 +19,7 @@ The Cubegin website has English and Simplified Chinese homepages with iPhone scr
 
 ## Cube engine
 
-The Rust engine provides standard and training scrambles, full and auxiliary solving, SVG puzzle diagrams, and 3D move playback. It is available through Swift, Kotlin and Web/WASM.
+The Rust engine provides standard and training scrambles, full and auxiliary solving, SVG puzzle diagrams, and 3D move playback. It is available through Swift, Kotlin and Web/WASM. Open **Playground** in the website navigation to try the Web SDK.
 
 [Swift SDK](https://github.com/deweyou/cubegin/blob/main/sdk/swift/README.md) · [Android SDK](https://github.com/deweyou/cubegin/blob/main/sdk/android/README.md) · [Web SDK](https://github.com/deweyou/cubegin/blob/main/sdk/web/README.md)
 

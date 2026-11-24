@@ -142,6 +142,25 @@ pub fn player_svg(
 ) -> Result<String, JsValue> {
     cubegin::events::player_svg(&event, &algorithm, completed as usize, progress).map_err(error)
 }
+
+#[wasm_bindgen]
+pub fn player_svg_with_camera(
+    event: String,
+    algorithm: String,
+    completed: u32,
+    progress: f64,
+    yaw: f64,
+    pitch: f64,
+) -> Result<String, JsValue> {
+    cubegin::events::player_svg_with_camera(
+        &event,
+        &algorithm,
+        completed as usize,
+        progress,
+        cubegin::events::CameraOffset { yaw, pitch },
+    )
+    .map_err(error)
+}
 #[wasm_bindgen]
 pub fn validate_fmc(scramble: String, solution: String) -> String {
     serde_json::to_string(&cubegin::events::validate_fmc(&scramble, &solution)).unwrap()

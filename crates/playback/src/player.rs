@@ -6,6 +6,9 @@ use cubegin_puzzle::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::HashSet, sync::LazyLock};
+mod clock_render;
+mod square1_render;
+
 static DATA: LazyLock<Value> =
     LazyLock::new(|| serde_json::from_str(include_str!("../data/models.json")).unwrap());
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -162,7 +165,7 @@ pub fn player_timeline(event: &str, algorithm: &str) -> Result<PlayerTimeline, P
                     Vector {
                         x: 1.,
                         y: 0.,
-                        z: 0.27,
+                        z: (std::f64::consts::PI / 12.).tan(),
                     },
                     -std::f64::consts::PI,
                 ));
@@ -344,10 +347,68 @@ pub fn player_svg(
     completed: usize,
     progress: f64,
 ) -> Result<String, PuzzleError> {
+    player_svg_with_camera(
+        event,
+        algorithm,
+        completed,
+        progress,
+        CameraOffset::default(),
+    )
+}
+
+/// Camera angles in radians, relative to the puzzle's default view.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CameraOffset {
+    pub yaw: f64,
+    pub pitch: f64,
+}
+
+struct SvgSurface {
+    vertices: Vec<Vector>,
+    color: String,
+    sticker_id: String,
+}
+
+impl SvgSurface {
+    fn mean_depth(&self) -> f64 {
+        self.vertices.iter().map(|v| v.z).sum::<f64>() / self.vertices.len() as f64
+    }
+
+    fn svg(&self, scale: f64, fill_seams: bool) -> String {
+        let points = self
+            .vertices
+            .iter()
+            .map(|v| format!("{:.3},{:.3}", 150. + v.x * scale, 150. - v.y * scale))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let color = &self.color;
+        // Slightly overlap adjacent fragments to cover antialiasing gaps.
+        if fill_seams {
+            format!(
+                r#"<polygon points="{points}" fill="{color}" stroke="{color}" stroke-width="0.7" stroke-linejoin="round"/>"#
+            )
+        } else {
+            format!(
+                r##"<polygon points="{points}" fill="{color}" stroke="#111827" stroke-width="0.35"/>"##
+            )
+        }
+    }
+}
+
+pub fn player_svg_with_camera(
+    event: &str,
+    algorithm: &str,
+    completed: usize,
+    progress: f64,
+    camera_offset: CameraOffset,
+) -> Result<String, PuzzleError> {
+    if !camera_offset.yaw.is_finite() || !camera_offset.pitch.is_finite() {
+        return Err(invalid("invalid camera offset"));
+    }
     let model = player_frame(event, algorithm, completed, progress)?;
     let scale = 400. / model["cameraDistance"].as_f64().unwrap();
-    let yaw = model["cameraOrbit"]["yaw"].as_f64().unwrap_or(0.6);
-    let pitch = model["cameraOrbit"]["pitch"].as_f64().unwrap_or(0.5);
+    let yaw = model["cameraOrbit"]["yaw"].as_f64().unwrap_or(0.6) + camera_offset.yaw;
+    let pitch = model["cameraOrbit"]["pitch"].as_f64().unwrap_or(0.5) + camera_offset.pitch;
     let camera = Quaternion::axis(
         Vector {
             x: 1.,
@@ -368,7 +429,7 @@ pub fn player_svg(
     for p in model["pieces"].as_array().unwrap() {
         let pos: Vector = serde_json::from_value(p["position"].clone()).unwrap();
         let q: Quaternion = serde_json::from_value(p["orientation"].clone()).unwrap();
-        let mut surfaces: Vec<(Vec<Vector>, String, bool)> = p["stickers"]
+        let mut surfaces: Vec<(Vec<Vector>, String, bool, String)> = p["stickers"]
             .as_array()
             .unwrap()
             .iter()
@@ -382,6 +443,7 @@ pub fn player_svg(
                         .collect(),
                     sticker["color"].as_str().unwrap().to_owned(),
                     sticker["renderSide"] == "front",
+                    sticker["id"].as_str().unwrap().to_owned(),
                 )
             })
             .collect();
@@ -406,10 +468,11 @@ pub fn player_svg(
                     face.map(|i| corners[i]).to_vec(),
                     p["body"]["color"].as_str().unwrap().into(),
                     false,
+                    String::new(),
                 ));
             }
         }
-        for (surface, color, front_only) in surfaces {
+        for (surface, color, front_only, sticker_id) in surfaces {
             let vertices = surface
                 .into_iter()
                 .map(|v| camera.rotate(q.rotate(v).add(pos)))
@@ -422,18 +485,38 @@ pub fn player_svg(
             if a.x * b.y - a.y * b.x <= 0. && front_only {
                 continue;
             }
-            let depth = vertices.iter().map(|v| v.z).sum::<f64>() / vertices.len() as f64;
-            let points = vertices
-                .iter()
-                .map(|v| format!("{:.3},{:.3}", 150. + v.x * scale, 150. - v.y * scale))
-                .collect::<Vec<_>>()
-                .join(" ");
-            polygons.push((depth,format!("<polygon points=\"{points}\" fill=\"{}\" stroke=\"#111827\" stroke-width=\"0.35\"/>",color)));
+            polygons.push(SvgSurface {
+                vertices,
+                color,
+                sticker_id,
+            });
         }
     }
-    polygons.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let puzzle = base_event(event)?;
+    match puzzle {
+        "clock" => {
+            let rim = model["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|piece| piece["id"] == "clock-board-rim")
+                .unwrap();
+            let board: Quaternion = serde_json::from_value(rim["orientation"].clone()).unwrap();
+            let normal = camera.mul(board).rotate(Vector {
+                x: 0.,
+                y: 0.,
+                z: 1.,
+            });
+            clock_render::sort_clock(&mut polygons, normal);
+        }
+        "sq1" => square1_render::sort_square1(&mut polygons),
+        _ => polygons.sort_by(|a, b| a.mean_depth().total_cmp(&b.mean_depth())),
+    }
     Ok(format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 300\" role=\"img\" aria-label=\"Puzzle animation frame\">{}</svg>",
-        polygons.into_iter().map(|(_, p)| p).collect::<String>()
+        polygons
+            .iter()
+            .map(|p| p.svg(scale, puzzle == "sq1"))
+            .collect::<String>()
     ))
 }

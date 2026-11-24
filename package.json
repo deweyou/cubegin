@@ -8,11 +8,12 @@
   },
   "scripts": {
     "build": "node scripts/build-web.mjs",
-    "lint": "eslint --max-warnings 0 scripts sdk/web/src sdk/web/test examples/web tests/e2e playwright.config.ts eslint.config.mjs",
-    "check": "tsc -p sdk/web/tsconfig.json --noEmit && tsc -p examples/web/tsconfig.json",
+    "lint": "eslint --max-warnings 0 scripts sdk/web/src sdk/web/test apps/web/app/lib/playground.ts apps/web/app/composables/usePlaygroundPlayback.ts tests/e2e playwright.config.ts eslint.config.mjs",
+    "check": "tsc -p sdk/web/tsconfig.json --noEmit && pnpm --filter @cubegin/web check",
     "test": "node --test sdk/web/test/*.test.mjs",
     "test:e2e": "playwright test",
-    "dev": "vite examples/web --host 127.0.0.1 --port 4488 --strictPort"
+    "dev": "pnpm --filter @cubegin/web dev",
+    "build:site": "cargo xtask build-sdk web && pnpm --filter @cubegin/web generate"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
@@ -21,7 +22,6 @@
     "globals": "16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "8.72.2",
-    "vite": "^7.3.1",
     "wrangler": "4.166.0"
   }
 }

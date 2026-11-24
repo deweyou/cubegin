@@ -17,8 +17,6 @@
   --input: var(--border);
   --radius: 0.625rem;
   --site-header-height: 4.25rem;
-  --home-toolbar-height: 3.25rem;
-  --home-footer-height: 2.75rem;
   --gradient-cyan: light-dark(#32ade6, #64d2ff);
   --gradient-indigo: light-dark(#5856d6, #5e5ce6);
 }
@@ -92,13 +90,6 @@ a:focus-visible {
 .site-frame {
   width: min(46rem, calc(100% - 2.5rem));
   margin-inline: auto;
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: var(--site-header-height);
 }
 
 .brand {

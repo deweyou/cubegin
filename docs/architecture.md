@@ -32,4 +32,4 @@ TNoodle 后端是工作区内有独立归属的 crate。领域 crate 实现魔�
 
 回放提供不可变拼块几何、实体跟踪、转轴、四元数、时长和确定性的任意定位。Square-1 支持楔块交换，Clock 跟踪指针、按钮和面板方向。Rust 无需 DOM 即可渲染 SVG。原生 App 可以使用 SVG 帧，或用自己的 GPU 渲染器绘制 JSON 几何。输出为 `schemaVersion: 1`。
 
-`examples/` 存放诊断消费方。`xtask` 调用 Cargo、Node、SwiftPM 和 Gradle 构建本地产物。
+官网的 SDK Playground 位于 `apps/web/`，通过公开 Web SDK 在浏览器 Worker 中调用引擎。`xtask` 调用 Cargo、Node、SwiftPM 和 Gradle 构建本地产物。

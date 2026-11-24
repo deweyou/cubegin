@@ -9,7 +9,7 @@ from Cubegin `79a1e4c4c5239fbcda8cccf313a81b8d7d430a97`,
 Cube geometry is generated from lattice coordinates. Pyraminx, Skewb, Megaminx
 and FTO geometry follows the legacy static polyhedron adapters. The first three
 reference cubing.js PuzzleGeometry (MPL-2.0 OR GPL-3.0-or-later; GPL option).
-Square-1 uses closed wedge pieces; Clock includes physical hands, pins and case.
+Square-1 caps and side walls share the cut-face vertices. Stickers are inset a uniform distance from the wedge edges. Clock includes physical hands, pins and case.
 
 Rust owns move tracking, cumulative quaternion poses, Square-1 wedge exchange,
 Clock orientation and interpolation. JSON output schema is versioned by

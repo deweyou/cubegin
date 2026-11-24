@@ -44,3 +44,17 @@ test('training catalog, selected cases, batch uniqueness, assist and player',()=
   assert.equal(engine.playerFrame(event,algorithm,t.steps.length,0).pieces.length,t.model.pieces.length);
  }
 });
+
+test('SVG camera offsets preserve the default and validate angles', () => {
+  for (const [event, algorithm] of [['333', 'R U'], ['sq1', '(1,0) /']]) {
+    const defaultView = engine.playerSvg(event, algorithm, 1, 0.5);
+    assert.equal(engine.playerSvg(event, algorithm, 1, 0.5, { yaw: 0, pitch: 0 }), defaultView);
+    const rotated = engine.playerSvg(event, algorithm, 1, 0.5, { yaw: 0.75, pitch: -0.3 });
+    assert.ok(rotated.includes('<polygon'));
+    assert.notEqual(rotated, defaultView);
+    assert.throws(
+      () => engine.playerSvg(event, algorithm, 1, 0.5, { yaw: Infinity, pitch: 0 }),
+      /invalid camera offset/,
+    );
+  }
+});
