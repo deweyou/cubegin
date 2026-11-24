@@ -85,7 +85,7 @@ App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare W
 选填邮箱和最多三张截图。网页会在当前浏览器记住上一次成功提交的邮箱，清空邮箱时删除它。
 客户端会将截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
 附件发送。邮件正文末尾注明来源；iOS 另附硬件型号、系统与 App 版本、安装 ID 和已有的用户 ID。
-官网首页右上角提供邮件联系入口，App Store Support URL 可填对应语言的首页。
+官网页脚居中提供 GitHub 仓库和邮件联系入口，App Store Support URL 可填对应语言的首页。
 
 本地启动 Worker 和官网，对测试收件箱的发信由 Wrangler 模拟。
 
