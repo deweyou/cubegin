@@ -133,7 +133,7 @@ struct ResultsSyncTests {
         #expect(try await server.fetch().count == 2)
         iphone = try ResultsSyncReplica(file: file)
         await server.interruptAfterWrites(nil)
-        try await iphone.sync(with: server)
+        #expect(try await iphone.sync(with: server) == 2)
         try await ipad.sync(with: server)
         #expect(iphone.solves == ipad.solves)
         #expect(Set(iphone.solves.map(\.id)) == Set([a.id, b.id, c.id]))

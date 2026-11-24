@@ -46,8 +46,9 @@ struct LaunchRootView: View {
                 }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .background, !holdsLaunchScreen {
-                    hasFinishedLaunch = true
+                if phase == .background {
+                    AppTelemetry.discardTimerLaunch()
+                    if !holdsLaunchScreen { hasFinishedLaunch = true }
                 }
             }
             .alert(language.text("帮助改进 Cubegin", "Help improve Cubegin"), isPresented: $showsSharingPrompt) {
@@ -56,8 +57,8 @@ struct LaunchRootView: View {
                 Button(language.text("暂不共享", "Don’t share"), role: .cancel) { AppTelemetry.chooseSharing(.declined) }
             } message: {
                 Text(language.text(
-                    "是否共享崩溃报告、操作失败和功能使用情况，帮助我们修复问题、改进计时体验？",
-                    "Share crash reports, failed operations, and feature usage to help us fix issues and improve the timer?"
+                    "是否共享崩溃报告、操作失败、性能耗时和功能使用情况，帮助我们修复问题、改进计时体验？",
+                    "Share crash reports, failed operations, performance timings, and feature usage to help us fix issues and improve the timer?"
                 ))
             }
 

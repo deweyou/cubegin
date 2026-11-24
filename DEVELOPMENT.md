@@ -44,7 +44,8 @@ pnpm --filter @cubegin/web generate
 
 静态部署目录为 `apps/web/.output/public`。如需按请求 SSR，运行
 `pnpm --filter @cubegin/web build`，再启动 `node apps/web/.output/server/index.mjs`。
-两种构建都从 [iOS 隐私政策 Markdown](apps/ios/Cubegin/PrivacyPolicy.md) 生成政策正文。
+两种构建都从仓库根目录下的[隐私政策](docs/privacy-policy.md)生成正文。
+iOS 也将同一份文件打包进 App，供离线查看。
 网页使用的 shadcn-vue 组件按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
 
 正式官网设置 `NUXT_PUBLIC_SITE_URL` 为根域名，例如 `https://example.com`。静态站在构建前设置，SSR 在运行时设置。
@@ -110,8 +111,8 @@ Worker 对每个 IP 每分钟约限制 5 次请求。单个 SQLite Durable Objec
 ## CI 检查
 
 各 workflow 根据自己声明的路径触发。Rust Core 改动会触发 Rust、Web、Apple 和
-Android 检查，纯 Markdown 改动走文档检查。Apple SDK 和 iOS App 共用一次
-XCFramework 构建。合入前确认受影响的检查已通过。参见 [CI 验收](docs/ci.md)。
+Android 检查，纯 Markdown 改动走文档检查。共享隐私政策作为 App 构建输入，也触发 Apple 检查。
+Apple SDK 和 iOS App 共用一次 XCFramework 构建。合入前确认受影响的检查已通过。参见 [CI 验收](docs/ci.md)。
 
 ## 构建产物与产品接入
 

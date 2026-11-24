@@ -44,9 +44,16 @@ struct SyncRecord: Codable, Equatable, Sendable {
     }
 }
 
-enum CloudSyncFailure: Error, Equatable {
-    case noAccount, restricted, accountUnavailable, accountChanged
-    case authentication, network, storageFull, serviceUnavailable, localStorage, unknown
+enum CloudSyncFailure: String, Error {
+    case noAccount = "no_account"
+    case restricted
+    case accountUnavailable = "account_unavailable"
+    case accountChanged = "account_changed"
+    case authentication, network
+    case storageFull = "storage_full"
+    case serviceUnavailable = "service_unavailable"
+    case localStorage = "local_storage"
+    case unknown
 
     static func accountStatus(_ status: CKAccountStatus) -> Self? {
         switch status {
@@ -319,7 +326,8 @@ struct ResultsSyncReplica: Sendable {
         try persist(next)
     }
 
-    mutating func sync(with transport: any SyncTransport) async throws {
+    @discardableResult
+    mutating func sync(with transport: any SyncTransport) async throws -> Int {
         try Task.checkCancellation()
         let remote = try await transport.fetch()
         try Task.checkCancellation()
@@ -334,6 +342,7 @@ struct ResultsSyncReplica: Sendable {
             try Task.checkCancellation()
             try apply(try await transport.merge(record))
         }
+        return remote.count
     }
 
     private mutating func apply(_ record: SyncRecord) throws {

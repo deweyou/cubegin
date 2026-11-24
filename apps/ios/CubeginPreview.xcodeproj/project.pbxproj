@@ -3,7 +3,7 @@
 B0 = {isa = PBXBuildFile; fileRef = F0; };
 TELEMETRY = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTelemetry.swift; sourceTree = "<group>"; };
 TELEMETRYBUILD = {isa = PBXBuildFile; fileRef = TELEMETRY; };
-POLICY = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PrivacyPolicy.md; sourceTree = "<group>"; };
+POLICY = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "../../docs/privacy-policy.md"; sourceTree = SOURCE_ROOT; };
 POLICYBUILD = {isa = PBXBuildFile; fileRef = POLICY; };
 F1 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
 B1 = {isa = PBXBuildFile; fileRef = F1; };

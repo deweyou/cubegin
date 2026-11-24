@@ -1,11 +1,124 @@
 import Foundation
 import CloudKit
+import Network
 
 #if CUBEGIN_TELEMETRY
 import FirebaseAnalytics
 import FirebaseCore
 import SentrySwift
 #endif
+
+enum ScrambleRefreshTrigger: String {
+    case initial
+    case projectChange = "project_change"
+    case manual
+    case afterSolve = "after_solve"
+
+    var usesPrefetch: Bool { self == .manual || self == .afterSolve }
+}
+
+enum TimerPerformanceMetric {
+    enum PreparationPath: String {
+        case prefetchReady = "prefetch_ready"
+        case prefetchPending = "prefetch_pending"
+        case prefetchFallback = "prefetch_fallback"
+        case onDemand = "on_demand"
+    }
+
+    enum StatisticsTrigger: String {
+        case open
+        case groupChange = "group_change"
+    }
+
+    enum NetworkType: String {
+        case wifi, cellular, wired, offline, other, unknown
+
+        init(path: NWPath) {
+            switch path.status {
+            case .unsatisfied: self = .offline
+            case .satisfied:
+                if path.usesInterfaceType(.wifi) { self = .wifi }
+                else if path.usesInterfaceType(.cellular) { self = .cellular }
+                else if path.usesInterfaceType(.wiredEthernet) { self = .wired }
+                else { self = .other }
+            default: self = .unknown
+            }
+        }
+    }
+
+    enum CloudSyncPhase: String {
+        case initial, subsequent
+    }
+
+    struct CloudSync {
+        let phase: CloudSyncPhase
+        let network: NetworkType
+        let localSolveCount: Int?
+        let remoteRecordCount: Int?
+        let failure: CloudSyncFailure?
+    }
+
+    case launchToTimerReady
+    case scramblePreparation(trigger: ScrambleRefreshTrigger, path: PreparationPath, project: String, projectChanged: Bool)
+    case scrambleDiagram(PreparationPath)
+    case statisticsReady(trigger: StatisticsTrigger, solveCount: Int)
+    case cloudSync(CloudSync)
+
+    static let eventName = "operation_performance"
+    private static let projectIDs = Set(ScrambleCatalog.standard.map(\.id) + ScrambleCatalog.training.map(\.id))
+
+    private var operation: String {
+        switch self {
+        case .launchToTimerReady: "launch_to_timer_ready"
+        case .scramblePreparation: "scramble_preparation"
+        case .scrambleDiagram: "scramble_diagram_ready"
+        case .statisticsReady: "statistics_ready"
+        case .cloudSync: "icloud_sync"
+        }
+    }
+
+    func parameters(duration: Duration) -> [String: Any] {
+        let elapsed = duration.components
+        var fields: [String: Any] = [
+            "operation": operation,
+            "outcome": "success",
+            "duration_ms": Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15
+        ]
+        switch self {
+        case .launchToTimerReady:
+            break
+        case .scramblePreparation(let trigger, let path, let project, let projectChanged):
+            fields["trigger"] = trigger.rawValue
+            fields["preparation_path"] = path.rawValue
+            fields["cache_hit"] = path == .prefetchReady ? "true" : "false"
+            fields["project_changed"] = projectChanged ? "true" : "false"
+            fields["scramble_project"] = Self.projectIDs.contains(project) ? "event_\(project)" : "other"
+        case .scrambleDiagram(let path):
+            fields["preparation_path"] = path.rawValue
+        case .statisticsReady(let trigger, let count):
+            fields["trigger"] = trigger.rawValue
+            fields["solve_count_bucket"] = Self.countBucket(count)
+        case .cloudSync(let sync):
+            fields["outcome"] = sync.failure == nil ? "success" : "failure"
+            fields["reason"] = sync.failure?.rawValue
+            fields["sync_phase"] = sync.phase.rawValue
+            fields["network_type"] = sync.network.rawValue
+            fields["local_solve_count_bucket"] = sync.localSolveCount.map(Self.countBucket) ?? "unknown"
+            fields["remote_record_count_bucket"] = sync.remoteRecordCount.map(Self.countBucket) ?? "unknown"
+        }
+        return fields
+    }
+
+    private static func countBucket(_ count: Int) -> String {
+        switch count {
+        case 0: "empty"
+        case 1..<100: "1_to_99"
+        case 100..<1_000: "100_to_999"
+        case 1_000..<10_000: "1000_to_9999"
+        default: "10000_or_more"
+        }
+    }
+}
 
 enum FailedOperation: String {
     case loadResults = "load_results"
@@ -343,6 +456,7 @@ enum AppTelemetry {
 
     static let sharingChoiceKey = "telemetry.diagnosticsAndUsageChoice"
     private static let installationIDKey = "telemetry.installationID"
+    private static var timerLaunchStartedAt: ContinuousClock.Instant?
 
     static let sharingDefaults: UserDefaults = {
 #if DEBUG && targetEnvironment(simulator)
@@ -412,6 +526,7 @@ enum AppTelemetry {
 
     static func chooseSharing(_ choice: SharingChoice, in defaults: UserDefaults = sharingDefaults) {
         defaults.set(choice.rawValue, forKey: sharingChoiceKey)
+        if choice != .allowed { discardTimerLaunch() }
         setEnabled(choice == .allowed)
     }
 
@@ -442,11 +557,47 @@ enum AppTelemetry {
 #endif
 
     static func startFromPreferences() {
+        let launchStartedAt = ContinuousClock.now
 #if DEBUG
         setEnabled(isDeviceQA && (!exercisesQAConsent || sharingChoice() == .allowed))
 #else
         setEnabled(sharingChoice() == .allowed)
 #endif
+        if performanceStart() != nil { timerLaunchStartedAt = launchStartedAt }
+    }
+
+    static func performanceStart() -> ContinuousClock.Instant? {
+#if CUBEGIN_TELEMETRY
+        return analyticsRequested ? .now : nil
+#else
+        return nil
+#endif
+    }
+
+    static var performanceNetworkType: TimerPerformanceMetric.NetworkType {
+#if CUBEGIN_TELEMETRY
+        return networkType
+#else
+        return .unknown
+#endif
+    }
+
+    static func record(_ metric: TimerPerformanceMetric, since start: ContinuousClock.Instant?) {
+#if CUBEGIN_TELEMETRY
+        guard let start else { return }
+        let fields = metric.parameters(duration: start.duration(to: .now))
+        recordAnalyticsEvent(TimerPerformanceMetric.eventName, fields: fields)
+#endif
+    }
+
+    static func recordTimerReady() {
+        let start = timerLaunchStartedAt
+        discardTimerLaunch()
+        record(.launchToTimerReady, since: start)
+    }
+
+    static func discardTimerLaunch() {
+        timerLaunchStartedAt = nil
     }
 
     static func refreshCloudIdentity() {
@@ -486,6 +637,9 @@ enum AppTelemetry {
                 Analytics.resetAnalyticsData()
                 analyticsEnabled = false
             }
+            networkMonitor?.cancel()
+            networkMonitor = nil
+            networkType = .unknown
             if sentryEnabled {
                 SentrySDK.close()
                 sentryEnabled = false
@@ -495,7 +649,7 @@ enum AppTelemetry {
 #endif
     }
 
-    static func analyticsParameters(_ fields: [String: String]) -> [String: String] {
+    static func analyticsParameters(_ fields: [String: Any]) -> [String: Any] {
         var parameters = fields
         parameters["app_build"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
         return parameters
@@ -532,8 +686,10 @@ enum AppTelemetry {
     private static var analyticsEnabled = false
     private static var analyticsRequested = false
     private static var boundUserID: UUID?
-    private static var pendingAnalyticsEvents: [(name: String, parameters: [String: String])] = []
+    private static var pendingAnalyticsEvents: [(name: String, parameters: [String: Any])] = []
     private static let identityStartup = AnalyticsIdentityStartup()
+    private static var networkMonitor: NWPathMonitor?
+    private static var networkType = TimerPerformanceMetric.NetworkType.unknown
     private static var sentryEnabled = false
     private static var lastReports: [String: ContinuousClock.Instant] = [:]
 
@@ -549,7 +705,7 @@ enum AppTelemetry {
 #endif
     }()
 
-    private static func recordAnalyticsEvent(_ name: String, fields: [String: String]) {
+    private static func recordAnalyticsEvent(_ name: String, fields: [String: Any]) {
         guard analyticsRequested else { return }
         let parameters = analyticsParameters(fields)
         if analyticsEnabled {
@@ -581,6 +737,7 @@ enum AppTelemetry {
         let id = deviceID
         if !analyticsRequested, Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil {
             analyticsRequested = true
+            startNetworkMonitor()
             refreshCloudIdentity()
         }
         if !sentryEnabled,
@@ -610,6 +767,19 @@ enum AppTelemetry {
             SentrySDK.setUser(User(userId: id))
             sentryEnabled = true
         }
+    }
+
+    private static func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        networkMonitor = monitor
+        monitor.pathUpdateHandler = { [weak monitor] path in
+            let type = TimerPerformanceMetric.NetworkType(path: path)
+            Task { @MainActor in
+                guard let monitor, networkMonitor === monitor else { return }
+                networkType = type
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "Cubegin.Telemetry.Network"))
     }
 #endif
 }

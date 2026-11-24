@@ -32,7 +32,7 @@ iPhone Duo 内屏半展开竖屏时，布局通过系统折痕区域分隔。待
 UserDefaults 中。正式版和 Dev 各有独立的 ID。它不参与 iCloud 设置同步，清除
 App 数据后会重新生成。剪贴板首行为 `did: …`，当前已取得共享用户 ID 时会另起一行 `uid: …`。
 
-正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于 → 隐私」提供「帮助改进 Cubegin」开关和[隐私政策](../Cubegin/PrivacyPolicy.md)。Sentry 使用设备 ID。
+正式构建首次进入时询问用户是否共享诊断和使用数据。用户选择后，App 在本机记住选择，并在「设置 → 关于 → 隐私」提供「帮助改进 Cubegin」开关和[隐私政策](../../../docs/privacy-policy.md)。Sentry 使用设备 ID。
 
 同意共享且启用 iCloud 同步时，App 单独查询 CloudKit 私有数据库中的共享用户 UUID，最多等一秒再配置 Firebase 和开启 GA4。Firebase 关闭采集时会拒绝设置 User-ID，因此 App 先开启采集，再设置已读到的 User-ID，然后发送等待中的业务事件。SDK 的启动自动事件可能早于 User-ID 写入。跨设备报表只纳入导出时实际带有 `user_id` 的事件。超时、记录不存在或 iCloud 不可用时，GA4 先按应用实例采集，晚到的 UUID 应用于后续事件。私有记录缺失时，后台尝试原子创建，冲突时读取已存的 ID。切换 iCloud 账号或关闭同步会清除 GA4 User-ID。撤回共享会停止采集并取消当前查询。
 
@@ -64,6 +64,36 @@ Sentry 自动捕获崩溃。手动诊断按操作与原因聚合，同类每次�
 App 发送固定分类和脱敏诊断。原始错误文本、文件内容及成绩明细保存在设备。
 常规开发构建、预览、模拟器和测试关闭云端上报。真机验证用独立 Dev Bundle ID、Firebase 项目及 Sentry 项目。
 [真机验收](testing.md#真机验证故障诊断)
+
+### 操作性能
+
+已开启诊断和使用数据共享的 App 通过 GA4 发送 `operation_performance`。
+每条记录携带 `operation`、`outcome`、数值 `duration_ms` 和 `app_build`，耗时使用单调时钟。
+
+| `operation` | 起止点 | 分类字段 |
+| --- | --- | --- |
+| `launch_to_timer_ready` | 从 App 启动回调入口到前台计时页可操作且首条打乱图就绪。每次进程启动最多一次，启动过程中进入后台则丢弃。 | 无 |
+| `scramble_preparation` | 从请求刷新到当前打乱数据就绪。 | `trigger`、`preparation_path`、`cache_hit`、`project_changed`、`scramble_project` |
+| `scramble_diagram_ready` | 从计时页的 WebView 收到当前图请求，到该图在 WebView 中切为可见。只记录当前图的请求，包含必要的重试。 | `preparation_path` |
+| `statistics_ready` | 从可见统计页开始准备滚动平均，到当前分组的全部结果就绪。 | `trigger` 为 `open` 或 `group_change`，以及 `solve_count_bucket`。 |
+| `icloud_sync` | 从一次同步尝试开始，到合并结果写入本地或遇到错误。 | `sync_phase` 为 `initial` 或 `subsequent`，失败有固定分类 `reason`。另带开始时的 `network_type`、`local_solve_count_bucket` 和 `remote_record_count_bucket`。 |
+
+`trigger` 取 `initial`、`project_change`、`manual` 或 `after_solve`。
+`preparation_path` 取 `prefetch_ready`、`prefetch_pending` 或 `on_demand`。
+打乱准备另有 `prefetch_fallback`，表示预取失败后重新生成成功。启动、打乱和统计耗时
+记录成功完成的操作，失败沿用已有的 `operation_failed` 诊断。事件参数不包含打乱内容、图像或成绩明细。
+
+打乱准备的 `cache_hit` 仅在请求时已有可立即使用的预取结果时为 `"true"`。
+`project_changed` 在本次项目与上一次打乱准备请求的项目不同时为 `"true"`，首次请求为 `"false"`。
+`scramble_project` 使用当前内置项目的完整 ID 并加上 `event_` 前缀，例如
+`event_333`、`event_222.cll`。未知项目统一记为 `other`。
+
+iCloud 同步在第一次成功前使用 `initial`，之后使用 `subsequent`。每次已结束的尝试上报
+`success` 或 `failure`，成功率按各阶段的成功次数除以已结束次数计算。重试是新的尝试。
+主动取消或被新本地数据替代的尝试不计入。
+远端数量是该次读取的 CloudKit 记录数，包含删除标记。云端阶段未完成时为 `unknown`。
+成绩与记录量仅发送分桶，分界为 0、100、1,000、10,000。网络类型来自开始时的系统网络路径，
+首个路径状态尚未到达时为 `unknown`。正式版收到此事件需要启用 CloudKit 同步功能。
 
 ## 成绩存储
 

@@ -731,6 +731,29 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testStatisticsPublishesRollingAveragesWhenOpened() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launch()
+
+        let results = app.tabBars.buttons["Results"]
+        XCTAssertTrue(results.waitForExistence(timeout: 20))
+        results.tap()
+        app.buttons["results.view"].tap()
+        app.buttons["Statistics"].tap()
+
+        let average = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label == %@ AND value CONTAINS %@ AND NOT (value CONTAINS %@)", "ao12", "best ", "…"
+        )).firstMatch
+        XCTAssertTrue(average.waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     func testPortraitSolveListKeepsPickersFixedWhileScrolling() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

@@ -222,6 +222,15 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 确认 GA4 同时记录失败，Sentry 的 `device_qa` 环境收到对应的非致命诊断。
 核对两端手动错误都带有 `operation`、`reason` 和 `impact`。
 核对 GA4 事件参数 `app_build` 与安装包的 `CFBundleVersion` 一致。
+在 DebugView 查看 `operation_performance`，按参数 `operation` 核对各项记录。
+完全退出后重新启动，等待计时页可操作，确认收到一次 `launch_to_timer_ready`。
+切换项目、主动换打乱并完成一次计时，确认 `scramble_preparation` 的触发来源、缓存命中、
+项目切换标记和当前项目 ID，以及 `scramble_diagram_ready` 的准备路径。
+核对 `duration_ms` 为数值，事件参数中没有打乱或成绩内容。
+打开统计页并切换分组，核对 `statistics_ready` 的两种触发来源和成绩量分桶。
+使用尚未完成首次同步的 Dev 安装验证 `icloud_sync`，先在离线时触发失败，再联网重试。
+检查 `outcome`、失败分类、网络类型以及本地和远端数据量分桶。
+首次成功前的尝试使用 `sync_phase=initial`，首次成功后的尝试使用 `sync_phase=subsequent`。
 在专用验证构建中触发测试崩溃后重启，确认 Sentry 收到崩溃。发布归档保留并上传匹配的 dSYM，
 上传令牌配置在发布环境中。核对诊断中的设备 ID 与连点五次「版本」复制的值一致，再检查上报只包含预期字段。
 发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
@@ -241,3 +250,25 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 - 实际计时、查看成绩列表和统计、导入 DCTimer 后，DebugView 各收到一条 `wca_inspection_started`、`solve_saved`、`solve_list_viewed`、`statistics_viewed`、`dctimer_import_started` 和 `dctimer_import_completed`。SDK 日志核对了各事件的预期参数。
 - 全新模拟器安装模拟 CloudKit 在 100 毫秒返回共享 UID。Firebase 上传的 `first_open` 和 `session_start` 均无 UID，随后上传的 `statistics_viewed` 带有预期 UID。其余五个业务事件已确认入站，原始上传数据中的 UID 尚未逐条核对。
 - 模拟 UID 在 3.5 秒返回时，App 等满 1 秒后开启采集，UID 到达后没有重发两条自动事件。一台签名 Dev 真机成功读取并设置 CloudKit 共享 UID。真机全新安装及两台真机核对共享 UID 仍待验收。
+
+### GA4 性能报表
+
+App 直接上报 `operation_performance`。收到事件无需在 GA4 后台创建同名事件。上线前先在隔离的
+Dev 属性核对[真机验证](#真机验证故障诊断)中的触发和参数。事件含义见[操作性能](architecture.md#操作性能)。
+
+如果在 GA4「探索」中按参数查看，到「管理 → 数据展示 → 自定义定义」补齐以下定义。
+同一属性里按参数名复用已有定义，例如 `operation`、`reason` 和 `app_build`。
+
+| 类型 | 参数 |
+| --- | --- |
+| 事件范围的自定义维度 | `operation`、`outcome`、`sync_phase` |
+| 自定义指标 | `duration_ms`，单位选毫秒 |
+
+需要在 GA4 界面按网络、数据量或打乱项目拆分时，再注册相应参数。注册后通常需要 24–48 小时才能用于报表。
+[GA4 自定义定义](https://support.google.com/analytics/answer/14240153) · [自定义指标](https://support.google.com/analytics/answer/14239619)
+
+要从上线首批样本计算 P50、P95 和样本量，在发布前确认生产属性已启用 BigQuery 导出。
+直接从导出的 `event_params` 读取参数，按构建版本和 `operation` 分组计算成功操作耗时。
+同步成功率筛选 `operation=icloud_sync`，按 `sync_phase` 分组，用成功次数除以成功与失败次数之和。
+按需用网络类型和数据量分桶拆解结果。Cubegin 的生产构建启用成绩同步后才会产生同步事件。
+[BigQuery 导出配置](https://support.google.com/analytics/answer/9823238) · [导出字段](https://support.google.com/analytics/answer/7029846)
