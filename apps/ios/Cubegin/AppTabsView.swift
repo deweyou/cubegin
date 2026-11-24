@@ -1992,6 +1992,17 @@ private struct SettingsView: View {
 #endif
     }
 
+    private static var deviceIDToastDuration: Duration {
+#if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["CUBEGIN_UI_TEST_SESSION"] != nil,
+           environment["CUBEGIN_UI_TEST_EXTENDED_DEVICE_ID_TOAST"] == "1" {
+            return .seconds(12)
+        }
+#endif
+        return .seconds(2)
+    }
+
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
@@ -2280,7 +2291,7 @@ private struct SettingsView: View {
         .task(id: copiedDeviceIDAt) {
             guard copiedDeviceIDAt != nil else { return }
             do {
-                try await Task.sleep(for: .seconds(2))
+                try await Task.sleep(for: Self.deviceIDToastDuration)
                 copiedDeviceIDAt = nil
             } catch {}
         }

@@ -67,11 +67,17 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments = ["-app.language", "zh-Hans", "-cubegin-show-about", "-cubegin-preview-app-update"]
+        app.launchArguments = ["-app.language", "zh-Hans", "-cubegin-preview-app-update"]
         app.launch()
 
+        let settings = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
         let changelog = app.buttons["settings.about.changelog"]
-        XCTAssertTrue(changelog.waitForExistence(timeout: 20))
+        for _ in 0..<4 where !changelog.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(changelog.isHittable)
         changelog.tap()
         let navigation = app.navigationBars["更新记录"]
         XCTAssertTrue(navigation.waitForExistence(timeout: 5))
@@ -102,6 +108,8 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        // The hosted runner can spend most of the normal toast lifetime taking AX snapshots.
+        app.launchEnvironment["CUBEGIN_UI_TEST_EXTENDED_DEVICE_ID_TOAST"] = "1"
         app.launchArguments = ["-app.language", "en"]
 
         app.launch()
@@ -133,7 +141,7 @@ final class SolveFlowTests: XCTestCase {
         for _ in 0..<4 { version.tap() }
         XCTAssertFalse(copied.exists)
         version.tap()
-        XCTAssertTrue(copied.waitForExistence(timeout: 2))
+        XCTAssertTrue(copied.waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -579,15 +587,18 @@ final class SolveFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-        app.launchArguments = ["-app.language", "zh-Hans", "-cubegin-show-about"]
+        app.launchArguments = ["-app.language", "zh-Hans"]
         app.launch()
 
+        let settings = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
         let privacy = app.buttons["settings.about.privacy"]
-        XCTAssertTrue(privacy.waitForExistence(timeout: 20))
         XCTAssertFalse(app.alerts["帮助改进 Cubegin"].exists)
         for _ in 0..<4 where !privacy.isHittable {
             app.swipeUp()
         }
+        XCTAssertTrue(privacy.isHittable)
         privacy.tap()
         let sharing = app.switches["settings.telemetry.sharing"]
         XCTAssertTrue(sharing.waitForExistence(timeout: 5))
