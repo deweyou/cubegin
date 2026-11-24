@@ -140,7 +140,8 @@ function showScreenshot(screenshot: Screenshot) {
   align-items: center;
   gap: clamp(.75rem, 4vw, 4rem);
   min-height: var(--hero-height);
-  padding: clamp(1.25rem, 3dvh, 2.25rem) clamp(2.5rem, 8vw, 8.5rem);
+  padding-block: clamp(1.25rem, 3dvh, 2.25rem);
+  padding-inline: max(clamp(2.5rem, 8vw, 8.5rem), calc((100% - 72rem) / 2));
 }
 
 .hero-logo {
