@@ -7,12 +7,14 @@ on:
       - '**/*.md'
       - '**/docs/**'
       - 'apps/ios/Design/LegacyIcons/brand/svg/**'
+      - 'store-listing/**'
       - 'scripts/ci-docs.mjs'
   pull_request:
     paths:
       - '**/*.md'
       - '**/docs/**'
       - 'apps/ios/Design/LegacyIcons/brand/svg/**'
+      - 'store-listing/**'
       - 'scripts/ci-docs.mjs'
   workflow_dispatch:
 

@@ -10,5 +10,7 @@
 - 本地真机调试默认安装独立的 **Cubegin Dev**，使用 `io.github.deweyou.cubegin.dev` 与正式版隔离成绩和设置。安装前核对产物的显示名称和 Bundle ID。构建和启动命令见[本地真机安装](docs/testing.md#本地真机安装)。
 - 新增或修改界面时，先查找仓库里最接近的交互和样式，优先复用现有组件。按[界面一致性与布局必验清单](docs/testing.md#界面一致性与布局必验清单)对照新旧页面，记录验收和未覆盖的场景。
 
+正式发包按 [iOS 发包手册](docs/releasing.md) 执行。
+
 [开发入口](DEVELOPMENT.md) · [架构](docs/architecture.md) ·
 [SDK 接入](docs/sdk.md) · [测试与验收](docs/testing.md) · [状态](docs/status.md)

@@ -1,4 +1,6 @@
-# 发布流程
+# SDK 发布流程
+
+iOS 等 App 的商店发行见 [App 发布规范](app-releasing.md)。
 
 Core Rust crate 和 Web、Swift、Android SDK 共用工作区版本。先按[开发指南](../DEVELOPMENT.md#构建产物与产品接入)配置环境。移动端用对应平台构建，绑定和二进制来自同一次构建。
 
