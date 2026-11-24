@@ -366,12 +366,16 @@ enum AppTelemetry {
         return id
     }
 
-    static var supportIdentifiers: String {
+    static var supportUserID: UUID? {
 #if CUBEGIN_TELEMETRY
-        formatSupportIdentifiers(deviceID: deviceID, userID: boundUserID)
+        boundUserID
 #else
-        formatSupportIdentifiers(deviceID: deviceID, userID: nil)
+        nil
 #endif
+    }
+
+    static var supportIdentifiers: String {
+        formatSupportIdentifiers(deviceID: deviceID, userID: supportUserID)
     }
 
     static func formatSupportIdentifiers(deviceID: String, userID: UUID?) -> String {

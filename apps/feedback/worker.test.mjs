@@ -76,6 +76,8 @@ test('accepts screenshots, protects the inbox and enforces one shared rolling ca
   assert.deepEqual(sent[0].to, ['inbox@example.com'])
   assert.deepEqual(sent[0].attachments.map(attachment => attachment.filename),
     ['screenshot-1.png', 'screenshot-2.png', 'screenshot-3.png'])
+  assert.deepEqual(sent[0].attachments.map(attachment => attachment.size),
+    [png.length, png.length, png.length], 'Each attachment should retain its original binary size')
 
   for (let index = 0; index < 5; index += 1) {
     assert.equal((await send({ message: '  ', requestId: crypto.randomUUID() }, 20)).status, 400)
@@ -88,4 +90,19 @@ test('accepts screenshots, protects the inbox and enforces one shared rolling ca
   const limited = submissions.filter(response => response.status === 429)
   assert.equal(limited.length, 2)
   assert.ok(limited.every(response => Number(response.headers.get('Retry-After')) > 0))
+})
+
+test('formats native, web and legacy submission details', async () => {
+  const { feedbackText } = await import('./feedback-text.mjs')
+  const deviceId = crypto.randomUUID()
+  const userId = crypto.randomUUID()
+  const fields = { source: 'ios', deviceModel: 'iPhone18,1', systemVersion: 'iOS 26.3',
+    appVersion: '1.2 (3)', deviceId, userId }
+  assert.equal(feedbackText('建议', fields), [
+    '建议', '', '来源：iPhone18,1 · iOS 26.3', 'App 版本：1.2 (3)', `设备 ID：${deviceId}`, `用户 ID：${userId}`,
+  ].join('\n'))
+  assert.match(feedbackText('建议', { ...fields, userId: undefined }), /用户 ID：不可用$/)
+  assert.equal(feedbackText('建议', { ...fields, source: 'web' }), '建议\n\n来源：Web')
+  assert.equal(feedbackText('建议', {}, 'https://example.com'), '建议\n\n来源：Web')
+  assert.match(feedbackText('建议', {}), /来源：未知/)
 })

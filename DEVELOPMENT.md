@@ -68,7 +68,7 @@ App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare W
 `POST /api/feedback`。两个客户端都接受去掉首尾空白后 1 至 200 个 UTF-16 单元的正文、
 选填邮箱和最多三张截图。网页会在当前浏览器记住上一次成功提交的邮箱，清空邮箱时删除它。
 客户端会将截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
-附件发送。官网可以静态部署，App Store Support URL 指向对应语言的反馈页。
+附件发送。邮件正文末尾注明来源；iOS 另附硬件型号、系统与 App 版本、安装 ID 和已有的用户 ID。官网可以静态部署，App Store Support URL 指向对应语言的反馈页。
 
 本地启动 Worker 和官网，对测试收件箱的发信由 Wrangler 模拟。
 
@@ -97,9 +97,9 @@ node --test apps/feedback/worker.test.mjs
 | `NUXT_PUBLIC_APP_STORE_ID` | 版本上架后，官网评价入口使用的 App Store 数字 ID |
 
 部署命令为 `npx wrangler deploy --config apps/feedback/wrangler.production.toml`。
-静态官网应在构建前配置公开变量。iOS 构建将 `CUBEGIN_FEEDBACK_BASE_URL` 设为 Worker
-的 HTTPS 基础地址，并通过 `CUBEGIN_APP_STORE_ID` 配置评价链接。模拟器 Debug
-默认提交到本机 `http://localhost:4490`。
+静态官网应在构建前配置公开变量。iOS 默认提交到 `https://cubegin.deweyou.me/api/feedback`，
+模拟器 Debug 默认提交到本机 `http://localhost:4490`。可用 `CUBEGIN_FEEDBACK_BASE_URL`
+指定其他 Worker 的 HTTPS 基础地址，用 `CUBEGIN_APP_STORE_ID` 配置评价链接。
 
 Worker 对每个 IP 每分钟约限制 5 次请求。单个 SQLite Durable Object 在滚动一小时内
 最多预留 30 次发信尝试，包含上游失败，并在 24 小时内记录提交状态以处理重试。

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import CubeginApp
 
+@MainActor
 struct FeedbackTests {
     @Test
     func requiresTextAndAcceptsAnEmptyEmail() {
@@ -27,6 +28,12 @@ struct FeedbackTests {
         #expect(request.url == endpoint)
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(payload["source"] == "ios")
+        #expect(payload["deviceId"] == AppTelemetry.deviceID)
+        #expect(payload["userId"] == AppTelemetry.supportUserID?.uuidString.lowercased())
+        for key in ["deviceModel", "systemVersion", "appVersion"] {
+            #expect(payload[key]?.isEmpty == false)
+        }
         #expect(payload["message"] == "建议")
         #expect(payload["email"] == (email.isEmpty ? nil : email))
         #expect(payload["requestId"] == submission.requestId.uuidString)
@@ -49,6 +56,7 @@ struct FeedbackTests {
         #expect(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
         #expect(multipart.components(separatedBy: "name=\"images\"").count == 4)
         #expect(multipart.contains(submission.requestId.uuidString))
+        #expect(multipart.contains(AppTelemetry.deviceID))
         #expect(body.range(of: jpeg) != nil)
         #expect(throws: (any Error).self) { try FeedbackScreenshot.compress(Data([0, 1, 2])) }
     }

@@ -62,19 +62,37 @@ struct FeedbackDraft: Equatable {
     }
 }
 
-struct FeedbackSubmission: Encodable {
+struct FeedbackSubmission {
     let draft: FeedbackDraft
     let requestId = UUID()
 
-    private enum CodingKeys: String, CodingKey { case message, email, requestId }
+    private let fields: [String: String]
 
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(draft.message, forKey: .message)
-        if !draft.email.isEmpty {
-            try container.encode(draft.email, forKey: .email)
+    @MainActor
+    init(draft: FeedbackDraft) {
+        self.draft = draft
+        let device = UIDevice.current
+        var hardware = utsname()
+        uname(&hardware)
+        let hardwareModel = withUnsafeBytes(of: hardware.machine) {
+            String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
         }
-        try container.encode(requestId, forKey: .requestId)
+#if targetEnvironment(simulator)
+        let model = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? hardwareModel
+#else
+        let model = hardwareModel
+#endif
+        var fields = ["message": draft.message, "requestId": requestId.uuidString,
+                      "source": "ios", "deviceModel": model,
+                      "systemVersion": "\(device.systemName) \(device.systemVersion)",
+                      "deviceId": AppTelemetry.deviceID]
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
+            fields["appVersion"] = "\(version) (\(build))"
+        }
+        fields["userId"] = AppTelemetry.supportUserID?.uuidString.lowercased()
+        if !draft.email.isEmpty { fields["email"] = draft.email }
+        self.fields = fields
     }
 
     func request(to endpoint: URL) throws -> URLRequest {
@@ -82,7 +100,7 @@ struct FeedbackSubmission: Encodable {
         request.httpMethod = "POST"
         if draft.screenshots.isEmpty {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(self)
+            request.httpBody = try JSONEncoder().encode(fields)
         } else {
             guard draft.screenshots.count <= FeedbackScreenshot.maximumCount,
                   draft.screenshots.allSatisfy({ !$0.isEmpty && $0.count <= FeedbackScreenshot.maximumBytes }) else {
@@ -90,7 +108,7 @@ struct FeedbackSubmission: Encodable {
             }
             let boundary = "Cubegin-\(UUID().uuidString)"
             var body = Data()
-            for (name, value) in [("message", draft.message), ("email", draft.email), ("requestId", requestId.uuidString)] {
+            for (name, value) in fields {
                 body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
             }
             for (index, screenshot) in draft.screenshots.enumerated() {
@@ -168,7 +186,7 @@ struct FeedbackSettingsView: View {
 #if DEBUG && targetEnvironment(simulator)
         return URL(string: "http://localhost:4490/api/feedback")
 #else
-        return nil
+        return URL(string: "https://cubegin.deweyou.me/api/feedback")
 #endif
     }()
 
@@ -186,7 +204,7 @@ struct FeedbackSettingsView: View {
                 replyEmailField
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(language.text("留下邮箱，方便我们回复你的反馈。", "Leave your email if you’d like a reply."))
+                    Text(language.text("留下邮箱可收到回复。提交时会附上设备型号、系统和 App 版本，以及可用的诊断 ID。", "Leave your email for a reply. Your device model, system and app versions, and available diagnostic IDs are included when you send."))
                         .foregroundStyle(.secondary)
                     if screenshotFailed {
                         Text(language.text("部分截图无法添加，请重新选择。", "Some screenshots couldn’t be added. Choose them again."))

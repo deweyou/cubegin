@@ -154,6 +154,7 @@ async function sendFeedback() {
     attempt = { message: submittedMessage, email: submittedEmail, requestId: crypto.randomUUID(), screenshots: screenshots.value }
   }
   const body = new FormData()
+  body.set('source', 'web')
   body.set('message', attempt.message)
   body.set('email', attempt.email)
   body.set('requestId', attempt.requestId)
