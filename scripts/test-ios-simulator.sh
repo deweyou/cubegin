@@ -8,6 +8,7 @@ shift
 # Use hosted test durations when moving cases into or out of this list.
 shard_a_cases=(
   testCelebrationReplaysOnlyWhileTheLatestSolveQualifies
+  testClearingResultsRequiresCountdownAndResetsSettingsNavigation
   testDCTimerImportOpensFilesAndCanBeCancelled
   testDCTimerImportPreviewsAppendsAndCanBeUndoneAfterRelaunch
   testFormulaHintsShowSolutionsForCurrentScramble
@@ -17,6 +18,7 @@ shard_a_cases=(
   testManualEntryCanCancelAndSaveAPenalizedResult
   testPersonalBestToastsStackAtTheBottom
   testPortraitSolveListKeepsPickersFixedWhileScrolling
+  testTimerSwipeShortcutsPersistAndUseTheExistingSolveFlows
 )
 
 case "$shard" in
