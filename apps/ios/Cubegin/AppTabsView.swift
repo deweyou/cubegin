@@ -1121,7 +1121,7 @@ private struct ResultsOverview: View {
     let tracksChartVisibility: Bool
     let onChartViewed: (ResultsChartMode) -> Void
     let isVisible: Bool
-    let onReady: (ContinuousClock.Instant?) -> Void
+    let onReady: (AppTelemetry.PerformanceMeasurement?) -> Void
     @Environment(\.locale) private var locale
     @Environment(\.timeZone) private var timeZone
     @Environment(\.colorScheme) private var colorScheme

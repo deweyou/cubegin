@@ -738,12 +738,13 @@ final class SolveFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launchArguments += ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333"]
         app.launch()
 
         let results = app.tabBars.buttons["Results"]
         XCTAssertTrue(results.waitForExistence(timeout: 20))
         results.tap()
+        XCTAssertTrue(app.buttons["solve-row-12"].waitForExistence(timeout: 5))
         app.buttons["results.view"].tap()
         app.buttons["Statistics"].tap()
 

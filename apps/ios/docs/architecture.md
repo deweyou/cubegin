@@ -69,6 +69,7 @@ App 发送固定分类和脱敏诊断。原始错误文本、文件内容及成�
 
 已开启诊断和使用数据共享的 App 通过 GA4 发送 `operation_performance`。
 每条记录携带 `operation`、`outcome`、数值 `duration_ms` 和 `app_build`，耗时使用单调时钟。
+撤回共享会丢弃未完成的计时和等待发送的记录。
 
 | `operation` | 起止点 | 分类字段 |
 | --- | --- | --- |

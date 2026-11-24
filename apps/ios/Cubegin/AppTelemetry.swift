@@ -450,13 +450,23 @@ private actor CloudAnalyticsIdentityStore {
 
 @MainActor
 enum AppTelemetry {
+    struct PerformanceMeasurement {
+        let startedAt: ContinuousClock.Instant
+        let consentGeneration: UInt64
+
+        func duration(in generation: UInt64, endingAt end: ContinuousClock.Instant = .now) -> Duration? {
+            guard generation == consentGeneration else { return nil }
+            return startedAt.duration(to: end)
+        }
+    }
+
     enum SharingChoice: String {
         case undecided, declined, allowed
     }
 
     static let sharingChoiceKey = "telemetry.diagnosticsAndUsageChoice"
     private static let installationIDKey = "telemetry.installationID"
-    private static var timerLaunchStartedAt: ContinuousClock.Instant?
+    private static var timerLaunchMeasurement: PerformanceMeasurement?
 
     static let sharingDefaults: UserDefaults = {
 #if DEBUG && targetEnvironment(simulator)
@@ -563,12 +573,13 @@ enum AppTelemetry {
 #else
         setEnabled(sharingChoice() == .allowed)
 #endif
-        if performanceStart() != nil { timerLaunchStartedAt = launchStartedAt }
+        timerLaunchMeasurement = performanceStart(at: launchStartedAt)
     }
 
-    static func performanceStart() -> ContinuousClock.Instant? {
+    static func performanceStart(at start: ContinuousClock.Instant = .now) -> PerformanceMeasurement? {
 #if CUBEGIN_TELEMETRY
-        return analyticsRequested ? .now : nil
+        guard analyticsRequested else { return nil }
+        return PerformanceMeasurement(startedAt: start, consentGeneration: performanceConsentGeneration)
 #else
         return nil
 #endif
@@ -582,22 +593,22 @@ enum AppTelemetry {
 #endif
     }
 
-    static func record(_ metric: TimerPerformanceMetric, since start: ContinuousClock.Instant?) {
+    static func record(_ metric: TimerPerformanceMetric, since measurement: PerformanceMeasurement?) {
 #if CUBEGIN_TELEMETRY
-        guard let start else { return }
-        let fields = metric.parameters(duration: start.duration(to: .now))
+        guard let duration = measurement?.duration(in: performanceConsentGeneration) else { return }
+        let fields = metric.parameters(duration: duration)
         recordAnalyticsEvent(TimerPerformanceMetric.eventName, fields: fields)
 #endif
     }
 
     static func recordTimerReady() {
-        let start = timerLaunchStartedAt
+        let measurement = timerLaunchMeasurement
         discardTimerLaunch()
-        record(.launchToTimerReady, since: start)
+        record(.launchToTimerReady, since: measurement)
     }
 
     static func discardTimerLaunch() {
-        timerLaunchStartedAt = nil
+        timerLaunchMeasurement = nil
     }
 
     static func refreshCloudIdentity() {
@@ -628,6 +639,7 @@ enum AppTelemetry {
             startReporting()
         } else {
             analyticsRequested = false
+            performanceConsentGeneration &+= 1
             identityStartup.cancel()
             pendingAnalyticsEvents.removeAll()
             boundUserID = nil
@@ -685,6 +697,7 @@ enum AppTelemetry {
 #if CUBEGIN_TELEMETRY
     private static var analyticsEnabled = false
     private static var analyticsRequested = false
+    private static var performanceConsentGeneration: UInt64 = 0
     private static var boundUserID: UUID?
     private static var pendingAnalyticsEvents: [(name: String, parameters: [String: Any])] = []
     private static let identityStartup = AnalyticsIdentityStartup()

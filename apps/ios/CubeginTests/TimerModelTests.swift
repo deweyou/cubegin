@@ -250,6 +250,15 @@ struct TimerModelTests {
     }
 
     @Test
+    func discardsPerformanceMeasurementsFromPreviousConsent() {
+        let start = ContinuousClock.now
+        let measurement = AppTelemetry.PerformanceMeasurement(startedAt: start, consentGeneration: 1)
+        let end = start.advanced(by: .milliseconds(42))
+        #expect(measurement.duration(in: 1, endingAt: end) == .milliseconds(42))
+        #expect(measurement.duration(in: 2, endingAt: end) == nil)
+    }
+
+    @Test
     func serializesTimerPerformanceWithNumericMilliseconds() {
         let launch = TimerPerformanceMetric.launchToTimerReady
         #expect(TimerPerformanceMetric.eventName == "operation_performance")

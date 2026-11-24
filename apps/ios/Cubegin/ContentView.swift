@@ -1907,7 +1907,10 @@ struct SVGView: UIViewRepresentable {
         private var slots: [Slot] = []
         private var visible: Slot?
         private var recovery = RenderRecovery()
-        private var pendingPerformance: (start: ContinuousClock.Instant, path: TimerPerformanceMetric.PreparationPath)?
+        private var pendingPerformance: (
+            start: AppTelemetry.PerformanceMeasurement,
+            path: TimerPerformanceMetric.PreparationPath
+        )?
         var displayedSVG: Binding<String?>?
 
         func update(in container: UIView, svg: String?, nextSVG: String?) {
