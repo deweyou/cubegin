@@ -9,6 +9,11 @@
 - 创建 PR 或向已有 PR 推送后，安排子代理跟进最新提交的 CI 和审查讨论，主代理继续开发。交付或合入前核对结果。加载项目级 [pr-follow-up](.agents/skills/pr-follow-up/SKILL.md)。
 - 遵循模块约定和[代码规范](docs/code-standards.md)。提交、推送和发布需有明确交付意图。
 
+## App 发布
+
+- 使用 [release](.agents/skills/release/SKILL.md) 筹备新版本，使用 [patch](.agents/skills/patch/SKILL.md) 修补已上架版本。
+- 发布分支、候选登记和回合规则见 [App 发布规范](docs/app-releasing.md)。
+
 ## 工程规则
 
 - Rust 负责魔方语义，平台绑定保持轻量。界面、存储和后台调度由 App 负责。

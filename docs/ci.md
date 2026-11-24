@@ -1,6 +1,6 @@
 # CI 验收
 
-各 [workflow](../.github/workflows/) 在 `paths` 声明 PR 和推送到 main 的触发路径，匹配后各自运行。产品和版本 workflow 也支持合并队列，所有 workflow 均可手动运行。
+各 [workflow](../.github/workflows/) 在 `paths` 声明 PR 和推送到 main 的触发路径，匹配后各自运行。Apple workflow 也检查推送到 `release/ios/**` 和 `patch/ios/**` 的候选，商店素材目录由文档检查覆盖。产品和版本 workflow 也支持合并队列，所有 workflow 均可手动运行。
 
 | Workflow | 触发输入与检查 |
 | --- | --- |

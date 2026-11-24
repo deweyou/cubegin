@@ -2,7 +2,7 @@ name: Apple SDK and iOS checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/ios/**', 'patch/ios/**']
     paths:
       - '.github/workflows/apple.yml'
       - 'scripts/test-ios-simulator.sh'
@@ -34,6 +34,7 @@ on:
       - '!apps/ios/**/*.md'
       - '!apps/ios/**/docs/**'
       - '!apps/ios/Design/**'
+      - '!apps/ios/store-listing/**'
       - '!apps/ios/scripts/**'
       - '!apps/ios/.gitignore'
       - '!apps/ios/CubeginPreview.xcodeproj/**'
@@ -77,6 +78,7 @@ on:
       - '!apps/ios/**/*.md'
       - '!apps/ios/**/docs/**'
       - '!apps/ios/Design/**'
+      - '!apps/ios/store-listing/**'
       - '!apps/ios/scripts/**'
       - '!apps/ios/.gitignore'
       - '!apps/ios/CubeginPreview.xcodeproj/**'
