@@ -394,7 +394,6 @@ final class AnalyticsIdentityStartup {
 
 #if CUBEGIN_TELEMETRY
 private actor CloudAnalyticsIdentityStore {
-    static let productionContainerID = "iCloud.io.github.deweyou.cubegin"
     private static let recordID = CKRecord.ID(recordName: "cubegin-analytics-user-id")
     private let container: CKContainer
     private var database: CKDatabase { container.privateCloudDatabase }
@@ -718,10 +717,10 @@ enum AppTelemetry {
         nil
 #elseif DEBUG
         CloudKitResultsTransport.isAvailable
-            ? CloudAnalyticsIdentityStore(containerID: CloudKitResultsTransport.containerID)
+            ? CloudAnalyticsIdentityStore(containerID: CloudKitResultsTransport.Environment.development.containerID)
             : nil
 #else
-        CloudAnalyticsIdentityStore(containerID: CloudAnalyticsIdentityStore.productionContainerID)
+        CloudAnalyticsIdentityStore(containerID: CloudKitResultsTransport.Environment.production.containerID)
 #endif
     }()
 

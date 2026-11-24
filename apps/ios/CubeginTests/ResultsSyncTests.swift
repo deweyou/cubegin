@@ -50,6 +50,24 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
 }
 
 struct ResultsSyncTests {
+    @Test func routesReleaseAndDevBuildsToSeparateCloudKitEnvironments() {
+        let production = CloudKitResultsTransport.Environment.production
+        let development = CloudKitResultsTransport.Environment.development
+
+        #expect(production.matching(bundleIdentifier: "io.github.deweyou.cubegin") == production)
+        #expect(production.matching(bundleIdentifier: "io.github.deweyou.cubegin.dev") == nil)
+        #expect(development.matching(bundleIdentifier: "io.github.deweyou.cubegin") == nil)
+        #expect(development.matching(bundleIdentifier: "io.github.deweyou.cubegin.dev") == development)
+        #expect(production.matching(bundleIdentifier: nil) == nil)
+
+        #expect(production.containerID == "iCloud.io.github.deweyou.cubegin")
+        #expect(production.recordType == "CubeginResult")
+        #expect(production.zoneName == "CubeginResultsV1")
+        #expect(development.containerID == "iCloud.io.github.deweyou.cubegin.sync-prototype")
+        #expect(development.recordType == "PrototypeSolve")
+        #expect(development.zoneName == "DevAppResultsV1")
+    }
+
     @Test func recoversAStableGroupAfterConcurrentDeletionAndSyncsItsRename() async throws {
         let server = SyntheticSyncServer()
         let event = "333"

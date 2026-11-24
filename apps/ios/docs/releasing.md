@@ -18,6 +18,7 @@
 
 ## 送测、提审和上线
 
-- 将候选分配给内部测试组，从 TestFlight 安装。记录设备、iOS 版本和实际 build。验收计时、保存及重启重读、DCTimer 导入、iCloud 生产环境同步、诊断同意和隐私入口。可以安装和启动之后，再核对核心功能是否通过。
+- 核对正式 CloudKit 容器的 Production schema 已部署 `CubeginResult`（`payload` 为 Bytes）和 `CubeginAnalyticsIdentity`（`uuid` 为 String）。
+- 将候选分配给内部测试组，从 TestFlight 安装。记录设备、iOS 版本和实际 build。验收计时、保存及重启重读、DCTimer 导入、iCloud 生产环境双机同步、诊断同意和隐私入口。可以安装和启动之后，再核对核心功能是否通过。
 - 选同一 build 提审。隐私问卷已保存和已发布分别核对。通过 `Add for Review` 只代表加入审核草稿。执行 `Submit for Review` 后回读状态，确认 Apple 已收到。
 - 首发采用手动发布。审核通过但待发布时，继续等待上线动作。收尾前从 App Store Connect 核对正式分发状态和实际关联 build，再依据远端候选记录打 `ios/vX.Y.Z`。需要确认某地区可用时单独核对该地区。真实 App Store Connect API 查询可以替代后台人工核对，查询失败或 build 缺记录时先核对来源。

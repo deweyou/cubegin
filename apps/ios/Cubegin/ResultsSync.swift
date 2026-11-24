@@ -100,22 +100,28 @@ extension CloudKitResultsTransport {
 #endif
     }
 
-    static var isAvailable: Bool {
-#if DEBUG && targetEnvironment(simulator)
-        showsSyncPreview
+    private static var environment: Environment? {
+#if targetEnvironment(simulator)
+        nil
 #elseif DEBUG && CUBEGIN_RESULTS_SYNC
-        Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+        Environment.development.matching(bundleIdentifier: Bundle.main.bundleIdentifier)
+#elseif DEBUG
+        nil
 #else
-        false
+        Environment.production.matching(bundleIdentifier: Bundle.main.bundleIdentifier)
 #endif
     }
 
+    static var isAvailable: Bool {
+        showsSyncPreview || environment != nil
+    }
+
     static func configured() -> (any ResultsCloudTransport)? {
-        guard isAvailable else { return nil }
 #if DEBUG && targetEnvironment(simulator)
         return syncPreview
 #else
-        return CloudKitResultsTransport()
+        guard let environment else { return nil }
+        return CloudKitResultsTransport(environment: environment)
 #endif
     }
 
@@ -358,19 +364,56 @@ struct ResultsSyncReplica: Sendable {
     }
 }
 
-// Reuse the prototype’s private development container and record format.
 actor CloudKitResultsTransport: ResultsCloudTransport {
-    static let containerID = "iCloud.io.github.deweyou.cubegin.sync-prototype"
-    private static let recordType = "PrototypeSolve"
+    enum Environment: Equatable, Sendable {
+        case development
+        case production
+
+        private var bundleIdentifier: String {
+            switch self {
+            case .development: "io.github.deweyou.cubegin.dev"
+            case .production: "io.github.deweyou.cubegin"
+            }
+        }
+
+        var containerID: String {
+            switch self {
+            case .development: "iCloud.io.github.deweyou.cubegin.sync-prototype"
+            case .production: "iCloud.io.github.deweyou.cubegin"
+            }
+        }
+
+        var recordType: String {
+            switch self {
+            case .development: "PrototypeSolve"
+            case .production: "CubeginResult"
+            }
+        }
+
+        var zoneName: String {
+            switch self {
+            case .development: "DevAppResultsV1"
+            case .production: "CubeginResultsV1"
+            }
+        }
+
+        func matching(bundleIdentifier: String?) -> Self? {
+            bundleIdentifier == self.bundleIdentifier ? self : nil
+        }
+    }
+
+    private let recordType: String
     private let zoneID: CKRecordZone.ID
     private let metadataZoneID: CKRecordZone.ID
     private var expectedAccount: String?
-    private let container = CKContainer(identifier: containerID)
+    private let container: CKContainer
     private var database: CKDatabase { container.privateCloudDatabase }
 
-    init(zoneName: String = "DevAppResultsV1") {
-        zoneID = CKRecordZone.ID(zoneName: zoneName)
-        metadataZoneID = CKRecordZone.ID(zoneName: zoneName + "Metadata")
+    init(environment: Environment) {
+        container = CKContainer(identifier: environment.containerID)
+        recordType = environment.recordType
+        zoneID = CKRecordZone.ID(zoneName: environment.zoneName)
+        metadataZoneID = CKRecordZone.ID(zoneName: environment.zoneName + "Metadata")
     }
 
     func accountID() async throws -> String {
@@ -434,7 +477,7 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
                 guard candidate.wins(over: existing) else { return existing }
                 record = fetched
             } catch let error as CKError where error.code == .unknownItem {
-                record = CKRecord(recordType: Self.recordType, recordID: id)
+                record = CKRecord(recordType: recordType, recordID: id)
             }
             try await verifyAccount()
             record["payload"] = try JSONEncoder().encode(candidate) as NSData
@@ -452,7 +495,7 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
     }
 
     private func decode(_ record: CKRecord) throws -> SyncRecord {
-        guard record.recordType == Self.recordType, let data = record["payload"] as? Data else {
+        guard record.recordType == recordType, let data = record["payload"] as? Data else {
             throw Failure.invalidRecord
         }
         let value = try JSONDecoder().decode(SyncRecord.self, from: data)

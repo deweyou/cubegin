@@ -178,7 +178,7 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 
 ### iCloud 成绩同步验证
 
-同步验证使用 Cubegin Dev App ID。开发签名须启用 CloudKit、iCloud 键值存储，并关联
+本地开发验收使用 Cubegin Dev App ID。开发签名须启用 CloudKit、iCloud 键值存储，并关联
 `iCloud.io.github.deweyou.cubegin.sync-prototype` 容器。按上面的真机构建命令，
 将空的 `CODE_SIGN_ENTITLEMENTS=` 替换为以下两个构建参数。
 
@@ -186,6 +186,8 @@ test "$(plutil -extract CFBundleIdentifier raw -o - "$dev_app/Info.plist")" = io
 CODE_SIGN_ENTITLEMENTS=Cubegin/CubeginResultsSyncDev.entitlements \
 'OTHER_SWIFT_FLAGS=$(inherited) -D CUBEGIN_RESULTS_SYNC'
 ```
+
+正式候选用同一 TestFlight build 在两台真机验收，先确认签名使用正式容器，且 CloudKit Production 已部署 `CubeginResult` 记录类型和 Bytes 类型的 `payload` 字段。App 将成绩和分组分别存放在私有数据库的 `CubeginResultsV1` 和 `CubeginResultsV1Metadata` 区域。
 
 两台已登录同一 iCloud 账号的测试设备分别预置一条不同的测试成绩。打开「设置 → 通用 → 同步」，
 验证首次合并、编辑罚时、离线删除后重试，以及更换 iCloud 账号后本机成绩保留。先核对测试设备和专用容器，
@@ -243,7 +245,7 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 
 验证跨设备埋点时，Cubegin Dev 同时使用专用 CloudKit 容器与隔离的 Firebase、Sentry 项目。使用[成绩同步验证](#icloud-成绩同步验证)中的签名授权与编译参数，保留 Firebase 包自己的编译条件。用新安装覆盖已有共享 ID、首次创建、离线超时后恢复三种情况。核对自动 `first_open`、`session_start` 实际出现的时机，以及原始数据中的 `user_id`。核对取消共享、关闭 iCloud 同步及切换 iCloud 账号时的身份切换。
 
-正式构建使用容器 `iCloud.io.github.deweyou.cubegin`。发布前给正式 Bundle ID 关联此容器，并在 CloudKit Production 部署 `CubeginAnalyticsIdentity` 记录类型及字符串字段 `uuid`。成绩同步仍由 Dev 专用容器承载。GA4 的 `cube_event`、`inspection_voice` 和 `include_dnf_in_worst` 使用事件级自定义维度。
+正式构建使用容器 `iCloud.io.github.deweyou.cubegin`。发布前给正式 Bundle ID 关联此容器，并在 CloudKit Production 部署 `CubeginAnalyticsIdentity` 记录类型及字符串字段 `uuid`。正式版的成绩同步使用同一正式容器的私有数据库。Cubegin Dev 使用自己的专用容器。GA4 的 `cube_event`、`inspection_voice` 和 `include_dnf_in_worst` 使用事件级自定义维度。
 
 ### 2026-11-22 Cubegin Dev 验收
 
@@ -270,5 +272,5 @@ Dev 属性核对[真机验证](#真机验证故障诊断)中的触发和参数�
 要从上线首批样本计算 P50、P95 和样本量，在发布前确认生产属性已启用 BigQuery 导出。
 直接从导出的 `event_params` 读取参数，按构建版本和 `operation` 分组计算成功操作耗时。
 同步成功率筛选 `operation=icloud_sync`，按 `sync_phase` 分组，用成功次数除以成功与失败次数之和。
-按需用网络类型和数据量分桶拆解结果。Cubegin 的生产构建启用成绩同步后才会产生同步事件。
+按需用网络类型和数据量分桶拆解结果。开启成绩同步并同意共享诊断与使用数据时，正式构建会记录同步事件。
 [BigQuery 导出配置](https://support.google.com/analytics/answer/9823238) · [导出字段](https://support.google.com/analytics/answer/7029846)
