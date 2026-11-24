@@ -1,9 +1,9 @@
 import MarkdownIt from 'markdown-it'
-import privacyPolicy from '../../../ios/Cubegin/PrivacyPolicy.md?raw'
+import privacyPolicy from '../../../../docs/privacy-policy.md?raw'
 
 const [chinese, english, ...extra] = privacyPolicy.split('<!-- English -->')
 if (!chinese?.trim() || !english?.trim() || extra.length > 0) {
-  throw new Error('PrivacyPolicy.md must contain Chinese and English sections.')
+  throw new Error('privacy-policy.md must contain Chinese and English sections.')
 }
 
 const markdown = new MarkdownIt({ html: false })

@@ -8,7 +8,9 @@ Cubegin 在设备上保存计时成绩、分组和打乱记录。从文件导入
 
 当你选择「同意」后，Cubegin 会使用两项服务修复问题并了解功能使用情况：
 
-**Google Analytics for Firebase** 接收固定分类的操作失败事件，例如导入失败及其原因，以及应用构建号。它也记录首次打开、应用版本、会话、前台活跃时长和设备信息等基础统计。如版本包含产品埋点，这些事件用于统计哪些功能被使用。
+**Google Analytics for Firebase** 接收固定分类的操作失败事件、应用构建号，以及启动到计时页可操作、准备打乱和显示打乱图的耗时。打乱准备的记录包含当前魔方项目、是否切换项目和是否命中预加载。它也记录首次打开、应用版本、会话、前台活跃时长和设备信息等基础统计。如版本包含产品埋点，这些事件用于统计哪些功能被使用。
+
+统计页会记录滚动平均结果就绪的耗时和分组成绩量区间。支持 iCloud 成绩同步的版本也会记录同步尝试的耗时、结果、网络类型和记录数量区间，并区分首次同步和后续同步。
 
 **Sentry** 接收崩溃报告和部分需要排查的非致命错误。报告可能包含调用栈、系统及 App 版本、设备型号和错误分类。
 
@@ -34,7 +36,9 @@ Cubegin stores solve times, groups, and scrambles on your device. DCTimer result
 
 If you choose **Agree**, Cubegin uses two services to fix issues and understand how features are used:
 
-**Google Analytics for Firebase** receives categorized failures, such as a failed import and its reason, along with the app build number. It also records basic statistics such as first opens, app versions, sessions, time in the foreground, and device information. When a version includes feature usage events, those events measure which features people use.
+**Google Analytics for Firebase** receives categorized failures, the app build number, and timings for making the timer available at launch, preparing scrambles, and displaying scramble diagrams. Scramble preparation records include the current puzzle event, whether the event changed, and whether a prefetched scramble was ready. It also records basic statistics such as first opens, app versions, sessions, time in the foreground, and device information. When a version includes feature usage events, those events measure which features people use.
+
+The statistics page records the time it takes for rolling averages to become available and the range of solve counts in the group. Versions with iCloud results sync also record the duration and outcome of sync attempts, the network type, and ranges for record counts. These records distinguish initial sync from later syncs.
 
 **Sentry** receives crash reports and certain nonfatal errors for troubleshooting. These reports may include stack traces, OS and app versions, device models, and error categories.
 

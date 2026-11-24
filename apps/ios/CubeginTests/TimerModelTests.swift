@@ -246,7 +246,103 @@ struct TimerModelTests {
         let failure = OperationFailure(operation: .loadResults, reason: .readFailed, impact: .blocked)
         var expected = failure.fields
         expected["app_build"] = buildNumber
-        #expect(AppTelemetry.analyticsParameters(failure.fields) == expected)
+        #expect(AppTelemetry.analyticsParameters(failure.fields) as? [String: String] == expected)
+    }
+
+    @Test
+    func discardsPerformanceMeasurementsFromPreviousConsent() {
+        let start = ContinuousClock.now
+        let measurement = AppTelemetry.PerformanceMeasurement(startedAt: start, consentGeneration: 1)
+        let end = start.advanced(by: .milliseconds(42))
+        #expect(measurement.duration(in: 1, endingAt: end) == .milliseconds(42))
+        #expect(measurement.duration(in: 2, endingAt: end) == nil)
+    }
+
+    @Test
+    func serializesTimerPerformanceWithNumericMilliseconds() {
+        let launch = TimerPerformanceMetric.launchToTimerReady
+        #expect(TimerPerformanceMetric.eventName == "operation_performance")
+        let launchFields = launch.parameters(duration: .seconds(1) + .milliseconds(250))
+        #expect(Set(launchFields.keys) == ["operation", "outcome", "duration_ms"])
+        #expect(launchFields["operation"] as? String == "launch_to_timer_ready")
+        #expect(launchFields["outcome"] as? String == "success")
+        #expect(launchFields["duration_ms"] as? Double == 1_250)
+
+        let preparation = TimerPerformanceMetric.scramblePreparation(
+            trigger: .afterSolve, path: .prefetchPending, project: "333", projectChanged: false
+        )
+        let preparationFields = preparation.parameters(duration: .microseconds(500))
+        #expect(Set(preparationFields.keys) == [
+            "operation", "outcome", "duration_ms", "trigger", "preparation_path", "cache_hit",
+            "project_changed", "scramble_project"
+        ])
+        #expect(preparationFields["operation"] as? String == "scramble_preparation")
+        #expect(preparationFields["duration_ms"] as? Double == 0.5)
+        #expect(preparationFields["trigger"] as? String == "after_solve")
+        #expect(preparationFields["preparation_path"] as? String == "prefetch_pending")
+        #expect(preparationFields["cache_hit"] as? String == "false")
+        #expect(preparationFields["project_changed"] as? String == "false")
+        #expect(preparationFields["scramble_project"] as? String == "event_333")
+
+        let diagram = TimerPerformanceMetric.scrambleDiagram(.prefetchReady)
+        let diagramFields = diagram.parameters(duration: .milliseconds(2))
+        #expect(Set(diagramFields.keys) == ["operation", "outcome", "duration_ms", "preparation_path"])
+        #expect(diagramFields["operation"] as? String == "scramble_diagram_ready")
+        #expect(diagramFields["preparation_path"] as? String == "prefetch_ready")
+    }
+
+    @Test
+    func serializesCacheHitsAndProjectChangesForScramblePreparation() {
+        let cached = TimerPerformanceMetric.scramblePreparation(
+            trigger: .manual, path: .prefetchReady, project: "222.cll", projectChanged: false
+        ).parameters(duration: .zero)
+        #expect(cached["cache_hit"] as? String == "true")
+        #expect(cached["scramble_project"] as? String == "event_222.cll")
+
+        let switched = TimerPerformanceMetric.scramblePreparation(
+            trigger: .projectChange, path: .onDemand, project: "777", projectChanged: true
+        ).parameters(duration: .zero)
+        #expect(switched["cache_hit"] as? String == "false")
+        #expect(switched["project_changed"] as? String == "true")
+        #expect(switched["scramble_project"] as? String == "event_777")
+
+        let unknown = TimerPerformanceMetric.scramblePreparation(
+            trigger: .initial, path: .onDemand, project: "unknown", projectChanged: false
+        ).parameters(duration: .zero)
+        #expect(unknown["scramble_project"] as? String == "other")
+    }
+
+    @Test
+    func serializesStatisticsAndCloudSyncPerformance() {
+        let statistics = TimerPerformanceMetric.statisticsReady(trigger: .groupChange, solveCount: 100)
+        let statisticsFields = statistics.parameters(duration: .milliseconds(15))
+        #expect(statisticsFields["operation"] as? String == "statistics_ready")
+        #expect(statisticsFields["trigger"] as? String == "group_change")
+        #expect(statisticsFields["solve_count_bucket"] as? String == "100_to_999")
+
+        let success = TimerPerformanceMetric.cloudSync(.init(
+            phase: .initial, network: .wifi, localSolveCount: 99, remoteRecordCount: 10_000, failure: nil
+        ))
+        let successFields = success.parameters(duration: .seconds(2))
+        #expect(successFields["operation"] as? String == "icloud_sync")
+        #expect(successFields["sync_phase"] as? String == "initial")
+        #expect(successFields["outcome"] as? String == "success")
+        #expect(successFields["reason"] == nil)
+        #expect(successFields["network_type"] as? String == "wifi")
+        #expect(successFields["local_solve_count_bucket"] as? String == "1_to_99")
+        #expect(successFields["remote_record_count_bucket"] as? String == "10000_or_more")
+
+        let failure = TimerPerformanceMetric.cloudSync(.init(
+            phase: .subsequent, network: .cellular, localSolveCount: 0,
+            remoteRecordCount: nil, failure: .serviceUnavailable
+        ))
+        let failureFields = failure.parameters(duration: .seconds(1))
+        #expect(failureFields["operation"] as? String == "icloud_sync")
+        #expect(failureFields["sync_phase"] as? String == "subsequent")
+        #expect(failureFields["outcome"] as? String == "failure")
+        #expect(failureFields["reason"] as? String == "service_unavailable")
+        #expect(failureFields["local_solve_count_bucket"] as? String == "empty")
+        #expect(failureFields["remote_record_count_bucket"] as? String == "unknown")
     }
 
     @Test

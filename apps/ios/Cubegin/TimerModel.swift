@@ -417,6 +417,10 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
     }
 
+    private var cloudSyncPhase: TimerPerformanceMetric.CloudSyncPhase {
+        lastSuccessfulCloudSync == nil ? .initial : .subsequent
+    }
+
     func setCloudSyncEnabled(_ enabled: Bool) {
         guard supportsCloudSync, enabled != cloudSyncEnabled else { return }
         cloudSyncEnabled = enabled
@@ -436,7 +440,12 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     func requestCloudSync() {
         guard cloudSyncEnabled, supportsResultsSync else { return }
         guard !storageReadFailed else {
+            let syncStart = AppTelemetry.performanceStart()
             cloudSyncStatus = .failed(.localStorage)
+            AppTelemetry.record(.cloudSync(.init(
+                phase: cloudSyncPhase, network: AppTelemetry.performanceNetworkType,
+                localSolveCount: nil, remoteRecordCount: nil, failure: .localStorage
+            )), since: syncStart)
             return
         }
         needsCloudSync = true
@@ -451,7 +460,30 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             if needsCloudSync { requestCloudSync() }
         }
         guard cloudSyncEnabled, !Task.isCancelled, let cloudTransport else { return }
+        let syncStart = AppTelemetry.performanceStart()
+        let phase = cloudSyncPhase
+        let network = AppTelemetry.performanceNetworkType
+        let localSolveCount = persistedSolves.count
+        var remoteRecordCount: Int?
         needsCloudSync = false
+        defer {
+            if let syncStart, !Task.isCancelled {
+                switch cloudSyncStatus {
+                case .synced, .failed:
+                    let failure: CloudSyncFailure? = if case .failed(let reason) = cloudSyncStatus {
+                        reason
+                    } else {
+                        nil
+                    }
+                    AppTelemetry.record(.cloudSync(.init(
+                        phase: phase, network: network, localSolveCount: localSolveCount,
+                        remoteRecordCount: remoteRecordCount, failure: failure
+                    )), since: syncStart)
+                case .idle, .syncing:
+                    break
+                }
+            }
+        }
         do {
             let account = try await cloudTransport.accountID()
             try Task.checkCancellation()
@@ -475,7 +507,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                 }
             }
             try await cloudTransport.prepareZone(for: account)
-            try await replica.sync(with: cloudTransport)
+            remoteRecordCount = try await replica.sync(with: cloudTransport)
             let currentAccount = try await cloudTransport.accountID()
             try Task.checkCancellation()
             guard account == currentAccount else { throw CloudSyncFailure.accountChanged }
@@ -739,9 +771,13 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         return true
     }
 
-    func refresh(advance: Bool = false) {
+    func refresh(_ trigger: ScrambleRefreshTrigger = .projectChange) {
         guard started == nil else { return }
         if deferredCloudApply { requestCloudSync() }
+        let start = AppTelemetry.performanceStart()
+        let event = self.event
+        let projectChanged = selectionEvent.map { $0 != event } ?? false
+        let trigger = selectionEvent == nil && trigger == .projectChange ? .initial : trigger
         if selectionEvent != event {
             selectedGroupID = eventGroups.first(where: { $0.isDefault })?.id
             selectionEvent = event
@@ -752,14 +788,17 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         cancelPress()
         endInspection()
         generationTask?.cancel()
-        let prefetched = advance ? prefetchTask : nil
-        if !advance { prefetchTask?.cancel() }
+        let prefetched = trigger.usesPrefetch ? prefetchTask : nil
+        if !trigger.usesPrefetch { prefetchTask?.cancel() }
         prefetchTask = nil
 
-        if advance, let nextScramble {
+        if trigger.usesPrefetch, let nextScramble {
             scramble = nextScramble
             self.nextScramble = nil
             busy = false
+            AppTelemetry.record(.scramblePreparation(
+                trigger: trigger, path: .prefetchReady, project: event, projectChanged: projectChanged
+            ), since: start)
             prefetchNextScramble()
             return
         }
@@ -767,20 +806,25 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         nextScramble = nil
         scramble = nil
         busy = true
-        let event = self.event
         generationTask = Task { [weak self, generateScramble] in
             do {
                 let generated: Scramble
+                let path: TimerPerformanceMetric.PreparationPath
                 if let prefetched, let result = try? await prefetched.value {
                     generated = result
+                    path = .prefetchPending
                 } else {
                     try Task.checkCancellation()
                     generated = try await generateScramble(event)
+                    path = prefetched == nil ? .onDemand : .prefetchFallback
                 }
                 guard !Task.isCancelled, let self, self.event == event else { return }
                 self.scramble = generated
                 self.nextScramble = nil
                 self.busy = false
+                AppTelemetry.record(.scramblePreparation(
+                    trigger: trigger, path: path, project: event, projectChanged: projectChanged
+                ), since: start)
                 self.prefetchNextScramble()
             } catch {
                 guard !Task.isCancelled, let self, self.event == event else { return }
@@ -936,7 +980,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         lastSolveID = solve.id
         lastSolveWasSaved = saved
         solves.insert(solve, at: 0)
-        refresh(advance: true)
+        refresh(.afterSolve)
     }
 
     func togglePenalty(_ penalty: SolvePenalty) {

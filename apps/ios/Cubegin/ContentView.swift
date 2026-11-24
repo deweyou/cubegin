@@ -155,6 +155,9 @@ struct ContentView: View {
                 isInTimerCancelZone = false
             }
         }
+        .onChange(of: isTimerActive && isScrambleReady, initial: true) { _, ready in
+            if ready { AppTelemetry.recordTimerReady() }
+        }
         .onChange(of: presentedCelebration) { _, celebration in
             if let confettiBurst, confettiBurst.record != celebration { stopCelebration() }
         }
@@ -831,7 +834,7 @@ struct ContentView: View {
         switch direction.action() {
         case .none: break
         case .deleteLastSolve: solveToDelete = model.groupSolves.min(by: Solve.newestFirst)
-        case .newScramble: model.refresh(advance: true)
+        case .newScramble: model.refresh(.manual)
         case .manualEntry: openManualEntry()
         }
     }
@@ -1904,9 +1907,27 @@ struct SVGView: UIViewRepresentable {
         private var slots: [Slot] = []
         private var visible: Slot?
         private var recovery = RenderRecovery()
+        private var pendingPerformance: (
+            start: AppTelemetry.PerformanceMeasurement,
+            path: TimerPerformanceMetric.PreparationPath
+        )?
         var displayedSVG: Binding<String?>?
 
         func update(in container: UIView, svg: String?, nextSVG: String?) {
+            if svg != recovery.desiredSVG {
+                pendingPerformance = nil
+                if let svg, displayedSVG != nil, let start = AppTelemetry.performanceStart() {
+                    let slot = slots.first { $0.svg == svg }
+                    let path: TimerPerformanceMetric.PreparationPath = if slot?.ready == true {
+                        .prefetchReady
+                    } else if slot?.navigation != nil {
+                        .prefetchPending
+                    } else {
+                        .onDemand
+                    }
+                    pendingPerformance = (start, path)
+                }
+            }
             recovery.request(svg)
             guard !recovery.exhausted else { return }
             if let svg, visible?.svg != svg {
@@ -1917,14 +1938,15 @@ struct SVGView: UIViewRepresentable {
                     return
                 }
             }
+            reportDisplayedSVG()
             if let nextSVG, !slots.contains(where: { $0.svg == nextSVG }) {
                 load(nextSVG, in: container)
             }
-            reportDisplayedSVG()
         }
 
         func stop() {
             recovery.request(nil)
+            pendingPerformance = nil
             displayedSVG = nil
             for slot in slots {
                 slot.view.navigationDelegate = nil
@@ -1985,6 +2007,7 @@ struct SVGView: UIViewRepresentable {
             case .retry:
                 load(svg, in: container)
             case .report:
+                pendingPerformance = nil
                 visible?.view.isHidden = true
                 visible = nil
                 onFailure(reason)
@@ -2003,8 +2026,12 @@ struct SVGView: UIViewRepresentable {
         }
 
         private func reportDisplayedSVG() {
-            guard let svg = recovery.desiredSVG, visible?.svg == svg,
-                  let displayedSVG, displayedSVG.wrappedValue != svg else { return }
+            guard let svg = recovery.desiredSVG, visible?.svg == svg else { return }
+            if let measurement = pendingPerformance {
+                pendingPerformance = nil
+                AppTelemetry.record(.scrambleDiagram(measurement.path), since: measurement.start)
+            }
+            guard let displayedSVG, displayedSVG.wrappedValue != svg else { return }
             // Cached diagrams can be selected during updateUIView. Publish after that update.
             Task { @MainActor [weak self] in
                 guard let self, self.recovery.desiredSVG == svg, self.visible?.svg == svg,

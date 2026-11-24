@@ -58,7 +58,7 @@ struct PrivacyPolicyView: View {
     private var language: AppLanguage { locale.appLanguage }
 
     private var paragraphs: [String] {
-        guard let url = Bundle.main.url(forResource: "PrivacyPolicy", withExtension: "md"),
+        guard let url = Bundle.main.url(forResource: "privacy-policy", withExtension: "md"),
               let markdown = try? String(contentsOf: url, encoding: .utf8) else {
             return [language.text("暂时无法读取隐私政策。", "The privacy policy couldn’t be loaded.")]
         }

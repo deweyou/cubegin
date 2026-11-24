@@ -450,6 +450,13 @@ private struct ResultsView: View {
     @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
+    @State private var lastStatisticsGroup: StatisticsGroup?
+    private var statisticsVisible: Bool { showsStatistics && detailPath.isEmpty }
+
+    private struct StatisticsGroup: Hashable {
+        let project: String
+        let id: String?
+    }
     @State private var showsGroups = false
     @State private var solvesToDelete: Set<Solve.ID> = []
     @State private var showsMoveGroups = false
@@ -535,6 +542,9 @@ private struct ResultsView: View {
             }
             .onChange(of: page) { _, _ in
                 endSelection()
+            }
+            .onChange(of: statisticsVisible) { _, visible in
+                if !visible { lastStatisticsGroup = nil }
             }
             .toolbar(isPad ? .visible : .hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
@@ -752,9 +762,17 @@ private struct ResultsView: View {
                 Text(language.text("删除后，成绩无法恢复。", "Deleted solves cannot be recovered."))
             }
         case (.statistics, _):
-            ResultsOverview(solves: results, contentInsets: contentInsets,
-                            tracksChartVisibility: showsStatistics, onChartViewed: onChartViewed)
-                .id(model.currentGroup?.id)
+            let group = StatisticsGroup(project: model.event, id: model.currentGroup?.id)
+            let solves = results
+            ResultsOverview(solves: solves, contentInsets: contentInsets,
+                            tracksChartVisibility: showsStatistics, onChartViewed: onChartViewed,
+                            isVisible: statisticsVisible) { start in
+                guard lastStatisticsGroup != group else { return }
+                let trigger: TimerPerformanceMetric.StatisticsTrigger = lastStatisticsGroup == nil ? .open : .groupChange
+                lastStatisticsGroup = group
+                AppTelemetry.record(.statisticsReady(trigger: trigger, solveCount: solves.count), since: start)
+            }
+            .id(group)
         }
     }
 
@@ -1102,12 +1120,19 @@ private struct ResultsOverview: View {
     let contentInsets: LandscapeContentInsets?
     let tracksChartVisibility: Bool
     let onChartViewed: (ResultsChartMode) -> Void
+    let isVisible: Bool
+    let onReady: (AppTelemetry.PerformanceMeasurement?) -> Void
     @Environment(\.locale) private var locale
     @Environment(\.timeZone) private var timeZone
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .caption) private var dailyColumnWidth = 74.0
     @State private var bestAverages: (times: [Double?], scores: [SolveAverage: String])?
     private var language: AppLanguage { locale.appLanguage }
+
+    private struct ReadinessInput: Equatable {
+        let times: [Double?]
+        let isVisible: Bool
+    }
 
     var body: some View {
         let times = solves.map(\.resultSeconds)
@@ -1189,7 +1214,13 @@ private struct ResultsOverview: View {
         .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
         .contentMargins(.trailing, contentInsets?.formTrailingMargin, for: .scrollContent)
         .listSectionSpacing(12)
-        .task(id: times) {
+        .task(id: ReadinessInput(times: times, isVisible: isVisible)) {
+            guard isVisible, !Task.isCancelled else { return }
+            let start = AppTelemetry.performanceStart()
+            if bestAverages?.times == times {
+                onReady(start)
+                return
+            }
             var scores: [SolveAverage: String] = [:]
             for kind in availableKinds {
                 let extrema = await kind.rollingExtremes(times, includesDNF: false)
@@ -1198,7 +1229,9 @@ private struct ResultsOverview: View {
                     averageText(kind, window: solves[start..<(start + kind.count)])
                 } ?? "DNF"
             }
+            guard !Task.isCancelled else { return }
             bestAverages = (times, scores)
+            onReady(start)
         }
     }
 
@@ -2365,8 +2398,8 @@ private struct PrivacySettingsView: View {
 
     private func policyText(includeDescription: Bool) -> some View {
         let description = includeDescription ? language.text(
-            "开启后会发送崩溃报告、操作失败和功能使用情况，帮助我们修复问题、改进计时体验。",
-            "When enabled, Cubegin sends crash reports, failed operations, and feature usage to help us fix issues and improve the timer. "
+            "开启后会发送崩溃报告、操作失败、性能耗时和功能使用情况，帮助我们修复问题、改进计时体验。",
+            "When enabled, Cubegin sends crash reports, failed operations, performance timings, and feature usage to help improve the timer. "
         ) : ""
         var link = AttributedString(language.text("查看隐私政策", "View privacy policy"))
         link.link = Self.policyURL
