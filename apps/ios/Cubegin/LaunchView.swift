@@ -41,7 +41,7 @@ struct LaunchRootView: View {
             .onChange(of: hasFinishedLaunch, initial: true) { _, finished in
                 guard finished else { return }
                 prepareTimer()
-                if AppTelemetry.showsSharingPreference, AppTelemetry.sharingChoice() == .undecided {
+                if AppTelemetry.promptsForSharingConsent, AppTelemetry.sharingChoice() == .undecided {
                     showsSharingPrompt = true
                 }
             }

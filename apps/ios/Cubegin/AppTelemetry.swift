@@ -470,8 +470,7 @@ enum AppTelemetry {
 
     static let sharingDefaults: UserDefaults = {
 #if DEBUG && targetEnvironment(simulator)
-        if previewsSharingConsent,
-           let session = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"].flatMap(UUID.init(uuidString:)),
+        if let session = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"].flatMap(UUID.init(uuidString:)),
            let defaults = UserDefaults(suiteName: "telemetry.consent-preview.\(session.uuidString)") {
             return defaults
         }
@@ -509,6 +508,14 @@ enum AppTelemetry {
     }
 
     static var showsSharingPreference: Bool {
+#if targetEnvironment(simulator)
+        return true
+#else
+        return promptsForSharingConsent
+#endif
+    }
+
+    static var promptsForSharingConsent: Bool {
 #if DEBUG
         return previewsSharingConsent || (isDeviceQA && exercisesQAConsent)
 #else

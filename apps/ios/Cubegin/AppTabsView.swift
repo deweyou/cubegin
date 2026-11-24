@@ -1983,20 +1983,36 @@ private struct SettingsView: View {
 
     static var opensAboutForQA: Bool {
 #if DEBUG
-        return Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
-            && ProcessInfo.processInfo.arguments.contains("-cubegin-show-device-id")
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-cubegin-show-about")
+            || (Bundle.main.bundleIdentifier == "io.github.deweyou.cubegin.dev"
+                && arguments.contains("-cubegin-show-device-id"))
 #else
         return false
 #endif
     }
 
+    private static var deviceIDToastDuration: Duration {
+#if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["CUBEGIN_UI_TEST_SESSION"] != nil,
+           environment["CUBEGIN_UI_TEST_EXTENDED_DEVICE_ID_TOAST"] == "1" {
+            return .seconds(12)
+        }
+#endif
+        return .seconds(2)
+    }
+
     let model: TimerModel
     let contentInsets: LandscapeContentInsets?
     let isSelected: Bool
-    private enum Page: Hashable { case gestures, imports, clearResults, sync, feedback, privacy }
+    private enum Page: Hashable { case gestures, imports, clearResults, sync, feedback, privacy, changelog }
     @State private var path: [Page] = opensFeedbackForQA ? [.feedback] : []
     @State private var versionTapCount = 0
     @State private var startDelayBeforeEditing: Int?
+    @State private var isCheckingForUpdate = false
+    @State private var updateOutcome: AppStoreUpdate.Outcome?
+    @Environment(\.openURL) private var openURL
     @State private var copiedDeviceIDAt: ContinuousClock.Instant?
     @AppStorage(AppLanguage.preferenceKey) private var languageOverride = AppLanguage.systemPreference
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system
@@ -2185,12 +2201,35 @@ private struct SettingsView: View {
                 }
                 CardSection(language.text("关于", "About")) {
                     cardRowButton {
-                        path.append(.feedback)
+                        isCheckingForUpdate = true
                     } label: {
-                        settingsLinkLabel(language.text("反馈与评价", "Feedback & Reviews"))
+                        HStack {
+                            Text(isCheckingForUpdate
+                                ? language.text("正在检查更新…", "Checking for updates…")
+                                : language.text("检查更新", "Check for Updates"))
+                            Spacer()
+                            if isCheckingForUpdate {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.about.feedback")
+                    .disabled(isCheckingForUpdate)
+                    .accessibilityIdentifier("settings.about.checkForUpdates")
+                    cardRowButton {
+                        tapVersion()
+                    } label: {
+                        LabeledContent(language.text("版本", "Version"), value: AppStoreUpdate.installedVersion ?? language.text("开发版", "Development build"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.version")
+                    cardRowButton {
+                        path.append(.changelog)
+                    } label: {
+                        settingsLinkLabel(language.text("更新记录", "Changelog"))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.about.changelog")
                     cardRowButton {
                         path.append(.privacy)
                     } label: {
@@ -2199,12 +2238,12 @@ private struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.about.privacy")
                     cardRowButton {
-                        tapVersion()
+                        path.append(.feedback)
                     } label: {
-                        LabeledContent(language.text("版本", "Version"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? language.text("开发版", "Development build"))
+                        settingsLinkLabel(language.text("反馈与评价", "Feedback & Reviews"))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.about.version")
+                    .accessibilityIdentifier("settings.about.feedback")
                 }
             }
             .defaultScrollAnchor(Self.opensAboutForQA ? .bottom : nil, for: .initialOffset)
@@ -2216,6 +2255,7 @@ private struct SettingsView: View {
                 case .sync: SyncSettingsView(model: model)
                 case .feedback: FeedbackSettingsView()
                 case .privacy: PrivacySettingsView()
+                case .changelog: ChangelogView()
                 }
             }
             .pinnedScrollHeader {
@@ -2251,17 +2291,137 @@ private struct SettingsView: View {
         .task(id: copiedDeviceIDAt) {
             guard copiedDeviceIDAt != nil else { return }
             do {
-                try await Task.sleep(for: .seconds(2))
+                try await Task.sleep(for: Self.deviceIDToastDuration)
                 copiedDeviceIDAt = nil
             } catch {}
         }
+        .task(id: isCheckingForUpdate) {
+            guard isCheckingForUpdate else { return }
+            let outcome = (try? await AppStoreUpdate.check()) ?? .failed
+            guard !Task.isCancelled else { return }
+            updateOutcome = outcome
+            isCheckingForUpdate = false
+        }
+        .alert(updateTitle, isPresented: Binding(
+            get: { updateOutcome != nil },
+            set: { if !$0 { updateOutcome = nil } }
+        ), presenting: updateOutcome) { outcome in
+            if case .available(let release) = outcome {
+                Button(language.text("稍后", "Later"), role: .cancel) {}
+                Button(language.text("前往 App Store", "Open App Store")) {
+                    openURL(release.trackViewUrl)
+                }
+            } else {
+                Button(language.text("好", "OK"), role: .cancel) {}
+            }
+        } message: { outcome in
+            Text(verbatim: updateMessage(outcome))
+        }
         .onChange(of: isSelected) { _, selected in
             if !selected {
+                isCheckingForUpdate = false
+                updateOutcome = nil
                 path.removeAll()
                 versionTapCount = 0
                 copiedDeviceIDAt = nil
             }
         }
+    }
+
+    private var updateTitle: String {
+        switch updateOutcome {
+        case .available(let release):
+            language.text("Cubegin \(release.version) 已发布", "Cubegin \(release.version) Is Available")
+        case .upToDate:
+            language.text("当前已是最新版", "You’re Up to Date")
+        case .requiresNewerOS:
+            language.text("新版需要更新系统", "New Version Requires a System Update")
+        default:
+            language.text("检查更新", "Check for Updates")
+        }
+    }
+
+    private func updateMessage(_ outcome: AppStoreUpdate.Outcome) -> String {
+        let installed = AppStoreUpdate.installedVersion ?? ""
+        let version = language.text("当前版本 \(installed)", "Installed version \(installed)")
+        switch outcome {
+        case .upToDate:
+            return version
+        case .available(let release):
+            let notes = release.releaseNotes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !notes.isEmpty else { return version }
+            let summary = notes.count > 240 ? String(notes.prefix(240)) + "…" : notes
+            return version + "\n\n" + summary
+        case .requiresNewerOS(let release):
+            return language.text(
+                "Cubegin \(release.version) 需要 iOS 或 iPadOS \(release.minimumOsVersion) 或更高版本。",
+                "Cubegin \(release.version) requires iOS or iPadOS \(release.minimumOsVersion) or later."
+            )
+        case .unavailable:
+            return language.text(
+                "当前商店地区暂未查到 Cubegin 的正式版本。",
+                "Cubegin is not currently listed in this App Store region."
+            )
+        case .testFlight:
+            return language.text("请在 TestFlight 查看测试版更新。", "Check TestFlight for beta updates.")
+        case .failed:
+            return language.text("暂时无法检查更新，请稍后重试。", "Couldn’t check for updates. Try again later.")
+        }
+    }
+}
+
+private struct ChangelogView: View {
+    @Environment(\.locale) private var locale
+    private var language: AppLanguage { locale.appLanguage }
+
+    private var entries: [String] {
+        let resource = language == .chinese ? "CHANGELOG_ZH" : "CHANGELOG"
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "md"),
+              let markdown = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        // The first block contains the repository title and language link.
+        return markdown.components(separatedBy: "\n## ").dropFirst().map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var body: some View {
+        Form {
+            VStack(alignment: .leading, spacing: 32) {
+                if entries.isEmpty {
+                    Text(language.text("暂时无法读取更新记录。", "Couldn’t load the changelog."))
+                }
+                ForEach(entries, id: \.self) { entry in
+                    let lines = entry.split(separator: "\n")
+                    if let version = lines.first {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(version)
+                                .font(.headline)
+                                .accessibilityAddTraits(.isHeader)
+                            ForEach(Array(lines.dropFirst().enumerated()), id: \.offset) { _, line in
+                                let isBullet = line.hasPrefix("- ")
+                                let content = isBullet ? String(line.dropFirst(2)) : String(line)
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    if isBullet {
+                                        Text("•").accessibilityHidden(true)
+                                    }
+                                    Text((try? AttributedString(markdown: content)) ?? AttributedString(content))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+        .contentMargins(.top, 0, for: .scrollContent)
+        .appBackground()
+        .navigationTitle(language.text("更新记录", "Changelog"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
     }
 }
 

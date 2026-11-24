@@ -12,7 +12,7 @@
 | `docs.yml` | Markdown、模块文档目录和品牌 SVG。验证仓库内文档链接和资源。 |
 | `ci-rules.yml` | Workflow YAML。用 actionlint 验证语法。 |
 
-纯文档改动走文档检查，修改 workflow 后可手动运行受影响的产品检查来验证构建命令或 runner 配置。Rust crate 的测试和诊断示例由 Rust workflow 验证。平台共享样例为 `fixtures/states.json` 和 `fixtures/events.json`。iOS 使用已提交的资源，排除设计参考、素材生成脚本和预览工程。随 App 打包的隐私政策 Markdown 和构建使用的诊断配置脚本会触发 Apple 检查。Android 的 `sdk/android/smoke/` 由独立的本地 Kotlin 冒烟测试使用。
+纯文档改动走文档检查，修改 workflow 后可手动运行受影响的产品检查来验证构建命令或 runner 配置。Rust crate 的测试和诊断示例由 Rust workflow 验证。平台共享样例为 `fixtures/states.json` 和 `fixtures/events.json`。iOS 使用已提交的资源，排除设计参考、素材生成脚本和预览工程。随 App 打包的隐私政策和 iOS 更新记录 Markdown，以及构建使用的诊断配置脚本会触发 Apple 检查。Android 的 `sdk/android/smoke/` 由独立的本地 Kotlin 冒烟测试使用。
 
 合入前确认 PR 最新提交所需检查全部通过。路径筛选可能使无关 workflow 不产生检查结果。GitHub 的路径比较最多覆盖 300 个文件，大型改动若缺少预期检查，手动运行对应 workflow。跟进步骤见 [PR 跟进](pr-follow-up.md)。
 
