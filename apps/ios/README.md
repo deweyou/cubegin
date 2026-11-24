@@ -15,6 +15,8 @@ Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It
 - **Settings** — Choose the app language and theme, adjust the timer start delay, and turn timer haptics on or off.
 - **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.
 
+In **Settings → About**, read the [changelog](CHANGELOG.md) offline or check for App Store updates.
+
 [Development guide](DEVELOPMENT.md) · [GPL-3.0-only](LICENSE)
 
 Optional WCA inspection includes 8- and 12-second voice calls and automatic inspection penalties. Release to enter inspection or start the solve without waiting for the configured hold delay.

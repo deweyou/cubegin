@@ -62,6 +62,41 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAboutShowsChangelogAndAppStoreUpdate() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "zh-Hans", "-cubegin-show-about", "-cubegin-preview-app-update"]
+        app.launch()
+
+        let changelog = app.buttons["settings.about.changelog"]
+        XCTAssertTrue(changelog.waitForExistence(timeout: 20))
+        changelog.tap()
+        let navigation = app.navigationBars["更新记录"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 5))
+        let back = navigation.buttons.firstMatch
+        XCTAssertTrue(back.exists)
+        let version = app.staticTexts["0.1.0"]
+        XCTAssertTrue(version.exists)
+        XCTAssertEqual(version.frame.minX, back.frame.minX, accuracy: 1)
+        XCTAssertTrue(app.staticTexts["支持触屏和实体键盘计时，可开启 WCA 观察并自定义轻扫手势。"].exists)
+        let changelogScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        changelogScreenshot.name = "Changelog content insets"
+        changelogScreenshot.lifetime = .keepAlways
+        add(changelogScreenshot)
+        back.tap()
+
+        app.buttons["settings.about.checkForUpdates"].tap()
+        let alert = app.alerts["Cubegin 0.2.0 已发布"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Improved timer gestures")).firstMatch.exists)
+        XCTAssertTrue(alert.buttons["前往 App Store"].exists)
+        alert.buttons["稍后"].tap()
+        XCTAssertTrue(changelog.isHittable)
+    }
+
+    @MainActor
     func testVersionCopiesHiddenDeviceIDOnFifthTap() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -74,19 +109,23 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
         let version = app.buttons["settings.about.version"]
-        for _ in 0..<4 where !version.isHittable {
+        let privacy = app.buttons["settings.about.privacy"]
+        for _ in 0..<4 where !privacy.isHittable {
             app.swipeUp()
         }
         XCTAssertTrue(version.isHittable)
-        let privacy = app.buttons["settings.about.privacy"]
-        let feedback = app.descendants(matching: .any)["settings.about.feedback"].firstMatch
+        let feedback = app.buttons["settings.about.feedback"]
+        let checkForUpdates = app.buttons["settings.about.checkForUpdates"]
+        let changelog = app.buttons["settings.about.changelog"]
         let importResults = app.buttons["settings.results.import"]
         let clearResults = app.buttons["settings.results.clear"]
         let includeDNF = app.switches["settings.results.includeDNFInWorst"]
-        XCTAssertTrue(privacy.exists && importResults.exists && clearResults.exists && includeDNF.exists)
-        XCTAssertTrue(feedback.exists)
-        XCTAssertLessThan(feedback.frame.midY, privacy.frame.midY)
-        XCTAssertLessThan(privacy.frame.midY, version.frame.midY)
+        XCTAssertTrue(checkForUpdates.exists && changelog.exists && privacy.exists && feedback.exists)
+        XCTAssertTrue(importResults.exists && clearResults.exists && includeDNF.exists)
+        XCTAssertLessThan(checkForUpdates.frame.midY, version.frame.midY)
+        XCTAssertLessThan(version.frame.midY, changelog.frame.midY)
+        XCTAssertLessThan(changelog.frame.midY, privacy.frame.midY)
+        XCTAssertLessThan(privacy.frame.midY, feedback.frame.midY)
         XCTAssertLessThan(importResults.frame.midY, clearResults.frame.midY)
         XCTAssertLessThan(clearResults.frame.midY, includeDNF.frame.midY)
         XCTAssertFalse(app.descendants(matching: .any)["settings.deviceID"].exists)
@@ -532,6 +571,27 @@ final class SolveFlowTests: XCTestCase {
         entry.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertTrue(confirm.isEnabled)
+    }
+
+    @MainActor
+    func testPrivacySharingSwitchIsVisibleOnSimulatorByDefault() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "zh-Hans", "-cubegin-show-about"]
+        app.launch()
+
+        let privacy = app.buttons["settings.about.privacy"]
+        XCTAssertTrue(privacy.waitForExistence(timeout: 20))
+        XCTAssertFalse(app.alerts["帮助改进 Cubegin"].exists)
+        for _ in 0..<4 where !privacy.isHittable {
+            app.swipeUp()
+        }
+        privacy.tap()
+        let sharing = app.switches["settings.telemetry.sharing"]
+        XCTAssertTrue(sharing.waitForExistence(timeout: 5))
+        XCTAssertEqual(sharing.value as? String, "0")
     }
 
     @MainActor

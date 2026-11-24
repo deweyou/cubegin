@@ -42,3 +42,12 @@ See [testing](docs/testing.md) and the [CI rules](../../docs/ci.md).
 - [构建与验证](docs/testing.md)
 - [当前状态与待办](docs/status.md)
 - [打乱项目中英文名称对照](docs/scramble-names.md)
+
+## 版本记录和更新检查
+
+发版时在 [英文更新记录](CHANGELOG.md) 和 [中文更新记录](CHANGELOG_ZH.md) 顶部各增加一个 `## 版本号`，
+每条变化用一行 Markdown 列表项。主工程和预览工程直接打包这两份文件。将本版本条目用于 App Store Connect 的「此版本的新功能」。
+
+「检查更新」按 App Store 地区查询正式版。Lookup 默认使用正式版的 Bundle ID。
+获得 App Store Connect 的数字 Apple ID 后，可通过 Xcode 构建设置 `CUBEGIN_APP_STORE_ID` 指定。
+调试构建可加启动参数 `-cubegin-show-about -cubegin-preview-app-update`，启动时进入设置，再在「关于」用样例验证更新提示。
