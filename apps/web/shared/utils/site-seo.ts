@@ -1,13 +1,14 @@
 export const localizedPaths = {
   home: { 'zh-Hans': '/', en: '/en/' },
   privacy: { 'zh-Hans': '/privacy/', en: '/en/privacy/' },
+  playground: { 'zh-Hans': '/playground/', en: '/en/playground/' },
   feedback: { 'zh-Hans': '/feedback/', en: '/en/feedback/' },
 } as const
 
 export type SitePage = keyof typeof localizedPaths
 export type SiteLanguage = keyof typeof localizedPaths.home
 
-export const indexablePages = ['home', 'privacy'] as const
+export const indexablePages = ['home', 'privacy', 'playground'] as const
 
 export function siteOrigin(value: string) {
   try {

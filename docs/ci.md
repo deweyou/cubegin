@@ -5,7 +5,7 @@
 | Workflow | 触发输入与检查 |
 | --- | --- |
 | `rust.yml` | Cargo 工作区、Rust 测试与示例、打包脚本。运行 `cargo xtask check`、4×4/FTO 解法回放及七个 crate 的独立打包验证。 |
-| `web.yml` | Rust 引擎、WASM 绑定、Web SDK、工作台、浏览器测试及构建输入。运行 `pnpm lint`，验证真实 WASM 和 npm 独立消费，浏览器 E2E 复用构建结果并比较截图。 |
+| `web.yml` | Rust 引擎、WASM 绑定、Web SDK、工作台、浏览器测试及构建输入。运行 `pnpm lint`，验证真实 WASM 和 npm 独立消费，浏览器 E2E 复用 SDK 构建结果生成官网静态产物，在 Playground 路由执行交互并比较截图。 |
 | `apple.yml` | Rust 引擎、原生绑定、Swift SDK、iOS App 源码、资源和测试。运行 SwiftLint，验证 Swift 宿主调用及生成绑定，复用同一份 XCFramework 构建 iOS Release、并行运行两组 iOS 模拟器检查，并验证独立 SwiftPM 消费。 |
 | `android.yml` | Rust 引擎、原生绑定、Android SDK 和 Gradle 消费方。验证 Kotlin 单测、三种 ABI 的 AAR 及独立 Maven 消费。 |
 | `versions.yml` | Cargo 清单、npm 包元数据、Android Gradle 版本和发布计划脚本。验证版本一致性并保留 dry-run 计划。 |

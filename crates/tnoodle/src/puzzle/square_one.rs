@@ -201,7 +201,13 @@ impl SquareOneState {
         y: f64,
         colors: &[Option<Color>; 6],
     ) {
+        // A corner can straddle slots 11 and 0. Start at the next boundary
+        // so the final corner is drawn once, spanning the end of the circle.
         let mut ch = 0;
+        if face[0] == face[11] {
+            transform.rotate_around(30_f64.to_radians(), x, y);
+            ch = 1;
+        }
         while ch < 12 {
             if ch < 11 && face[ch] == face[ch + 1] {
                 ch += 1;
@@ -480,6 +486,18 @@ mod tests {
         let svg = puzzle.solved_state().draw(&puzzle.default_color_scheme());
         assert_eq!((svg.size().width, svg.size().height), (244, 244));
         assert_eq!(svg.to_string().matches("<rect ").count(), 8);
+    }
+
+    #[test]
+    fn draws_corners_across_the_layer_boundary_once() {
+        let puzzle = SquareOnePuzzle;
+        let solved = puzzle.solved_state();
+        for algorithm in ["(-1,0)", "(0,1)", "(-1,1)"] {
+            let state = solved.apply_algorithm(algorithm).unwrap();
+            let svg = state.draw(&puzzle.default_color_scheme()).to_string();
+            // Eight corners have three colored faces, eight edges have two.
+            assert_eq!(svg.matches("<path ").count(), 40, "{algorithm}");
+        }
     }
 
     #[test]

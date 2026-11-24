@@ -13,6 +13,7 @@
 .swiftpm/
 /test-results/
 /playwright-report/
+/.wrangler/
 .DS_Store
 local.properties
 

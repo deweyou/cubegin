@@ -28,9 +28,11 @@ on:
       - 'sdk/web/**'
       - '!sdk/web/**/*.md'
       - '!sdk/web/**/docs/**'
-      - 'examples/web/**'
-      - '!examples/web/**/*.md'
-      - '!examples/web/**/docs/**'
+      - 'apps/web/**'
+      - 'apps/ios/Design/LegacyIcons/brand/svg/**'
+      - 'docs/privacy-policy.md'
+      - 'wrangler.jsonc'
+      - '.github/workflows/web.yml'
       - 'tests/e2e/**'
       - '!tests/e2e/**/*.md'
       - '!tests/e2e/**/docs/**'
@@ -67,9 +69,11 @@ on:
       - 'sdk/web/**'
       - '!sdk/web/**/*.md'
       - '!sdk/web/**/docs/**'
-      - 'examples/web/**'
-      - '!examples/web/**/*.md'
-      - '!examples/web/**/docs/**'
+      - 'apps/web/**'
+      - 'apps/ios/Design/LegacyIcons/brand/svg/**'
+      - 'docs/privacy-policy.md'
+      - 'wrangler.jsonc'
+      - '.github/workflows/web.yml'
       - 'tests/e2e/**'
       - '!tests/e2e/**/*.md'
       - '!tests/e2e/**/docs/**'
@@ -158,7 +162,12 @@ jobs:
           name: web-e2e-input
           path: sdk/web
       - run: pnpm exec playwright install chromium
+      - name: Build the website using the verified SDK
+        run: pnpm --filter @cubegin/web generate
       - name: Browser E2E and screenshot comparisons
+        env:
+          CUBEGIN_TEST_STATIC: '1'
+          WRANGLER_SEND_METRICS: 'false'
         run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -54,7 +54,9 @@ pub use cubegin_scramble::training::{
 };
 pub use cubegin_solver::assist::{AssistOptions, AssistResult, METHODS, solve_assist};
 
-pub use cubegin_playback::player::{player_frame, player_svg, player_timeline};
+pub use cubegin_playback::player::{
+    CameraOffset, player_frame, player_svg, player_svg_with_camera, player_timeline,
+};
 pub use cubegin_solver::fmc::validate_fmc;
 
 /// Generates a bounded batch without repeating normalized puzzle states.

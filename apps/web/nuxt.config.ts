@@ -28,6 +28,7 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: { exclude: ['cubegin'] },
   },
   nitro: {
     prerender: { failOnError: true },
@@ -38,7 +39,7 @@ export default defineNuxtConfig({
 
       config.prerender ??= {}
       config.prerender.routes ??= []
-      config.prerender.routes.push('/', '/en', '/privacy', '/en/privacy', '/feedback', '/en/feedback', '/robots.txt')
+      config.prerender.routes.push('/', '/en', '/privacy', '/en/privacy', '/feedback', '/en/feedback', '/playground', '/en/playground', '/robots.txt')
     },
   },
 })

@@ -3,7 +3,7 @@
 ## 开发
 
 需要 Rust 1.96.0、Node >=22.12 和 pnpm 10。Rust 构建由 Cargo 编排，
-Vite 用于启动诊断 Web 工作台。
+SDK Playground 和官网共用 Nuxt 开发服务。
 
 ```sh
 cargo xtask check
@@ -18,8 +18,11 @@ pnpm test:e2e
 pnpm dev
 ```
 
-Web 工作台地址：http://127.0.0.1:4488。首页直接提供全部标准项目、训练类型／案例选择、
-辅助求解方法，以及共享的展开图、动画播放和进度拖动。
+SDK Playground 位于 <http://127.0.0.1:4489/playground/>，英文版为 `/en/playground/`。
+
+两种语言使用相同的查询参数。标签页通过 `mode=standard|training|assist` 切换，省略时打开标准打乱。切换标签会新增浏览历史。修改表单、生成打乱、选择解法、调整播放速度或改变回放步数，会更新当前地址。「复制配置链接」保存当前模式和表单选项，训练案例使用可重复的 `case` 参数。「复制回放链接」还保存回放项目 `event`、完整公式 `alg` 和已完成步数 `step`。例如 `/playground/?event=333&alg=R+U&step=1` 会在完成 R 后暂停。辅助求解的输入公式单独存为 `input`。
+页面使用 Web SDK 公开接口，提供标准打乱、训练案例、辅助求解、展开图和动画。按住动画上的鼠标左键拖动可旋转观察视角。
+Playwright 本地测试使用 Nuxt 开发服务，CI 使用同一提交生成的官网静态产物。
 
 ```sh
 node scripts/verify-legacy.mjs # 可选：调用旧实现做独立语义校验
@@ -39,17 +42,20 @@ cargo xtask release --version 0.1.0 --dry-run
 ```sh
 pnpm --filter @cubegin/web dev
 pnpm --filter @cubegin/web check
-pnpm --filter @cubegin/web generate
+pnpm build:site
 ```
+
+`pnpm build:site` 先构建 Web SDK 的绑定和 WASM，再生成官网静态文件。
+已生成同一提交的 SDK 产物时，可直接运行 `pnpm --filter @cubegin/web generate`。
 
 静态部署目录为 `apps/web/.output/public`。如需按请求 SSR，运行
 `pnpm --filter @cubegin/web build`，再启动 `node apps/web/.output/server/index.mjs`。
 两种构建都从仓库根目录下的[隐私政策](docs/privacy-policy.md)生成正文。
 iOS 也将同一份文件打包进 App，供离线查看。
-网页使用的 shadcn-vue 组件按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。
+网页使用的 shadcn-vue 组件按 [MIT 许可](apps/web/LICENSE.shadcn-vue) 引入。Playground 的标签页、选择器、滑块等来自 [shadcn-vue New York v4 registry](https://github.com/unovue/shadcn-vue/tree/d2684d8/apps/v4/registry/new-york-v4/ui)，并沿用站点的主题变量。
 
 正式官网设置 `NUXT_PUBLIC_SITE_URL` 为根域名，例如 `https://example.com`。静态站在构建前设置，SSR 在运行时设置。
-该值用于生成 canonical、语言互链、分享图绝对地址和 `/sitemap.xml`。网站地图包含中英文首页及隐私政策。
+该值用于生成 canonical、语言互链、分享图绝对地址和 `/sitemap.xml`。网站地图包含中英文首页、Playground 和隐私政策。
 未配置正式域名时省略这些绝对地址，`robots.txt` 也省略网站地图声明。
 
 官网的 `robots.txt` 允许搜索引擎抓取公开页面，限制已知的训练爬虫及 `/api/`。
@@ -59,9 +65,18 @@ iOS 也将同一份文件打包进 App，供离线查看。
 
 Cloudflare Workers Static Assets 使用根目录的 `wrangler.jsonc`。连接 GitHub 时，Worker
 名称填 `cubegin-web`，生产分支填 `main`，构建根目录保留为仓库根目录，不要改为
-`apps/web`。构建命令用 `pnpm --filter @cubegin/web generate`，部署命令用
-`pnpm exec wrangler deploy`。预览命令不要使用生产部署命令。部署后直接访问 `/` 和 `/en`，确认首页正常渲染，再核对
-`/privacy`、`/en/privacy`、`/feedback` 和 `/en/feedback`。
+`apps/web`。构建环境需按仓库的版本锁定安装 Rust、WASM target 和 `wasm-bindgen-cli`。Cloudflare Workers Builds 可用以下构建命令。
+
+```sh
+set -e
+curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+. "$HOME/.cargo/env"
+cargo install wasm-bindgen-cli --version 0.2.126 --locked
+pnpm build:site
+```
+
+如果环境已有对应工具链，直接运行 `pnpm build:site`。部署命令为 `pnpm exec wrangler deploy`。
+使用预览环境验收首页、两种语言的 Playground、隐私政策和反馈页。
 
 ### 反馈与评价
 
@@ -69,7 +84,8 @@ App 原生反馈页和官网的 `/feedback`、`/en/feedback` 共用 Cloudflare W
 `POST /api/feedback`。两个客户端都接受去掉首尾空白后 1 至 200 个 UTF-16 单元的正文、
 选填邮箱和最多三张截图。网页会在当前浏览器记住上一次成功提交的邮箱，清空邮箱时删除它。
 客户端会将截图转换为 JPEG，每张最多 1,000,000 字节。Worker 也接受 PNG，将截图作为邮件
-附件发送。邮件正文末尾注明来源；iOS 另附硬件型号、系统与 App 版本、安装 ID 和已有的用户 ID。官网可以静态部署，App Store Support URL 指向对应语言的反馈页。
+附件发送。邮件正文末尾注明来源；iOS 另附硬件型号、系统与 App 版本、安装 ID 和已有的用户 ID。
+官网页脚居中提供 GitHub 仓库和邮件联系入口，App Store Support URL 可填对应语言的首页。
 
 本地启动 Worker 和官网，对测试收件箱的发信由 Wrangler 模拟。
 
@@ -222,7 +238,7 @@ println(scramble.algorithm)
 
 SDK 中的生成、求解等计算是同步接口，原生产品负责移出 UI 线程；Web 可使用
 `cubegin/worker` 的 `createWorkerClient`。各端均提供 `playerTimeline`、`playerFrame`、
-`playerSvg` 动画接口。Web 工作台已有播放器；原生 UI 组件与真机渲染验收仍需另行完成。
+`playerSvg` 动画接口。SDK Playground 已有播放器；原生 UI 组件与真机渲染验收仍需另行完成。
 
 详见[SDK 示例](docs/sdk.md)、[架构](docs/architecture.md)、[验证](docs/testing.md)、
 [来源](docs/provenance.md)和[交付状态](docs/status.md)。
