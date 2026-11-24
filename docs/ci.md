@@ -30,10 +30,15 @@ iOS Release 和 SDK 打包直接使用 Apple SDK 构建产物，可与测试构�
 Actions 的实测用例耗时，把需要分流的 `SolveFlowTests` 用例移入 A 组清单。iPad 和
 Duo 用例保留原有设备检查，在 iPhone CI 中按原条件跳过。
 
-初始分组使用[历史模拟器日志](https://github.com/deweyou/cubegin/actions/runs/44268378106/job/134679831430)
-的 18 条通过用例耗时，并以本地实测估算两条新增庆祝用例。手动录入、横屏页面边缘等用例
-归入 A 组。计时手势、清空成绩、横屏成绩等用例归入 B 组。A 组用例预计约 5 分 48 秒，
-B 组算上单测和设备跳过约 5 分 47 秒。这些估算只覆盖测试执行。
+2026-11-24 按最近五次成功的 Apple workflow 调整分组。取每条用例在可用样本中的中位耗时，
+再加上各组测试步骤中其余时间的中位数，计入 B 组的单测开销。计时手势和清空成绩两条
+用例的中位耗时分别为 80 秒和 76 秒，已从 B 组移入 A 组。按此模型估算，
+A、B 两组的测试步骤各约 13 分钟，不含构建、runner 排队及模拟器启动。
+[最近一次采样](https://github.com/deweyou/cubegin/actions/runs/45319945829)
+
+横屏项目选择器用例五次的中位耗时为 29 秒。在[一次 577 秒的运行](https://github.com/deweyou/cubegin/actions/runs/45056566569/job/137315458118)中，
+XCTest 在点击、拖动和恢复竖屏时共九次等待动画完成通知超时，每次约 60 秒。
+排查类似异常时，先对照单条用例内的时间戳和 XCTest 的空闲等待日志。
 
 失败时在 GitHub Actions 单独重跑对应 job。每组上传 `app-test-results-simulator-a`
 或 `app-test-results-simulator-b`，包含各自的 `.xcresult`。比较吞吐量时，分别记录

@@ -822,7 +822,7 @@ final class SolveFlowTests: XCTestCase {
     @MainActor
     func testLandscapeResultsKeepPickersFixedWhileScrolling() {
         continueAfterFailure = false
-        XCUIDevice.shared.orientation = .landscapeLeft
+        XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
 
         let app = XCUIApplication()
@@ -831,10 +831,14 @@ final class SolveFlowTests: XCTestCase {
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
         app.launch()
 
-        let results = app.buttons["side-nav.results"]
+        let results = app.tabBars.buttons["Results"]
         XCTAssertTrue(results.waitForExistence(timeout: 20))
         results.tap()
         let viewPicker = app.buttons["results.view"]
+        XCTAssertTrue(viewPicker.waitForExistence(timeout: 5))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(app.buttons["side-nav.home"].waitForExistence(timeout: 10))
+        XCTAssertTrue(viewPicker.wait(for: \.isHittable, toEqual: true, timeout: 5))
         viewPicker.tap()
         app.buttons["Statistics"].tap()
 
