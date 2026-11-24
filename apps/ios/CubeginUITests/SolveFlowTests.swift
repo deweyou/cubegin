@@ -409,7 +409,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         XCTAssertEqual(toggle.value as? String, "0")
         XCTAssertEqual(toggle.label, "iCloud 同步")
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        tapSyncToggle(toggle)
         let error = app.staticTexts["settings.sync.cloudSyncError"]
         let retry = app.buttons["settings.sync.refresh"]
         let syncing = app.staticTexts["settings.sync.inProgress"]
@@ -425,7 +425,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(retry.exists)
         captureScreen("Settings — iCloud syncing")
         XCTAssertTrue(error.waitForExistence(timeout: 5))
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        tapSyncToggle(toggle)
         XCTAssertFalse(error.exists)
     }
 
@@ -435,7 +435,7 @@ final class SolveFlowTests: XCTestCase {
         let app = openSyncPreview("--preview-icloud-success")
         let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        tapSyncToggle(toggle)
 
         let lastSync = app.staticTexts["settings.sync.lastCloudSync"]
         let refresh = app.buttons["settings.sync.refresh"]
@@ -455,7 +455,7 @@ final class SolveFlowTests: XCTestCase {
         let normal = openSyncPreview("--preview-icloud-account-error", language: "en")
         let normalToggle = normal.switches["settings.sync.icloudSync"]
         XCTAssertTrue(normalToggle.waitForExistence(timeout: 5))
-        normalToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        tapSyncToggle(normalToggle)
         let normalError = normal.staticTexts["settings.sync.cloudSyncError"]
         XCTAssertTrue(normalError.waitForExistence(timeout: 5))
         let normalToggleHeight = normalToggle.frame.height
@@ -465,7 +465,7 @@ final class SolveFlowTests: XCTestCase {
         let app = openSyncPreview("--preview-icloud-account-error", language: "en", largeText: true)
         let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        tapSyncToggle(toggle)
         let error = app.staticTexts["settings.sync.cloudSyncError"]
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         let refresh = app.buttons["settings.sync.refresh"]
@@ -474,6 +474,13 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertGreaterThan(error.frame.height, 20)
         XCTAssertEqual(refresh.frame.midY, error.frame.minY + 8, accuracy: 2)
         captureScreen("Settings — iCloud multiline error")
+    }
+
+    @MainActor
+    private func tapSyncToggle(_ toggle: XCUIElement) {
+        // The accessibility frame covers the card. Tap inside the trailing switch.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: -48, dy: 0)).tap()
     }
 
     @MainActor

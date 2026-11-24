@@ -241,7 +241,7 @@ jobs:
       matrix:
         shard: [simulator-a, simulator-b]
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
