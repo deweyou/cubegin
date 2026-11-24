@@ -1257,7 +1257,7 @@ final class SolveFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
+        app.launchArguments += ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333"]
 
         for (orientation, cutout) in [(UIDeviceOrientation.landscapeLeft, "left"), (.landscapeRight, "right")] {
             XCUIDevice.shared.orientation = orientation
@@ -1270,8 +1270,8 @@ final class SolveFlowTests: XCTestCase {
             XCTAssertTrue(home.waitForExistence(timeout: 10))
             home.tap()
             XCTAssertTrue(event.waitForExistence(timeout: 10))
+            XCTAssertTrue(hints.waitForExistence(timeout: 20))
             let leading = event.frame.minX
-            XCTAssertTrue(hints.exists)
             let trailing = hints.frame.maxX
             XCTAssertGreaterThanOrEqual(leading - app.frame.minX, 42)
             XCTAssertEqual(settings.frame.minX - trailing, 20, accuracy: 2) // Includes the capsule's 4pt inset.
