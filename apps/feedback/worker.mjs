@@ -1,10 +1,10 @@
+import { feedbackText, uuidPattern } from './feedback-text.mjs'
 export { FeedbackDeliveryLimit } from './delivery-limit.mjs'
 
 const maxImages = 3
 const maxImageBytes = 1_000_000
 const maxTextBytes = 28_000
 const emailPattern = /^[^\s@<>,;\p{Cc}]+@[^\s@<>,;\p{Cc}]+\.[^\s@<>,;\p{Cc}]+$/u
-const uuidPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
 
 function reply(status, headers, code, retryAfter) {
   return Response.json(code ? { code } : { sent: true }, {
@@ -34,6 +34,8 @@ async function feedbackFields(request, contentType) {
   if (multipart) {
     const data = await body.formData()
     return {
+      ...Object.fromEntries(['source', 'deviceModel', 'systemVersion', 'appVersion', 'deviceId', 'userId']
+        .map(key => [key, data.get(key)])),
       message: data.get('message'),
       email: data.get('email'),
       requestId: data.get('requestId'),
@@ -133,7 +135,8 @@ export default {
       attachments = await Promise.all(images.map(async ({ file, type }, index) => ({
         filename: `screenshot-${index + 1}.${type === 'image/png' ? 'png' : 'jpg'}`,
         type,
-        content: new Uint8Array(await file.arrayBuffer()).toBase64(),
+        // The email binding encodes binary attachments for MIME.
+        content: await file.arrayBuffer(),
         disposition: 'attachment',
       })))
     } catch {
@@ -146,7 +149,7 @@ export default {
         from: env.FEEDBACK_FROM,
         to: env.FEEDBACK_TO,
         subject: 'Cubegin feedback',
-        text: message,
+        text: feedbackText(message, fields, origin),
         ...(email ? { replyTo: email } : {}),
         attachments,
       })
