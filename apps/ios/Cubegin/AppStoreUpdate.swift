@@ -35,7 +35,7 @@ enum AppStoreUpdate {
            let url = URL(string: "https://apps.apple.com/") {
             return .available(Release(
                 bundleId: bundleID,
-                version: "0.2.0",
+                version: "1.1.0",
                 minimumOsVersion: "26.0",
                 releaseNotes: "Improved timer gestures and added more options for importing results.",
                 trackViewUrl: url

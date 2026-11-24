@@ -83,7 +83,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(navigation.waitForExistence(timeout: 5))
         let back = navigation.buttons.firstMatch
         XCTAssertTrue(back.exists)
-        let version = app.staticTexts["0.1.0"]
+        let version = app.staticTexts["1.0.0"]
         XCTAssertTrue(version.exists)
         XCTAssertEqual(version.frame.minX, back.frame.minX, accuracy: 1)
         XCTAssertTrue(app.staticTexts["支持触屏和实体键盘计时，可开启 WCA 观察并自定义轻扫手势。"].exists)
@@ -94,7 +94,7 @@ final class SolveFlowTests: XCTestCase {
         back.tap()
 
         app.buttons["settings.about.checkForUpdates"].tap()
-        let alert = app.alerts["Cubegin 0.2.0 已发布"]
+        let alert = app.alerts["Cubegin 1.1.0 已发布"]
         XCTAssertTrue(alert.waitForExistence(timeout: 5))
         XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Improved timer gestures")).firstMatch.exists)
         XCTAssertTrue(alert.buttons["前往 App Store"].exists)
