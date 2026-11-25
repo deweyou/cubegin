@@ -5,6 +5,25 @@ import UIKit
 import WebKit
 @testable import CubeginApp
 
+@MainActor
+struct DuoTimerLayoutTests {
+    @Test func usesTheActiveHorizontalFold() {
+        let fold = CGRect(x: 0, y: 432, width: 669, height: 32)
+
+        #expect(ContentView.horizontalFold(in: [fold], pageHeight: 900) == fold)
+    }
+
+    @Test func onlyUsesDivisionsThatSplitThePageHorizontally() {
+        let verticalFold = CGRect(x: 324, y: 0, width: 24, height: 900)
+        let offscreenFold = CGRect(x: 0, y: 884, width: 669, height: 32)
+        let horizontalFold = CGRect(x: 0, y: 432, width: 669, height: 32)
+
+        #expect(ContentView.horizontalFold(in: [], pageHeight: 900) == nil)
+        #expect(ContentView.horizontalFold(in: [verticalFold, offscreenFold], pageHeight: 900) == nil)
+        #expect(ContentView.horizontalFold(in: [verticalFold, horizontalFold], pageHeight: 900) == horizontalFold)
+    }
+}
+
 struct AppLanguageTests {
     @Test func followsPreferredSystemLanguagesUnlessTheUserChoosesOne() {
         #expect(AppLanguage.resolve(nil, preferredLanguages: ["zh-Hant-TW", "en"]) == .chinese)

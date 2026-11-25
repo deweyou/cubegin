@@ -294,7 +294,7 @@ struct ContentView: View {
             } else {
                 frame
             }
-            let fold = isDuoInnerDisplay && !isLandscape ? horizontalFold(in: geometry) : nil
+            let fold = isPhone && !isLandscape ? horizontalFold(in: geometry) : nil
             let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
             Group {
                 if let fold {
@@ -369,13 +369,18 @@ struct ContentView: View {
     private func horizontalFold(in geometry: GeometryProxy) -> CGRect? {
         // The iOS 26 SDK does not declare SwiftUI's reserved region API.
 #if compiler(>=6.4)
-        if #available(iOS 27.1, *),
-           let fold = geometry.reservedRegions(kind: .division).first?.frame,
-           fold.width > fold.height, fold.minY > 0, fold.maxY < geometry.size.height {
-            return fold
+        if #available(iOS 27.1, *) {
+            return Self.horizontalFold(in: geometry.reservedRegions(kind: .division).map(\.frame),
+                                       pageHeight: geometry.size.height)
         }
 #endif
         return nil
+    }
+
+    static func horizontalFold(in divisions: [CGRect], pageHeight: CGFloat) -> CGRect? {
+        divisions.first { fold in
+            !fold.isEmpty && fold.width > fold.height && fold.minY > 0 && fold.maxY < pageHeight
+        }
     }
 
     private func foldedPortraitPage(frame: CGRect, fold: CGRect) -> some View {
