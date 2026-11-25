@@ -81,9 +81,15 @@ enum CloudSyncFailure: String, Error {
     }
 }
 
+typealias SyncBatchResults = [UUID: Result<SyncRecord, any Error>]
+
+enum SyncBatchFailure: Error {
+    case invalidRecord
+}
+
 protocol SyncTransport: Sendable {
     func fetch() async throws -> [SyncRecord]
-    func merge(_ record: SyncRecord) async throws -> SyncRecord
+    func merge(_ records: [SyncRecord]) async throws -> SyncBatchResults
 }
 
 protocol ResultsCloudTransport: SyncTransport {
@@ -132,7 +138,7 @@ extension CloudKitResultsTransport {
         if arguments.contains("--preview-icloud-error") { return PreviewCloudResultsTransport(failure: .network) }
         if arguments.contains("--preview-icloud-account-error") { return PreviewCloudResultsTransport(failure: .accountChanged) }
         if arguments.contains("--preview-icloud-upload") {
-            return PreviewCloudResultsTransport(failure: nil, uploadDelay: .seconds(2))
+            return PreviewCloudResultsTransport(failure: nil, uploadDelay: .seconds(4))
         }
         if arguments.contains("--preview-icloud-success") { return PreviewCloudResultsTransport(failure: nil) }
         return nil
@@ -154,9 +160,9 @@ private struct PreviewCloudResultsTransport: ResultsCloudTransport {
         return []
     }
 
-    func merge(_ record: SyncRecord) async throws -> SyncRecord {
+    func merge(_ records: [SyncRecord]) async throws -> SyncBatchResults {
         if uploadDelay > .zero { try await Task.sleep(for: uploadDelay) }
-        return record
+        return Dictionary(uniqueKeysWithValues: records.map { ($0.id, .success($0)) })
     }
 }
 
@@ -176,11 +182,15 @@ private actor LateResultsPreviewCloudTransport: ResultsCloudTransport {
         return [SyncRecord(id: solve.id, revision: 1, replicaID: replicaID, solve: solve)]
     }
 
-    func merge(_ record: SyncRecord) async throws -> SyncRecord { record }
+    func merge(_ records: [SyncRecord]) -> SyncBatchResults {
+        Dictionary(uniqueKeysWithValues: records.map { ($0.id, .success($0)) })
+    }
 }
 #endif
 
 struct ResultsSyncReplica: Sendable {
+    private static let uploadBatchSize = 100
+
     struct State: Codable, Sendable {
         let replicaID: UUID
         var records: [UUID: SyncRecord] = [:]
@@ -376,12 +386,43 @@ struct ResultsSyncReplica: Sendable {
         try persist(next)
         let pending = next.records.values.filter { $0.wins(over: remoteByID[$0.id]) }
         if !pending.isEmpty { await onUploadProgress?(0, pending.count) }
-        for (index, record) in pending.enumerated() {
+        var completed = 0
+        for start in stride(from: 0, to: pending.count, by: Self.uploadBatchSize) {
             try Task.checkCancellation()
-            try apply(try await transport.merge(record))
-            await onUploadProgress?(index + 1, pending.count)
+            let batch = pending[start..<min(start + Self.uploadBatchSize, pending.count)]
+            let results = try await transport.merge(Array(batch))
+            try Task.checkCancellation()
+            let (processed, failure) = try applyBatch(results, for: batch)
+            if processed > 0 {
+                completed += processed
+                await onUploadProgress?(completed, pending.count)
+            }
+            if let failure { throw failure }
         }
         return remote.count
+    }
+
+    private mutating func applyBatch(_ results: SyncBatchResults, for batch: ArraySlice<SyncRecord>) throws -> (Int, (any Error)?) {
+        var next = state
+        var changed = false
+        var processed = 0
+        var firstFailure: (any Error)?
+        for candidate in batch {
+            do {
+                guard let result = results[candidate.id] else { throw SyncBatchFailure.invalidRecord }
+                let record = try result.get()
+                guard record.id == candidate.id else { throw SyncBatchFailure.invalidRecord }
+                if record.wins(over: next.records[record.id]) {
+                    next.records[record.id] = record
+                    changed = true
+                }
+                processed += 1
+            } catch {
+                firstFailure = firstFailure ?? error
+            }
+        }
+        if changed { try persist(next) }
+        return (processed, firstFailure)
     }
 
     private mutating func apply(_ record: SyncRecord) throws {
@@ -457,7 +498,6 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
     }
 
     enum Failure: Error {
-        case invalidRecord
         case unexpectedServerDeletion
     }
 
@@ -498,45 +538,119 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
         }
     }
 
-    func merge(_ candidate: SyncRecord) async throws -> SyncRecord {
-        let zone = candidate.metadata == nil ? zoneID : metadataZoneID
-        let id = CKRecord.ID(recordName: candidate.id.uuidString, zoneID: zone)
-        for attempt in 0..<3 {
-            try Task.checkCancellation()
-            let record: CKRecord
-            do {
-                let fetched = try await database.record(for: id)
-                let existing = try decode(fetched)
-                guard candidate.wins(over: existing) else { return existing }
-                record = fetched
-            } catch let error as CKError where error.code == .unknownItem {
-                record = CKRecord(recordType: recordType, recordID: id)
-            }
-            try await verifyAccount()
-            record["payload"] = try JSONEncoder().encode(candidate) as NSData
-            do {
-                let result = try await database.modifyRecords(
-                    saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false
-                )
-                guard let saved = result.saveResults[id] else { throw Failure.invalidRecord }
-                return try decode(saved.get())
-            } catch let error as CKError where error.code == .serverRecordChanged && attempt < 2 {
-                continue
-            }
-        }
-        throw Failure.invalidRecord
+    func merge(_ records: [SyncRecord]) async throws -> SyncBatchResults {
+        let database = database
+        let writer = CloudKitResultsBatchWriter(
+            recordType: recordType,
+            fetchRecords: { ids in
+                try await self.verifyAccount()
+                return try await database.records(for: ids)
+            },
+            saveRecords: { records in
+                try await self.verifyAccount()
+                return try await database.modifyRecords(
+                    saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false
+                ).saveResults
+            },
+            decode: { try self.decode($0) }
+        )
+        let candidates = Dictionary(uniqueKeysWithValues: records.map { record in
+            let zone = record.metadata == nil ? zoneID : metadataZoneID
+            return (CKRecord.ID(recordName: record.id.uuidString, zoneID: zone), record)
+        })
+        return try await writer.merge(candidates)
     }
 
-    private func decode(_ record: CKRecord) throws -> SyncRecord {
+    private nonisolated func decode(_ record: CKRecord) throws -> SyncRecord {
         guard record.recordType == recordType, let data = record["payload"] as? Data else {
-            throw Failure.invalidRecord
+            throw SyncBatchFailure.invalidRecord
         }
         let value = try JSONDecoder().decode(SyncRecord.self, from: data)
         guard value.id.uuidString == record.recordID.recordName,
               value.solve.map({ $0.id == value.id }) ?? true,
               (record.recordID.zoneID == metadataZoneID) == (value.metadata != nil),
               value.metadata.map({ $0.id == value.id && value.solve == nil }) ?? true
-        else { throw Failure.invalidRecord }
+        else { throw SyncBatchFailure.invalidRecord }
         return value
+    }
+}
+
+struct CloudKitResultsBatchWriter: Sendable {
+    typealias RecordResults = [CKRecord.ID: Result<CKRecord, any Error>]
+
+    let recordType: String
+    let fetchRecords: @Sendable ([CKRecord.ID]) async throws -> RecordResults
+    let saveRecords: @Sendable ([CKRecord]) async throws -> RecordResults
+    let decode: @Sendable (CKRecord) throws -> SyncRecord
+
+    func merge(_ candidates: [CKRecord.ID: SyncRecord]) async throws -> SyncBatchResults {
+        var pending = candidates
+        var results: SyncBatchResults = [:]
+        for attempt in 1...3 {
+            guard !pending.isEmpty else { break }
+            let fetched = try await request(Array(pending.keys), using: fetchRecords)
+            let prepared = prepareSaves(pending, fetched: fetched, results: &results)
+            let saved = try await request(Array(prepared.keys)) { ids in
+                try await saveRecords(ids.compactMap { prepared[$0] })
+            }
+            var conflicts: [CKRecord.ID: SyncRecord] = [:]
+            for (id, candidate) in pending where prepared[id] != nil {
+                let outcome = saved[id] ?? .failure(SyncBatchFailure.invalidRecord)
+                if case .failure(let error as CKError) = outcome, error.code == .serverRecordChanged, attempt < 3 {
+                    conflicts[id] = candidate
+                } else {
+                    results[candidate.id] = outcome.flatMap { record in Result { try decode(record) } }
+                }
+            }
+            pending = conflicts
+        }
+        return results
+    }
+
+    private func prepareSaves(_ candidates: [CKRecord.ID: SyncRecord], fetched: RecordResults,
+                              results: inout SyncBatchResults) -> [CKRecord.ID: CKRecord] {
+        var prepared: [CKRecord.ID: CKRecord] = [:]
+        for (id, candidate) in candidates {
+            do {
+                guard let lookup = fetched[id] else { throw SyncBatchFailure.invalidRecord }
+                let record: CKRecord
+                switch lookup {
+                case .success(let existing):
+                    let remote = try decode(existing)
+                    guard candidate.wins(over: remote) else {
+                        results[candidate.id] = .success(remote)
+                        continue
+                    }
+                    record = existing
+                case .failure(let error as CKError) where error.code == .unknownItem:
+                    record = CKRecord(recordType: recordType, recordID: id)
+                case .failure(let error):
+                    throw error
+                }
+                record["payload"] = try JSONEncoder().encode(candidate) as NSData
+                prepared[id] = record
+            } catch {
+                results[candidate.id] = .failure(error)
+            }
+        }
+        return prepared
+    }
+
+    private func request(_ ids: [CKRecord.ID], using operation: ([CKRecord.ID]) async throws -> RecordResults) async throws -> RecordResults {
+        try Task.checkCancellation()
+        guard !ids.isEmpty else { return [:] }
+        do {
+            let results = try await operation(ids)
+            try Task.checkCancellation()
+            return results
+        } catch let error as CKError where error.code == .limitExceeded && ids.count > 1 {
+            let middle = ids.count / 2
+            let first = try await request(Array(ids[..<middle]), using: operation)
+            let second = try await request(Array(ids[middle...]), using: operation)
+            return first.merging(second) { first, _ in first }
+        } catch {
+            try Task.checkCancellation()
+            return Dictionary(uniqueKeysWithValues: ids.map { ($0, .failure(error)) })
+        }
     }
 }

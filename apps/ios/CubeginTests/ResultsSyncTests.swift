@@ -55,6 +55,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
     private var account = "original"
     private var writesUntilFailure: Int?
     private var accountCheckFailure: AccountCheckFailure?
+    private(set) var batchSizes: [Int] = []
 
     func switchAccount() { account = "different" }
     func accountID() throws -> String {
@@ -79,7 +80,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
         return Array(records.values)
     }
 
-    func merge(_ record: SyncRecord) throws -> SyncRecord {
+    private func merge(_ record: SyncRecord) throws -> SyncRecord {
         guard online else { throw Failure.offline }
         if let count = writesUntilFailure {
             guard count > 0 else { throw Failure.interrupted }
@@ -90,6 +91,114 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
         if accountCheckFailure == .afterUpload { accountCheckFailure = .nextCheck }
         return record
     }
+
+    func merge(_ batch: [SyncRecord]) -> SyncBatchResults {
+        batchSizes.append(batch.count)
+        return Dictionary(uniqueKeysWithValues: batch.map { record in
+            (record.id, Result { try merge(record) })
+        })
+    }
+}
+
+private actor SyntheticCloudKitBatch {
+    private let maximumRequestSize: Int
+    private let rejected: Set<CKRecord.ID>
+    private var concurrentWrites: [CKRecord.ID: SyncRecord]
+    private var stored: [CKRecord.ID: Data] = [:]
+    private(set) var fetches: [[CKRecord.ID]] = []
+    private(set) var saves: [[CKRecord.ID]] = []
+
+    init(maximumRequestSize: Int = 100, concurrentWrites: [CKRecord.ID: SyncRecord] = [:], rejected: Set<CKRecord.ID> = []) {
+        self.maximumRequestSize = maximumRequestSize
+        self.concurrentWrites = concurrentWrites
+        self.rejected = rejected
+    }
+
+    nonisolated func writer() -> CloudKitResultsBatchWriter {
+        CloudKitResultsBatchWriter(recordType: "CubeginResult", fetchRecords: { try await self.fetch($0) },
+                                   saveRecords: { try await self.save($0) }, decode: { record in
+            guard let payload = record["payload"] as? Data else { throw SyncBatchFailure.invalidRecord }
+            return try JSONDecoder().decode(SyncRecord.self, from: payload)
+        })
+    }
+
+    private func fetch(_ ids: [CKRecord.ID]) throws -> CloudKitResultsBatchWriter.RecordResults {
+        fetches.append(ids)
+        guard ids.count <= maximumRequestSize else { throw CKError(.limitExceeded) }
+        return Dictionary(uniqueKeysWithValues: ids.map { id in
+            guard let payload = stored[id] else { return (id, .failure(CKError(.unknownItem))) }
+            let record = CKRecord(recordType: "CubeginResult", recordID: id)
+            record["payload"] = payload as NSData
+            return (id, .success(record))
+        })
+    }
+
+    private func save(_ batch: [CKRecord]) throws -> CloudKitResultsBatchWriter.RecordResults {
+        saves.append(batch.map(\.recordID))
+        guard batch.count <= maximumRequestSize else { throw CKError(.limitExceeded) }
+        return Dictionary(uniqueKeysWithValues: batch.map { record in
+            (record.recordID, Result { try save(record) })
+        })
+    }
+
+    private func save(_ record: CKRecord) throws -> CKRecord {
+        let id = record.recordID
+        if let concurrent = concurrentWrites.removeValue(forKey: id) {
+            stored[id] = try JSONEncoder().encode(concurrent)
+            throw CKError(.serverRecordChanged)
+        }
+        guard !rejected.contains(id) else { throw CKError(.quotaExceeded) }
+        stored[id] = record["payload"] as? Data
+        return record
+    }
+}
+
+struct CloudKitResultsBatchWriterTests {
+    @Test func retriesConflictsWithoutResendingSuccessfulRecords() async throws {
+        let deleted = candidate()
+        let stillLocal = candidate()
+        let accepted = candidate()
+        let rejected = candidate()
+        let tombstone = SyncRecord(id: deleted.id, revision: 1, replicaID: UUID(), solve: nil)
+        let older = SyncRecord(id: stillLocal.id, revision: 1, replicaID: UUID(), solve: stillLocal.solve)
+        let ids = [deleted, stillLocal, accepted, rejected].map(recordID)
+        let cloud = SyntheticCloudKitBatch(concurrentWrites: [ids[0]: tombstone, ids[1]: older], rejected: [ids[3]])
+
+        let candidates = Dictionary(uniqueKeysWithValues: zip(ids, [deleted, stillLocal, accepted, rejected]))
+        let results = try await cloud.writer().merge(candidates)
+
+        let fetches = await cloud.fetches.map(Set.init)
+        let saves = await cloud.saves.map(Set.init)
+        #expect(fetches == [Set(ids), [ids[0], ids[1]]])
+        #expect(saves == [Set(ids), [ids[1]]])
+        #expect(try results[deleted.id]?.get() == tombstone)
+        #expect(try results[stillLocal.id]?.get() == stillLocal)
+        #expect(try results[accepted.id]?.get() == accepted)
+        #expect(throws: CKError(.quotaExceeded)) { try results[rejected.id]?.get() }
+    }
+
+    @Test func splitsOversizeFetchesAndSaves() async throws {
+        let candidates = (0..<3).map { _ in candidate() }
+        let cloud = SyntheticCloudKitBatch(maximumRequestSize: 2)
+        let records = Dictionary(uniqueKeysWithValues: candidates.map { (recordID($0), $0) })
+
+        let results = try await cloud.writer().merge(records)
+
+        #expect(await cloud.fetches.map(\.count) == [3, 1, 2])
+        #expect(await cloud.saves.map(\.count) == [3, 1, 2])
+        for candidate in candidates {
+            #expect(try results[candidate.id]?.get() == candidate)
+        }
+    }
+
+    private func candidate() -> SyncRecord {
+        let solve = Solve(seconds: 12, event: "333", scramble: "R U")
+        return SyncRecord(id: solve.id, revision: 2, replicaID: UUID(), solve: solve)
+    }
+
+    private func recordID(_ record: SyncRecord) -> CKRecord.ID {
+        CKRecord.ID(recordName: record.id.uuidString, zoneID: CKRecordZone.ID(zoneName: "CubeginResultsV1"))
+    }
 }
 
 struct ResultsSyncTests {
@@ -97,10 +206,9 @@ struct ResultsSyncTests {
     @Test func reportsProcessedUploadsOnlyForPendingChanges() async throws {
         let server = SyntheticSyncServer()
         var replica = ResultsSyncReplica(state: .init(replicaID: UUID()))
-        try replica.importSolves([
-            Solve(seconds: 12, event: "333", scramble: "R U"),
-            Solve(seconds: 15, event: "333", scramble: "R U2")
-        ])
+        try replica.importSolves((0..<201).map { index in
+            Solve(seconds: 12, event: "333", scramble: "R U", date: Date(timeIntervalSinceReferenceDate: Double(index)))
+        })
 
         var processed: [Int] = []
         var totals: [Int] = []
@@ -108,12 +216,14 @@ struct ResultsSyncTests {
             processed.append(completed)
             totals.append(total)
         }
-        #expect(processed == [0, 1, 2])
-        #expect(totals == [2, 2, 2])
+        #expect(await server.batchSizes == [100, 100, 1])
+        #expect(processed == [0, 100, 200, 201])
+        #expect(totals == [201, 201, 201, 201])
 
         processed.removeAll()
         try await replica.sync(with: server) { completed, _ in processed.append(completed) }
         #expect(processed.isEmpty)
+        #expect(await server.batchSizes == [100, 100, 1])
     }
 
     @Test func routesReleaseAndDevBuildsToSeparateCloudKitEnvironments() {
@@ -199,6 +309,7 @@ struct ResultsSyncTests {
         #expect(restored.first?.isDefault == true)
     }
 
+    @MainActor
     @Test func firstSyncMergesBothHistoriesAndRetriesPartialUpload() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -213,11 +324,16 @@ struct ResultsSyncTests {
         try ipad.importSolves([c])
         try await ipad.sync(with: server)
         await server.interruptAfterWrites(1)
-        await #expect(throws: SyntheticSyncServer.Failure.interrupted) { try await iphone.sync(with: server) }
+        var processed: [Int] = []
+        await #expect(throws: SyntheticSyncServer.Failure.interrupted) {
+            try await iphone.sync(with: server) { count, _ in processed.append(count) }
+        }
+        #expect(processed == [0, 1])
         #expect(try await server.fetch().count == 2)
         iphone = try ResultsSyncReplica(file: file)
         await server.interruptAfterWrites(nil)
         #expect(try await iphone.sync(with: server) == 2)
+        #expect(await server.batchSizes == [1, 2, 1])
         try await ipad.sync(with: server)
         #expect(iphone.solves == ipad.solves)
         #expect(Set(iphone.solves.map(\.id)) == Set([a.id, b.id, c.id]))
