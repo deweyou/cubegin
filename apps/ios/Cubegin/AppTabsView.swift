@@ -187,6 +187,11 @@ struct AppTabsView: View {
                 model.interrupt()
             }
         }
+        .onChange(of: selection) { _, destination in
+            if destination == .results && isActive && scenePhase == .active {
+                model.requestCloudSync()
+            }
+        }
         .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
             UIApplication.shared.isIdleTimerDisabled = keepScreenOn
         }

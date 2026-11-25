@@ -450,6 +450,33 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testReturningToResultsFetchesNewCloudSolvesWithoutLeavingAgain() {
+        continueAfterFailure = false
+        let app = openSyncPreview("--preview-icloud-late-results", language: "en",
+                                  arguments: ["-scramble.mode", "standard", "-scramble.standard", "333"])
+        let results = app.tabBars.buttons["Results"]
+        let settings = app.tabBars.buttons["Settings"]
+        let empty = app.staticTexts["No results yet"]
+        results.tap()
+        XCTAssertTrue(empty.waitForExistence(timeout: 5))
+
+        settings.tap()
+        let sync = app.buttons["settings.general.sync"]
+        XCTAssertTrue(sync.waitForExistence(timeout: 5))
+        tapCardRowEdge(sync)
+        let toggle = app.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        tapSyncToggle(toggle)
+        XCTAssertTrue(app.staticTexts["settings.sync.lastCloudSync"].waitForExistence(timeout: 8))
+
+        results.tap()
+        let solve = app.buttons["solve-row-1"]
+        XCTAssertTrue(solve.waitForExistence(timeout: 8))
+        XCTAssertTrue(solve.label.contains("12.345"))
+        XCTAssertFalse(empty.exists)
+    }
+
+    @MainActor
     func testResultsSyncShowsUploadProgress() {
         continueAfterFailure = false
         let app = openSyncPreview("--preview-icloud-upload")
@@ -508,11 +535,13 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    private func openSyncPreview(_ preview: String, language: String = "zh-Hans", largeText: Bool = false) -> XCUIApplication {
+    private func openSyncPreview(_ preview: String, language: String = "zh-Hans", largeText: Bool = false,
+                                 arguments: [String] = []) -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", language, preview, "-app.icloudSync", "NO"]
+        app.launchArguments += arguments
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }

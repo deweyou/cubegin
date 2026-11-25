@@ -126,12 +126,15 @@ extension CloudKitResultsTransport {
     }
 
 #if DEBUG && targetEnvironment(simulator)
-    private static var syncPreview: PreviewCloudResultsTransport? {
+    private static var syncPreview: (any ResultsCloudTransport)? {
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("--preview-icloud-error") { return .init(failure: .network) }
-        if arguments.contains("--preview-icloud-account-error") { return .init(failure: .accountChanged) }
-        if arguments.contains("--preview-icloud-upload") { return .init(failure: nil, uploadDelay: .seconds(2)) }
-        if arguments.contains("--preview-icloud-success") { return .init(failure: nil) }
+        if arguments.contains("--preview-icloud-late-results") { return LateResultsPreviewCloudTransport() }
+        if arguments.contains("--preview-icloud-error") { return PreviewCloudResultsTransport(failure: .network) }
+        if arguments.contains("--preview-icloud-account-error") { return PreviewCloudResultsTransport(failure: .accountChanged) }
+        if arguments.contains("--preview-icloud-upload") {
+            return PreviewCloudResultsTransport(failure: nil, uploadDelay: .seconds(2))
+        }
+        if arguments.contains("--preview-icloud-success") { return PreviewCloudResultsTransport(failure: nil) }
         return nil
     }
 #endif
@@ -155,6 +158,25 @@ private struct PreviewCloudResultsTransport: ResultsCloudTransport {
         if uploadDelay > .zero { try await Task.sleep(for: uploadDelay) }
         return record
     }
+}
+
+private actor LateResultsPreviewCloudTransport: ResultsCloudTransport {
+    private var didFetch = false
+    private let replicaID = UUID()
+    private let solve = Solve(seconds: 12.345, event: "333", scramble: "R U")
+
+    func accountID() async throws -> String { "preview" }
+    func prepareZone(for account: String) async throws {}
+
+    func fetch() async throws -> [SyncRecord] {
+        let hasRemoteSolve = didFetch
+        didFetch = true
+        try await Task.sleep(for: .seconds(2.5))
+        guard hasRemoteSolve else { return [] }
+        return [SyncRecord(id: solve.id, revision: 1, replicaID: replicaID, solve: solve)]
+    }
+
+    func merge(_ record: SyncRecord) async throws -> SyncRecord { record }
 }
 #endif
 
