@@ -1180,10 +1180,15 @@ final class SolveFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchEnvironment["CUBEGIN_UI_TEST_UNRECOGNIZED_DUO"] = "1"
         app.launchArguments += ["-app.language", "en", "-scramble.standard", "333"]
         app.launch()
         try XCTSkipUnless(app.frame.width >= 750 && app.frame.width > app.frame.height,
                           "Run with the Duo inner display active in landscape.")
+
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(timer.waitForExistence(timeout: 10))
+        XCTAssertLessThan(timer.frame.midX - app.frame.minX, app.frame.width * 0.58)
 
         let results = app.buttons["side-nav.results"]
         XCTAssertTrue(results.waitForExistence(timeout: 5))

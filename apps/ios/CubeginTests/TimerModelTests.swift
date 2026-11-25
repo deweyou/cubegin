@@ -7,6 +7,14 @@ import WebKit
 
 @MainActor
 struct DuoTimerLayoutTests {
+    @Test func recognizesTheInnerDisplayFromItsHinge() {
+        #expect(DuoDisplay(hasHinge: true, matchesDuoModel: false, nativeShortEdge: 2100) == .inner)
+        #expect(DuoDisplay(hasHinge: true, matchesDuoModel: true, nativeShortEdge: 1398) == .inner)
+        #expect(DuoDisplay(hasHinge: false, matchesDuoModel: true, nativeShortEdge: 1398) == .outer)
+        #expect(DuoDisplay(hasHinge: false, matchesDuoModel: true, nativeShortEdge: 2007) == .inner)
+        #expect(DuoDisplay(hasHinge: false, matchesDuoModel: false, nativeShortEdge: 2007) == .other)
+    }
+
     @Test func usesTheActiveHorizontalFold() {
         let fold = CGRect(x: 0, y: 432, width: 669, height: 32)
 

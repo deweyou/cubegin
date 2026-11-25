@@ -2,6 +2,20 @@ import StoreKit
 import SwiftUI
 import UIKit
 
+enum DuoDisplay: Equatable {
+    case outer, inner, other
+
+    init(hasHinge: Bool, matchesDuoModel: Bool, nativeShortEdge: CGFloat) {
+        if hasHinge || (matchesDuoModel && nativeShortEdge == 2007) {
+            self = .inner
+        } else if matchesDuoModel && nativeShortEdge == 1398 {
+            self = .outer
+        } else {
+            self = .other
+        }
+    }
+}
+
 struct LandscapeContentInsets {
     static let contentMargin: CGFloat = 24
     private static let clearEdgeMargin: CGFloat = 44
@@ -328,7 +342,11 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
 
         private static let isDuo: Bool = {
 #if targetEnvironment(simulator)
-            ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4"
+            let environment = ProcessInfo.processInfo.environment
+#if DEBUG
+            if environment["CUBEGIN_UI_TEST_UNRECOGNIZED_DUO"] == "1" { return false }
+#endif
+            return environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4"
 #else
             var device = utsname()
             uname(&device)
@@ -353,14 +371,15 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
 
         @objc func reportOrientation() {
             DispatchQueue.main.async { [weak self] in
-                guard let self, let scene = window?.windowScene else { return }
-                let display = scene.screen.nativeBounds.size
-                // The Duo cover display has a 1398 px short edge, versus 2007 px inside.
-                let shortEdge = min(display.width, display.height)
-                let outerDisplay = Self.isDuo && shortEdge == 1398
-                let innerDisplay = Self.isDuo && shortEdge == 2007
+                guard let self, let window, let scene = window.windowScene else { return }
+                let nativeSize = scene.screen.nativeBounds.size
+                let display = DuoDisplay(
+                    hasHinge: hasHinge(in: window),
+                    matchesDuoModel: Self.isDuo,
+                    nativeShortEdge: min(nativeSize.width, nativeSize.height)
+                )
 #if DEBUG
-                if outerDisplay, !requestedQAOrientation,
+                if display == .outer, !requestedQAOrientation,
                    let tabSide = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_DUO_TAB_SIDE"] {
                     requestedQAOrientation = true
                     let orientation: UIInterfaceOrientationMask = tabSide == "left" ? .landscapeRight : .landscapeLeft
@@ -369,8 +388,17 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
                     }
                 }
 #endif
-                onChange?(scene.effectiveGeometry.interfaceOrientation, outerDisplay, innerDisplay)
+                onChange?(scene.effectiveGeometry.interfaceOrientation, display == .outer, display == .inner)
             }
+        }
+
+        private func hasHinge(in window: UIWindow) -> Bool {
+#if compiler(>=6.4)
+            if #available(iOS 27.1, *) {
+                return !window.reservedRegions(kind: .division, options: .includeInactive).isEmpty
+            }
+#endif
+            return false
         }
     }
 }
