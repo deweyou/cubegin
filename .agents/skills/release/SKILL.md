@@ -3,7 +3,7 @@ name: release
 description: 筹备或继续 Cubegin App 的首次上架和 major、minor 版本发布。适用于发布范围审阅、候选出包、送测、提审和上架后的回合。
 ---
 
-读取 [App 发布规范](../../../docs/app-releasing.md) 和目标平台的发布手册。iOS 复用[商店填写值和原图](../../../store-listing/ios/app-store/README.md)。先确定用户这轮要到达的节点。已有候选时从 Git 登记和商店后台恢复进度。
+读取 [App 发布规范](../../../docs/app-releasing.md) 和目标平台的发布手册。iOS 复用[商店填写值和原图](../../../store-listing/ios/app-store/README.md)，商店操作优先走 [App Store Connect CLI](../../../apps/ios/docs/app-store-cli.md)。先确定用户这轮要到达的节点。已有候选时从 Git 登记和商店后台恢复进度。
 
 1. 固定远端 `main` 的候选 SHA。用该 App 上一正式 tag 对比提交、PR 和实际文件。首发核实商店历史，明确比较基线，按完整产品能力整理说明。
 2. 在会话展示变更摘要、中英文用户说明草案、候选 SHA 和具体 major、minor 选项，说明推荐理由。等用户确认范围和版本，再从已审阅的 SHA 切分支。

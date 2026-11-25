@@ -1,6 +1,6 @@
 # App Store 商店资料
 
-这里保存 Cubegin iOS 的商店填写值和上传原图。当前基线是 1.0.0（build 8）。后续发布可以直接复用，改动时同步仓库与 App Store Connect，保存后按语言和设备回读。历次改动可从 Git 历史追溯。
+这里保存 Cubegin iOS 的商店填写值和上传原图。当前基线是 1.0.0（build 8）。后续发布可以通过 [App Store Connect CLI](../../../apps/ios/docs/app-store-cli.md#商店资料)直接复用。改动时同步仓库与 App Store Connect，保存后按语言和设备回读。历次改动可从 Git 历史追溯。
 
 | 资料 | 保存方式 |
 | --- | --- |
