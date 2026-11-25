@@ -1940,8 +1940,10 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "14.395+"), object: readout
         )], timeout: 5), .completed)
-        XCTAssertTrue(scramble.waitForExistence(timeout: 20))
-        XCTAssertNotEqual(scramble.label, originalScramble)
+        let newScramble = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == YES AND label != %@", originalScramble), object: scramble
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [newScramble], timeout: 20), .completed)
         XCTAssertEqual(summary["timer-summary.count"].value as? String, "1 / 1")
         XCTAssertFalse(summary["timer-summary.ao12"].exists)
 

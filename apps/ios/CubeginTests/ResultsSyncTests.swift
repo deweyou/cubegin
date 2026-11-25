@@ -448,7 +448,7 @@ struct ResultsSyncTests {
     @Test func sharesOnePreferenceAndKeepsThePreviousResultsChoice() throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = directory.appending(path: "solves.json")
+        let storage = directory.appending(path: "solves.sqlite")
         let suite = "icloud-sync-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -472,14 +472,14 @@ struct ResultsSyncTests {
     @Test func integratesLegacyResultsAndPersistsOfflineDeletionWithoutClearingOtherScores() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = directory.appending(path: "solves.json")
+        let storage = directory.appending(path: "solves.sqlite")
         let suite = "results-sync-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let local = Solve(seconds: 12, event: "333", scramble: "R U")
         let remote = Solve(seconds: 17, event: "333", scramble: "R U2")
-        try JSONEncoder().encode([local]).write(to: storage)
+        try JSONEncoder().encode([local]).write(to: directory.appending(path: "solves.json"))
         let server = SyntheticSyncServer()
         var replica = ResultsSyncReplica(state: .init(replicaID: UUID()))
         try replica.importSolves([remote])
@@ -523,9 +523,9 @@ struct ResultsSyncTests {
             tabletDefaults.removePersistentDomain(forName: tabletSuite)
         }
         let server = SyntheticSyncServer()
-        let phoneStorage = directory.appending(path: "phone.json")
+        let phoneStorage = directory.appending(path: "phone.sqlite")
         let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
-        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.sqlite"),
                                 defaults: tabletDefaults, cloudTransport: server)
         phone.requestCloudSync()
         try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
@@ -580,7 +580,7 @@ struct ResultsSyncTests {
             tabletDefaults.removePersistentDomain(forName: tabletSuite)
         }
         let server = SyntheticSyncServer()
-        let phoneStorage = directory.appending(path: "phone.json")
+        let phoneStorage = directory.appending(path: "phone.sqlite")
         let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
         phone.requestCloudSync()
         try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
@@ -600,7 +600,7 @@ struct ResultsSyncTests {
         let secondUpload = try #require(secondRecords.first { $0.id == firstPreference.id })
         #expect(secondUpload.revision > firstUpload.revision)
 
-        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.sqlite"),
                                 defaults: tabletDefaults, cloudTransport: server)
         tablet.requestCloudSync()
         try await waitForSync(tablet) { if case .synced = $0 { true } else { false } }
@@ -612,12 +612,12 @@ struct ResultsSyncTests {
     @Test func refusesToSyncLocalResultsToADifferentAccount() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = directory.appending(path: "solves.json")
+        let storage = directory.appending(path: "solves.sqlite")
         let suite = "results-sync-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let score = Solve(seconds: 12, event: "333", scramble: "R U")
-        try JSONEncoder().encode([score]).write(to: storage)
+        try JSONEncoder().encode([score]).write(to: directory.appending(path: "solves.json"))
         let server = SyntheticSyncServer()
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: server)
         model.requestCloudSync()

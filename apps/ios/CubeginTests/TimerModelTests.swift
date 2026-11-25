@@ -469,7 +469,7 @@ struct TimerModelTests {
                 Solve(seconds: time, event: "333", scramble: "R U",
                       date: Date(timeIntervalSinceReferenceDate: Double(-index)))
             }
-            try JSONEncoder().encode(history).write(to: fixture.storage)
+            try JSONEncoder().encode(history).write(to: fixture.legacyStorage)
             let model = fixture.model()
             model.refresh()
             try await waitForGeneration(model)
@@ -504,7 +504,7 @@ struct TimerModelTests {
                 Solve(seconds: 8 + Double(index) * 0.25, event: "333", scramble: "R U",
                       date: tomorrow.addingTimeInterval(Double(-index)))
             }
-            try JSONEncoder().encode(history).write(to: fixture.storage)
+            try JSONEncoder().encode(history).write(to: fixture.legacyStorage)
             let model = fixture.model()
             model.refresh()
             try await waitForGeneration(model)
@@ -930,7 +930,7 @@ struct TimerModelTests {
             let first = Solve(seconds: 13.25, event: "333", scramble: "R U", date: Date(timeIntervalSince1970: 100))
             let second = Solve(seconds: 15, event: "333", scramble: "F U", date: Date(timeIntervalSince1970: 90))
             let unrelated = Solve(seconds: 8, event: "222", scramble: "R2", date: Date(timeIntervalSince1970: 80))
-            try JSONEncoder().encode([first, second, unrelated]).write(to: fixture.storage)
+            try JSONEncoder().encode([first, second, unrelated]).write(to: fixture.legacyStorage)
             var events: [ProductEvent] = []
             let model = fixture.model(recordProductEvent: { events.append($0) })
             let initial = try #require(model.currentGroup)
@@ -980,7 +980,7 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let keep = Solve(seconds: 10, event: "333", scramble: "R")
             let remove = Solve(seconds: 11, event: "333", scramble: "U")
-            try JSONEncoder().encode([keep, remove]).write(to: fixture.storage)
+            try JSONEncoder().encode([keep, remove]).write(to: fixture.legacyStorage)
             let model = fixture.model()
             #expect(model.saveGroup(name: "Disposable", isDefault: false))
             let group = try #require(model.currentGroup)
@@ -994,7 +994,7 @@ struct TimerModelTests {
     @Test func failedStorageWriteLeavesGroupAndSolveEditsUnapplied() async throws {
         try await withFixture { fixture in
             let solve = Solve(seconds: 10, event: "333", scramble: "R")
-            try JSONEncoder().encode([solve]).write(to: fixture.storage)
+            try JSONEncoder().encode([solve]).write(to: fixture.legacyStorage)
             let model = fixture.model()
             try FileManager.default.removeItem(at: fixture.directory)
             #expect(!model.setPenalty(.plusTwo, for: solve.id))
@@ -1008,7 +1008,7 @@ struct TimerModelTests {
 
     @Test func corruptHistoryReportsAReadError() async throws {
         try await withFixture { fixture in
-            try Data("{invalid JSON".utf8).write(to: fixture.storage)
+            try Data("{invalid JSON".utf8).write(to: fixture.legacyStorage)
             let model = fixture.model()
             #expect(model.error != nil)
             #expect(model.solves.isEmpty)
@@ -1131,7 +1131,7 @@ struct TimerModelTests {
                 let backup = try dctimerImportFixture(in: fixture.directory)
                 let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
                 let original = Solve(seconds: 7, event: "333", scramble: "U2")
-                try JSONEncoder().encode([original]).write(to: fixture.storage)
+                try JSONEncoder().encode([original]).write(to: fixture.legacyStorage)
                 var events: [ProductEvent] = []
                 let model = fixture.model(recordProductEvent: { events.append($0) })
                 #expect(try model.importDCTimer(plan, destination: destination, language: .english) == 2)
@@ -1178,7 +1178,7 @@ struct TimerModelTests {
             let firstBackup = try dctimerImportFixture(in: fixture.directory)
             let firstPlan = try DCTimerImportPlan(backup: firstBackup, validate: Engine.acceptsImportedScramble)
             let existing = Solve(seconds: 7, event: "333", scramble: "U2")
-            try JSONEncoder().encode([existing]).write(to: fixture.storage)
+            try JSONEncoder().encode([existing]).write(to: fixture.legacyStorage)
             let model = fixture.model()
             #expect(model.lastImportCount == 0)
             #expect(try model.importDCTimer(firstPlan, destination: .defaultGroups, language: .english) == 2)
@@ -1340,7 +1340,8 @@ struct TimerModelTests {
     private struct Fixture {
         let directory: URL
         let defaults: UserDefaults
-        var storage: URL { directory.appending(path: "solves.json") }
+        var storage: URL { directory.appending(path: "solves.sqlite") }
+        var legacyStorage: URL { directory.appending(path: "solves.json") }
 
         @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now },
                              recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { _ in }) -> TimerModel {

@@ -34,7 +34,7 @@ struct Solve: Codable, Identifiable, Equatable, Sendable {
         }
     }
 }
-struct SolveGroup: Codable, Identifiable {
+struct SolveGroup: Codable, Identifiable, Equatable {
     static let maximumNameLength = 16
     static let cloudPlaceholderName = "iCloud"
 
@@ -50,15 +50,6 @@ struct SolveGroup: Codable, Identifiable {
     var displayName: String { name.isEmpty ? "Default" : name }
 
     static func initialID(for event: String) -> String { "default:" + event }
-}
-
-private struct ResultsStore: Codable {
-    var solves: [Solve]
-    var groups: [SolveGroup]
-    var lastImportedSolveIDs: Set<Solve.ID>?
-    var lastImportDate: Date?
-    var cloudState: ResultsSyncReplica.State?
-    var cloudAccount: String?
 }
 
 enum TimerInput { case touch, keyboard }
@@ -344,8 +335,9 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         lastSolveCelebration = SolveCelebration(solve: solve, history: history)
     }
     private var storageReadFailed = false
-    @ObservationIgnored private var persistedSolves: [Solve] = []
-    private let storage: URL
+    @ObservationIgnored private var persisted = ResultsDatabase.Snapshot(store: ResultsStore(), revision: nil)
+    private var persistedSolves: [Solve] { persisted.store.solves }
+    private let storage: ResultsDatabase
     private let defaults: UserDefaults
     private let now: () -> ContinuousClock.Instant
     private let loadInspectionPlayer: @MainActor (String) throws -> AVAudioPlayer?
@@ -363,8 +355,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     @ObservationIgnored private let cloudTransport: (any ResultsCloudTransport)?
     var supportsResultsSync: Bool { cloudTransport != nil }
     var supportsCloudSync: Bool { supportsResultsSync || SettingsSync.isAvailable }
-    @ObservationIgnored private var cloudState: ResultsSyncReplica.State?
-    @ObservationIgnored private var cloudAccount: String?
+    private var cloudState: ResultsSyncReplica.State? { persisted.store.cloudState }
+    private var cloudAccount: String? { persisted.store.cloudAccount }
     @ObservationIgnored private var cloudTask: Task<Void, Never>?
     @ObservationIgnored private var needsCloudSync = false
     @ObservationIgnored private var cloudGeneration = 0
@@ -600,7 +592,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
 #endif
 
     init(
-        storage: URL = URL.documentsDirectory.appending(path: "solves.json"),
+        storage: URL = URL.documentsDirectory.appending(path: "solves.sqlite"),
         defaults: UserDefaults = .standard,
         cloudTransport: (any ResultsCloudTransport)? = nil,
         now: @escaping () -> ContinuousClock.Instant = { .now },
@@ -611,7 +603,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { AppTelemetry.record($0) },
         generateScramble: @escaping @Sendable (String) async throws -> Scramble = Engine.scramble
     ) {
-        self.storage = storage
+        self.storage = ResultsDatabase(url: storage)
         self.defaults = defaults
         self.cloudTransport = cloudTransport
         if cloudTransport != nil || SettingsSync.isAvailable {
@@ -629,29 +621,17 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         self.trainingEvent = ScrambleCatalog.restored(Self.trainingEventKey, training: true, defaults: defaults)
         self.mode = defaults.string(forKey: Self.projectModeKey).flatMap(ScrambleMode.init(rawValue:)) ?? .standard
         do {
-            let data = try Data(contentsOf: storage)
-            if let store = try? JSONDecoder().decode(ResultsStore.self, from: data) {
-                solves = store.solves
-                groups = store.groups
-                cloudState = store.cloudState
-                cloudAccount = store.cloudAccount
-                if let importedIDs = store.lastImportedSolveIDs {
-                    lastImportedSolveIDs = importedIDs.intersection(solves.map(\.id))
-                    if !lastImportedSolveIDs.isEmpty { lastImportDate = store.lastImportDate }
-                }
-            } else {
-                solves = try JSONDecoder().decode([Solve].self, from: data)
-            }
+            persisted = try self.storage.load()
+            let store = persisted.store
+            solves = store.solves
+            groups = store.groups
+            lastImportedSolveIDs = store.lastImportedSolveIDs ?? []
+            lastImportDate = store.lastImportDate
+        } catch {
+            storageReadFailed = true
+            AppTelemetry.record(.loadResults, error is DecodingError ? .decodeFailed : .readFailed)
+            self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription
         }
-        catch {
-            let fileError = error as NSError
-            if fileError.domain != NSCocoaErrorDomain || fileError.code != NSFileReadNoSuchFileError {
-                storageReadFailed = true
-                AppTelemetry.record(.loadResults, error is DecodingError ? .decodeFailed : .readFailed)
-                self.error = AppLanguage.saved.text("成绩读取失败：", "Could not load results: ") + error.localizedDescription
-            }
-        }
-        persistedSolves = solves
 #if DEBUG
         if Self.isLongSolveUITest, solves.isEmpty {
             solves = (0..<12).reversed().map { index in
@@ -1130,14 +1110,10 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                 lastImportDate: remaining.isEmpty ? nil : (importedAt ?? lastImportDate),
                 cloudState: nextCloudState, cloudAccount: nextCloudAccount
             )
-            let encoded = try JSONEncoder().encode(store)
             failureReason = .writeFailed
-            try encoded.write(to: storage, options: .atomic)
+            persisted = try storage.save(store, replacing: persisted)
             lastImportedSolveIDs = remaining
             lastImportDate = store.lastImportDate
-            persistedSolves = results
-            cloudState = nextCloudState
-            cloudAccount = nextCloudAccount
             if remoteState == nil {
                 cloudGeneration += 1
                 requestCloudSync()
