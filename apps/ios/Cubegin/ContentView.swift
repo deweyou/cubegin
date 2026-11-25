@@ -51,6 +51,7 @@ struct ContentView: View {
     private var language: AppLanguage { locale.appLanguage }
     private let controlIconSize: CGFloat = 20
     private let controlRowHeight: CGFloat = 44
+    private let headerControlTargetWidth: CGFloat = 64
     private let padToolbarMargin: CGFloat = 20
     private var controlIconInset: CGFloat { (controlRowHeight - controlIconSize) / 2 }
     private var padProjectToolbarInset: CGFloat { padToolbarMargin + controlIconInset }
@@ -1089,7 +1090,7 @@ struct ContentView: View {
                         Image(systemName: "trash")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
-                            .modifier(CompactControlTarget(size: compactControlSize))
+                            .modifier(CompactControlTarget(minimumWidth: compactControlSize))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
@@ -1103,7 +1104,7 @@ struct ContentView: View {
                             Image(systemName: "party.popper")
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.secondary)
-                                .modifier(CompactControlTarget(size: compactControlSize))
+                                .modifier(CompactControlTarget(minimumWidth: compactControlSize))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(language.text("重播庆祝", "Replay celebration"))
@@ -1116,6 +1117,7 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
         }
+        // Keep the readout and summary layout tied to the original row height.
         .frame(height: compactControlSize)
     }
 
@@ -1129,7 +1131,7 @@ struct ContentView: View {
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(solve.penalty == penalty ? Color.accentColor : Color.secondary)
                 .opacity(solve.allowsPenaltyChange || solve.penalty == penalty ? 1 : 0.5)
-                .modifier(CompactControlTarget(size: compactControlSize))
+                .modifier(CompactControlTarget(minimumWidth: compactControlSize))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -1204,7 +1206,7 @@ struct ContentView: View {
     }
 
     private var projectMenu: some View {
-        EventPicker(model: model, isPresented: $showsProjectList)
+        EventPicker(model: model, isPresented: $showsProjectList, minimumTargetWidth: headerControlTargetWidth)
     }
 
     private var padProjectToolbarAnchor: some View {
@@ -1229,7 +1231,8 @@ struct ContentView: View {
                 let tabBarReserve: CGFloat = 96
                 let titleSpace = bounds.width / 2 - leading - tabBarReserve - EventPicker.minimumButtonWidth
                 EventPicker(model: model, isPresented: $showsProjectList, large: true,
-                            titleWidthLimit: titleSpace >= 24 ? titleSpace : 0)
+                            titleWidthLimit: titleSpace >= 24 ? titleSpace : 0,
+                            minimumTargetWidth: headerControlTargetWidth)
                     .fixedSize(horizontal: true, vertical: false)
                     .disabled(model.busy || model.started != nil)
                     .offset(x: isRightToLeft ? -leading : leading, y: anchor.minY - bounds.minY)
@@ -1255,8 +1258,12 @@ struct ContentView: View {
             choices.map { choice in
                 ["language": language.rawValue, "id": choice.id,
                  "title": ScrambleCatalog.trainingSelectionTitle(choice.id, in: language) ?? choice.title(in: language),
-                 "compactPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: false, action: {}), language: language),
-                 "regularPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: true, action: {}), language: language)] as [String: Any]
+                 "compactPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: false,
+                                                                  minimumTargetWidth: headerControlTargetWidth, action: {}),
+                                        language: language),
+                 "regularPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: true,
+                                                                  minimumTargetWidth: headerControlTargetWidth, action: {}),
+                                        language: language)] as [String: Any]
             }
         }
         do {
@@ -1347,7 +1354,7 @@ struct ContentView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: controlIconSize, height: controlIconSize)
-                .frame(width: controlRowHeight, height: controlRowHeight, alignment: .trailing)
+                .frame(width: headerControlTargetWidth, height: controlRowHeight, alignment: .trailing)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1464,13 +1471,13 @@ private struct LandscapeScrambleLayout: Layout {
 }
 
 private struct CompactControlTarget: ViewModifier {
-    let size: CGFloat
+    let minimumWidth: CGFloat
 
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 10)
-            .frame(minWidth: size)
-            .frame(height: size)
+            .frame(minWidth: minimumWidth)
+            .frame(height: 44)
             .contentShape(Rectangle())
     }
 }
@@ -2076,13 +2083,15 @@ struct EventPicker: View {
     @Binding var isPresented: Bool
     var large = false
     var titleWidthLimit: CGFloat?
+    var minimumTargetWidth = Self.minimumButtonWidth
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
     @State private var browsingMode = ScrambleMode.standard
     @State private var expandedTrainingGroups: Set<String> = []
 
     var body: some View {
-        Self.projectButton(event: model.event, language: language, large: large, titleWidthLimit: titleWidthLimit) {
+        Self.projectButton(event: model.event, language: language, large: large, titleWidthLimit: titleWidthLimit,
+                           minimumTargetWidth: minimumTargetWidth) {
             browsingMode = model.mode
             expandedTrainingGroups.removeAll()
             isPresented = true
@@ -2171,9 +2180,12 @@ struct EventPicker: View {
     }
 
     static func projectButton(event: String, language: AppLanguage, large: Bool,
-                              titleWidthLimit: CGFloat? = nil, action: @escaping () -> Void) -> some View {
+                              titleWidthLimit: CGFloat? = nil, minimumTargetWidth: CGFloat = minimumButtonWidth,
+                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             projectMenuLabel(event: event, language: language, large: large, titleWidthLimit: titleWidthLimit)
+                .frame(minWidth: minimumTargetWidth, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .controlSize(large ? .regular : .small)
@@ -2181,7 +2193,7 @@ struct EventPicker: View {
         .accessibilityValue(ScrambleCatalog.title(event, in: language))
     }
 
-    static func projectMenuLabel(event: String, language: AppLanguage, large: Bool, titleWidthLimit: CGFloat?) -> some View {
+    private static func projectMenuLabel(event: String, language: AppLanguage, large: Bool, titleWidthLimit: CGFloat?) -> some View {
         let iconID = String(event.prefix { $0 != "." })
         return HStack(spacing: 6) {
             Image("Event-\(iconID)")
@@ -2201,8 +2213,6 @@ struct EventPicker: View {
         }
         .font(large ? .body.weight(.medium) : .subheadline.weight(.medium))
         .foregroundStyle(.primary)
-        .frame(minWidth: minimumButtonWidth, minHeight: 44, alignment: .leading)
-        .contentShape(Rectangle())
     }
 
 }

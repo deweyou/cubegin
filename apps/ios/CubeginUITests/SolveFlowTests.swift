@@ -258,6 +258,33 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTimerHeaderButtonsRespondAtTheirInnerEdges() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333"]
+        app.launch()
+
+        let project = app.buttons["Event"]
+        let hints = app.buttons["timer.formula-hints"]
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        XCTAssertTrue(project.isHittable)
+        XCTAssertGreaterThanOrEqual(project.frame.width, 64)
+        XCTAssertGreaterThanOrEqual(hints.frame.width, 64)
+        XCTAssertEqual(project.frame.midY, hints.frame.midY, accuracy: 1)
+
+        project.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        let threeByThree = app.buttons["event.choice.333"]
+        XCTAssertTrue(threeByThree.waitForExistence(timeout: 5))
+        threeByThree.tap()
+
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        hints.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     func testFormulaHintsShowSolutionsForCurrentScramble() {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -1715,7 +1742,8 @@ final class SolveFlowTests: XCTestCase {
 
         let dnf = app.buttons["timer.penalty.dnf"]
         XCTAssertTrue(dnf.waitForExistence(timeout: 5))
-        dnf.tap()
+        XCTAssertGreaterThanOrEqual(dnf.frame.height, 44)
+        dnf.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
         XCTAssertTrue(dnf.isSelected)
         XCTAssertEqual(readout.label, "Start timer")
         dnf.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.55)

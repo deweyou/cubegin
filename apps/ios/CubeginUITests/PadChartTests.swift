@@ -21,6 +21,8 @@ final class PadChartTests: XCTestCase {
         XCTAssertEqual(project.frame.midY, home.frame.midY, accuracy: 8)
         let hints = app.buttons["timer.formula-hints"]
         XCTAssertTrue(hints.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(project.frame.width, 64)
+        XCTAssertGreaterThanOrEqual(hints.frame.width, 64)
         let window = app.windows.firstMatch.frame
         if window.origin == .zero {
             // Floating windows also reserve space for the system window controls.
@@ -31,7 +33,12 @@ final class PadChartTests: XCTestCase {
         XCTAssertEqual(project.frame.midY, hints.frame.midY, accuracy: 2)
         attachScreenshot("iPad top bar aligned controls")
 
-        project.tap()
+        hints.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        XCTAssertTrue(project.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        project.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
         let training = app.buttons["event.mode.training"]
         XCTAssertTrue(training.waitForExistence(timeout: 5))
         training.tap()
