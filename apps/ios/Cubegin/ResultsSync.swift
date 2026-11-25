@@ -130,6 +130,7 @@ extension CloudKitResultsTransport {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--preview-icloud-error") { return .init(failure: .network) }
         if arguments.contains("--preview-icloud-account-error") { return .init(failure: .accountChanged) }
+        if arguments.contains("--preview-icloud-upload") { return .init(failure: nil, uploadDelay: .seconds(2)) }
         if arguments.contains("--preview-icloud-success") { return .init(failure: nil) }
         return nil
     }
@@ -139,6 +140,7 @@ extension CloudKitResultsTransport {
 #if DEBUG && targetEnvironment(simulator)
 private struct PreviewCloudResultsTransport: ResultsCloudTransport {
     let failure: CloudSyncFailure?
+    var uploadDelay: Duration = .zero
 
     func accountID() async throws -> String { "preview" }
     func prepareZone(for account: String) async throws {}
@@ -149,7 +151,10 @@ private struct PreviewCloudResultsTransport: ResultsCloudTransport {
         return []
     }
 
-    func merge(_ record: SyncRecord) async throws -> SyncRecord { record }
+    func merge(_ record: SyncRecord) async throws -> SyncRecord {
+        if uploadDelay > .zero { try await Task.sleep(for: uploadDelay) }
+        return record
+    }
 }
 #endif
 
@@ -333,7 +338,10 @@ struct ResultsSyncReplica: Sendable {
     }
 
     @discardableResult
-    mutating func sync(with transport: any SyncTransport) async throws -> Int {
+    mutating func sync(
+        with transport: any SyncTransport,
+        onUploadProgress: (@MainActor @Sendable (_ completed: Int, _ total: Int) -> Void)? = nil
+    ) async throws -> Int {
         try Task.checkCancellation()
         let remote = try await transport.fetch()
         try Task.checkCancellation()
@@ -344,9 +352,12 @@ struct ResultsSyncReplica: Sendable {
             if record.wins(over: next.records[record.id]) { next.records[record.id] = record }
         }
         try persist(next)
-        for record in next.records.values where record.wins(over: remoteByID[record.id]) {
+        let pending = next.records.values.filter { $0.wins(over: remoteByID[$0.id]) }
+        if !pending.isEmpty { await onUploadProgress?(0, pending.count) }
+        for (index, record) in pending.enumerated() {
             try Task.checkCancellation()
             try apply(try await transport.merge(record))
+            await onUploadProgress?(index + 1, pending.count)
         }
         return remote.count
     }

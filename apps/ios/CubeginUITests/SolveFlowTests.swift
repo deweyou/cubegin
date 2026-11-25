@@ -450,6 +450,28 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testResultsSyncShowsUploadProgress() {
+        continueAfterFailure = false
+        let app = openSyncPreview("--preview-icloud-upload")
+        let toggle = app.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        tapSyncToggle(toggle)
+
+        let uploading = app.staticTexts["settings.sync.uploading"]
+        let progress = app.staticTexts["settings.sync.uploadProgress"]
+        XCTAssertTrue(uploading.waitForExistence(timeout: 8))
+        XCTAssertEqual(uploading.label, "正在上传到 iCloud…")
+        XCTAssertTrue(progress.exists)
+        XCTAssertTrue(progress.label.contains("条变更"))
+        XCTAssertFalse(app.buttons["settings.sync.refresh"].exists)
+        captureScreen("Settings — iCloud upload progress")
+
+        tapSyncToggle(toggle)
+        XCTAssertTrue(uploading.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(progress.exists)
+    }
+
+    @MainActor
     func testResultsSyncKeepsRefreshAtTheTopOfAMultilineError() {
         continueAfterFailure = false
         let normal = openSyncPreview("--preview-icloud-account-error", language: "en")

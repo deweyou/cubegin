@@ -23,7 +23,7 @@ Optional WCA inspection includes 8- and 12-second voice calls and automatic insp
 
 On a partially folded iPhone Duo in portrait, read the scramble and time above the fold and use the lower half to start or stop the timer.
 
-Use Settings → General → Sync to sync results, groups, and supported settings across devices signed into the same iCloud account. Supported settings include the selected puzzle event and formula hint preferences.
+Use Settings → General → Sync to sync results, groups, and supported settings across devices signed into the same iCloud account. Supported settings include the selected puzzle event and formula hint preferences. The Sync screen shows upload progress for pending changes and the last successful sync time.
 
 To copy the device ID and the shared user ID when available, tap **Version** five times under **Settings → About**. Choose whether to share diagnostics and usage data on first launch. Change your choice or open the [privacy policy](../../docs/privacy-policy.md#cubegin-privacy-policy) under **Settings → About → Privacy**.
 

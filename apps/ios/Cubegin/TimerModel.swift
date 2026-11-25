@@ -357,7 +357,9 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     private(set) var lastSuccessfulCloudSync: Date?
     private(set) var cloudSyncEnabled = false
     private(set) var cloudSyncStatus: CloudSyncStatus = .idle
-    enum CloudSyncStatus { case idle, syncing, synced, failed(CloudSyncFailure) }
+    enum CloudSyncStatus {
+        case idle, syncing, uploading(completed: Int, total: Int), synced, failed(CloudSyncFailure)
+    }
     @ObservationIgnored private let cloudTransport: (any ResultsCloudTransport)?
     var supportsResultsSync: Bool { cloudTransport != nil }
     var supportsCloudSync: Bool { supportsResultsSync || SettingsSync.isAvailable }
@@ -479,7 +481,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                         phase: phase, network: network, localSolveCount: localSolveCount,
                         remoteRecordCount: remoteRecordCount, failure: failure
                     )), since: syncStart)
-                case .idle, .syncing:
+                case .idle, .syncing, .uploading:
                     break
                 }
             }
@@ -507,7 +509,12 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                 }
             }
             try await cloudTransport.prepareZone(for: account)
-            remoteRecordCount = try await replica.sync(with: cloudTransport)
+            remoteRecordCount = try await replica.sync(with: cloudTransport) { [weak self] completed, total in
+                guard !Task.isCancelled, let self, cloudSyncEnabled else { return }
+                cloudSyncStatus = .uploading(completed: completed, total: total)
+            }
+            try Task.checkCancellation()
+            cloudSyncStatus = .syncing
             let currentAccount = try await cloudTransport.accountID()
             try Task.checkCancellation()
             guard account == currentAccount else { throw CloudSyncFailure.accountChanged }

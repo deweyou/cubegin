@@ -50,6 +50,29 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
 }
 
 struct ResultsSyncTests {
+    @MainActor
+    @Test func reportsProcessedUploadsOnlyForPendingChanges() async throws {
+        let server = SyntheticSyncServer()
+        var replica = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        try replica.importSolves([
+            Solve(seconds: 12, event: "333", scramble: "R U"),
+            Solve(seconds: 15, event: "333", scramble: "R U2")
+        ])
+
+        var processed: [Int] = []
+        var totals: [Int] = []
+        try await replica.sync(with: server) { completed, total in
+            processed.append(completed)
+            totals.append(total)
+        }
+        #expect(processed == [0, 1, 2])
+        #expect(totals == [2, 2, 2])
+
+        processed.removeAll()
+        try await replica.sync(with: server) { completed, _ in processed.append(completed) }
+        #expect(processed.isEmpty)
+    }
+
     @Test func routesReleaseAndDevBuildsToSeparateCloudKitEnvironments() {
         let production = CloudKitResultsTransport.Environment.production
         let development = CloudKitResultsTransport.Environment.development
