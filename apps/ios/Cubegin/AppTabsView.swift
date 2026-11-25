@@ -2522,13 +2522,17 @@ private struct SyncSettingsView: View {
                 let count = completed.formatted(.number.locale(locale))
                 let changeCount = total.formatted(.number.locale(locale))
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(language.text("正在上传到 iCloud…", "Uploading to iCloud…"))
-                        .accessibilityIdentifier("settings.sync.uploading")
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(language.text("正在上传到 iCloud…", "Uploading to iCloud…"))
+                            .accessibilityIdentifier("settings.sync.uploading")
+                        Spacer(minLength: 0)
+                        Text("\(count)/\(changeCount)")
+                            .monospacedDigit()
+                            .fixedSize(horizontal: true, vertical: false)
+                            .accessibilityIdentifier("settings.sync.uploadProgress")
+                    }
                     ProgressView(value: Double(completed), total: Double(total))
                         .accessibilityHidden(true)
-                    Text(language.text("已处理 \(count)/\(changeCount) 条变更", "\(count) of \(changeCount) changes processed"))
-                        .monospacedDigit()
-                        .accessibilityIdentifier("settings.sync.uploadProgress")
                 }
             case .failed(let failure):
                 Text(cloudSyncMessage(failure))

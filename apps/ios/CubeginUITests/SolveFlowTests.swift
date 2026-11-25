@@ -462,7 +462,9 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(uploading.waitForExistence(timeout: 8))
         XCTAssertEqual(uploading.label, "正在上传到 iCloud…")
         XCTAssertTrue(progress.exists)
-        XCTAssertTrue(progress.label.contains("条变更"))
+        XCTAssertNotNil(progress.label.range(of: #"^\d+/\d+$"#, options: .regularExpression))
+        XCTAssertGreaterThan(progress.frame.minX, uploading.frame.maxX)
+        XCTAssertEqual(progress.frame.midY, uploading.frame.midY, accuracy: 2)
         XCTAssertFalse(app.buttons["settings.sync.refresh"].exists)
         captureScreen("Settings — iCloud upload progress")
 
