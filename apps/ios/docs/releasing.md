@@ -5,7 +5,7 @@
 ## 出包前
 
 1. 在 App Store Connect 对齐 iOS 版本草稿、正式 Bundle ID 和版本号。查看跨版本的上传历史，首次启用时以已上传的最高 build 和远端已预留编号为下限。首发说明写产品能力，后续更新再写「此版本的新功能」。
-2. 根据 [商店资料目录](../../../store-listing/ios/app-store/README.md) 准备各语言文案和实际设备类别的截图。核对审核联系人、审核说明、支持链接、隐私链接、价格、地区、分级、内容权利，以及适用的出口和地区声明。
+2. 从[商店资料目录](../../../store-listing/ios/app-store/README.md)复用各语言填写值、设备截图及顺序。只更新受候选或发行策略影响的内容。每次更改后回读后台，将实填字段和上传原图同步回仓库。审核联系人从后台复用。送审前核对支持和隐私链接、价格、地区、分级、内容权利，以及适用的出口和地区声明。
 3. 逐项比对正式包内隐私清单、公开隐私政策、商店隐私问卷和生产 Firebase、GA4、Sentry 的数据做法。按实际核对用途、安装标识关联、粗略位置、广告共享及适用的 Tracking 定义。保存隐私问卷后回读它的发布状态。
 
 ## 预留、归档和登记
@@ -14,11 +14,20 @@
 - 从已预留的 SHA 开始，运行 `node scripts/build-ios.mjs --app-only` 构建同一 checkout 的 SDK。核对生成绑定、正式团队签名和 CloudKit entitlement，并按 [真机诊断文档](testing.md#真机验证故障诊断) 配置正式诊断文件。
 - 用 Xcode Release Archive 归档。读归档里的 `CFBundleIdentifier`、`CFBundleShortVersionString`、`CFBundleVersion`，与商店草稿和候选记录互相核对。保留原始 `.xcarchive` 和匹配的 dSYM。将归档压成 ZIP 存入有权限控制的持久位置，用 `shasum -a 256 <archive.zip>` 生成校验和。若单独导出并上传 IPA，也保存该文件与校验和。
 - 用附注 tag `app-candidate/ios/N` 指向候选 SHA。注释记录 bundle ID、版本、build、完整 SHA、归档 ZIP 的 SHA-256、归档和 dSYM 的存放位置标识，以及适用的 IPA SHA-256。推送该 tag 前核对预留 tag 指向同一 SHA。重试前检查远端是否已有同一记录。已有记录冲突时保留现场，正式 tag 和候选记录禁止移动或覆盖。
-- 通过 Organizer 上传登记的归档。由仓库分配 build，关闭分发选项里的自动管理版本和构建号。上传后回读 App Store Connect 的版本、build 和处理状态。若显示 `Missing Compliance`，根据候选及其实际依赖核对加密出口问卷，再继续 TestFlight。
+- 通过 Organizer 上传登记的归档，或用 Transporter 交付已登记的签名 IPA。由仓库分配 build，关闭分发选项里的自动管理版本和构建号。供正式提审的候选使用 App Store Connect 分发，可加到内部测试组。上传后回读 App Store Connect 的版本、build 和处理状态。若显示 `Missing Compliance`，根据候选及其实际依赖核对加密出口问卷，再继续 TestFlight。
+- Organizer 或命令行上传遇到账号错误时，先核对后台有无该 build。若尚未收包，可从现有归档导出签名 IPA，核对版本、生产 CloudKit 权限及签名后用已登录的 Transporter 上传。1.0.0（8）曾因 `rsync` 的 `--extended-attributes` 选项不兼容而导出失败，将导出命令的 `PATH` 设为 `/usr/bin:/bin:/usr/sbin:/sbin` 后，同一个归档导出成功。
 
 ## 送测、提审和上线
 
 - 核对正式 CloudKit 容器的 Production schema 已部署 `CubeginResult`（`payload` 为 Bytes）和 `CubeginAnalyticsIdentity`（`uuid` 为 String）。
 - 将候选分配给内部测试组，从 TestFlight 安装。记录设备、iOS 版本和实际 build。验收计时、保存及重启重读、DCTimer 导入、iCloud 生产环境双机同步、诊断同意和隐私入口。可以安装和启动之后，再核对核心功能是否通过。
-- 选同一 build 提审。隐私问卷已保存和已发布分别核对。通过 `Add for Review` 只代表加入审核草稿。执行 `Submit for Review` 后回读状态，确认 Apple 已收到。
-- 首发采用手动发布。审核通过但待发布时，继续等待上线动作。收尾前从 App Store Connect 核对正式分发状态和实际关联 build，再依据远端候选记录打 `ios/vX.Y.Z`。需要确认某地区可用时单独核对该地区。真实 App Store Connect API 查询可以替代后台人工核对，查询失败或 build 缺记录时先核对来源。
+- 真实 App Store Connect API 查询可以替代后台人工核对。查询失败或 build 缺记录时，先回到上传记录核对来源。
+
+| 本轮目标 | 以此状态验收 |
+| --- | --- |
+| 上传到 TestFlight | App Store Connect 显示上传处理完成，相同 build 在已有内部测试组显示 `Testing`。如果仍为 `Processing`，继续回读并处理能并行的商店资料。 |
+| 准备提审 | 版本页已保存验收的 build，隐私问卷已发布。`Add for Review` 后核对审核草稿中的版本、build 和 `Ready to Submit` 状态，停在可点 `Submit for Review` 的页面。 |
+| 正式提审 | 按已获授权送审，或把页面交给用户点击 `Submit for Review`。回读同一版本与 build 状态为 `Waiting for Review` 或 Apple 已进入后续审核状态。 |
+| 正式上线 | 首发采用手动发布。首发审核通过后在授权范围内推进上线。从 App Store Connect 核对正式分发状态及实际 build，再按远端候选记录打 `ios/vX.Y.Z` 并回合。 |
+
+送审后若只需修改商店资料，先看当前状态下对应字段是否开放。1.0.0（8）在 `Waiting for Review` 时可以直接编辑两种语言的 Description。保存后回读文本、审核状态和 build。需要换包时走候选返工流程，先确认是否涉及撤回当前审核。
