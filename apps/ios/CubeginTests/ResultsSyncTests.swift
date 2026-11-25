@@ -4,6 +4,49 @@ import SQLite3
 import Testing
 @testable import CubeginApp
 
+struct ResultsListPresentationTests {
+    @Test func keepsCloudChangesPendingWhileApplyingLocalEdits() {
+        let old = Solve(seconds: 12, event: "333", scramble: "R U", date: .distantPast)
+        let removedLocally = Solve(seconds: 13, event: "333", scramble: "R U2", date: .distantPast + 1)
+        let remote = Solve(seconds: 14, event: "333", scramble: "U R", date: .distantPast + 2)
+        let local = Solve(seconds: 15, event: "333", scramble: "U R2", date: .distantPast + 3)
+        let syncedAt = Date(timeIntervalSinceReferenceDate: 100)
+        var editedRemotely = old
+        editedRemotely.penalty = .plusTwo
+
+        var list = ResultsListPresentation(source: source([removedLocally, old]))
+        list.update(from: source([remote, removedLocally, editedRemotely], syncedAt: syncedAt))
+        #expect(list.displayedSolves == [removedLocally, old])
+        #expect(list.hasCloudUpdates)
+
+        list.update(from: source([local, remote, editedRemotely], syncedAt: syncedAt))
+        #expect(list.displayedSolves == [local, old])
+        #expect(list.hasCloudUpdates)
+
+        list.showLatest()
+        #expect(list.displayedSolves == [local, remote, editedRemotely])
+        #expect(!list.hasCloudUpdates)
+    }
+
+    @Test func displaysTheFirstSyncedSolvesAndShowsTheSelectedGroupImmediately() {
+        let first = Solve(seconds: 12, event: "333", scramble: "R U")
+        let other = Solve(seconds: 13, event: "333", scramble: "R U2", groupID: "practice")
+        var list = ResultsListPresentation(source: source([]))
+
+        list.update(from: source([first], syncedAt: Date(timeIntervalSinceReferenceDate: 100)))
+        #expect(list.displayedSolves == [first])
+        #expect(!list.hasCloudUpdates)
+
+        list.update(from: source([other], groupID: "practice", syncedAt: Date(timeIntervalSinceReferenceDate: 101)))
+        #expect(list.displayedSolves == [other])
+        #expect(!list.hasCloudUpdates)
+    }
+
+    private func source(_ solves: [Solve], groupID: String? = nil, syncedAt: Date? = nil) -> ResultsListPresentation.Source {
+        .init(event: "333", groupID: groupID, solves: solves, lastCloudSync: syncedAt)
+    }
+}
+
 private actor SyntheticSyncServer: ResultsCloudTransport {
     enum Failure: Error { case offline, interrupted }
     private enum AccountCheckFailure { case afterUpload, nextCheck }

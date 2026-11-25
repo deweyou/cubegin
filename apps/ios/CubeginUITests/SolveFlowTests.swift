@@ -477,6 +477,33 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testCloudSyncKeepsExistingResultRowsUntilTheUserRefreshes() {
+        continueAfterFailure = false
+        let app = openSyncPreview("--preview-icloud-late-results", language: "en",
+                                  arguments: ["-scramble.mode", "standard", "-scramble.standard", "333"],
+                                  environment: ["CUBEGIN_UI_TEST_LONG_SOLVE": "1"])
+        let toggle = app.switches["settings.sync.icloudSync"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        tapSyncToggle(toggle)
+        XCTAssertTrue(app.staticTexts["settings.sync.lastCloudSync"].waitForExistence(timeout: 8))
+
+        app.tabBars.buttons["Results"].tap()
+        let existingSolve = app.buttons["solve-row-12"]
+        let cloudSolve = app.buttons["solve-row-13"]
+        XCTAssertTrue(existingSolve.waitForExistence(timeout: 5))
+        let refresh = app.buttons["results.refreshCloudResults"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 8))
+        XCTAssertTrue(existingSolve.exists)
+        XCTAssertFalse(cloudSolve.exists)
+        captureScreen("Results — iCloud update notice")
+
+        refresh.tap()
+        XCTAssertTrue(cloudSolve.waitForExistence(timeout: 5))
+        XCTAssertTrue(cloudSolve.label.contains("12.345"))
+        XCTAssertFalse(refresh.exists)
+    }
+
+    @MainActor
     func testResultsSyncShowsUploadProgress() {
         continueAfterFailure = false
         let app = openSyncPreview("--preview-icloud-upload")
@@ -536,9 +563,10 @@ final class SolveFlowTests: XCTestCase {
 
     @MainActor
     private func openSyncPreview(_ preview: String, language: String = "zh-Hans", largeText: Bool = false,
-                                 arguments: [String] = []) -> XCUIApplication {
+                                 arguments: [String] = [], environment: [String: String] = [:]) -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
+        app.launchEnvironment = environment
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchArguments += ["-app.language", language, preview, "-app.icloudSync", "NO"]
         app.launchArguments += arguments

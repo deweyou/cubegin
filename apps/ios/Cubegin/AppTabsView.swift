@@ -249,6 +249,7 @@ struct AppTabsView: View {
                             isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
                             isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
+                            showsResultsList: visibleResultsPage == .solves,
                             showsStatistics: visibleResultsPage == .statistics) { mode in
                     if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
                         AppTelemetry.record(.featureUsed(.chartViewed(mode)))
@@ -439,6 +440,59 @@ private enum ResultsPage: String, CaseIterable, Identifiable {
     }
 }
 
+struct ResultsListPresentation {
+    struct Source: Equatable {
+        let event: String
+        let groupID: String?
+        let solves: [Solve]
+        let lastCloudSync: Date?
+    }
+
+    private var source: Source
+    private(set) var displayedSolves: [Solve]
+    var hasCloudUpdates: Bool { displayedSolves != source.solves }
+
+    init(source: Source) {
+        self.source = source
+        displayedSolves = source.solves
+    }
+
+    func matches(event: String, groupID: String?) -> Bool {
+        source.event == event && source.groupID == groupID
+    }
+
+    mutating func update(from latest: Source) {
+        guard matches(event: latest.event, groupID: latest.groupID) else {
+            self = Self(source: latest)
+            return
+        }
+        defer { source = latest }
+        guard source.solves != latest.solves else { return }
+        let isCloudUpdate = source.lastCloudSync != latest.lastCloudSync
+        if !hasCloudUpdates && (displayedSolves.isEmpty || !isCloudUpdate) {
+            displayedSolves = latest.solves
+        } else if !isCloudUpdate {
+            applyLocalChanges(latest.solves)
+        }
+    }
+
+    mutating func showLatest() {
+        displayedSolves = source.solves
+    }
+
+    private mutating func applyLocalChanges(_ latest: [Solve]) {
+        let previousByID = source.solves.reduce(into: [Solve.ID: Solve]()) { $0[$1.id] = $1 }
+        let latestByID = latest.reduce(into: [Solve.ID: Solve]()) { $0[$1.id] = $1 }
+        displayedSolves = displayedSolves.compactMap { solve in
+            let updated = latestByID[solve.id]
+            return updated == previousByID[solve.id] ? solve : updated
+        }
+        let displayedIDs = Set(displayedSolves.map(\.id))
+        displayedSolves += latest.filter { !displayedIDs.contains($0.id) && $0 != previousByID[$0.id] }
+        displayedSolves.sort(by: Solve.newestFirst)
+    }
+}
+
 enum ResultsReviewEligibility {
     static func qualifies(_ solves: [Solve], calendar: Calendar = .current) -> Bool {
         guard solves.count >= 12 else { return false }
@@ -481,6 +535,7 @@ private struct ResultsView: View {
     @State private var averageKind: SolveAverage?
     @State private var resultTypeOverflow: HorizontalScrollOverflow = []
     @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
+    @State private var listPresentation: ResultsListPresentation?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
     @State private var lastStatisticsGroup: StatisticsGroup?
@@ -497,6 +552,7 @@ private struct ResultsView: View {
     let usesSideNavigation: Bool
     let isReviewContextActive: () -> Bool
     let contentInsets: LandscapeContentInsets?
+    let showsResultsList: Bool
     let showsStatistics: Bool
     let onChartViewed: (ResultsChartMode) -> Void
     @State private var selectedSolveIDs: Set<Solve.ID> = []
@@ -508,8 +564,18 @@ private struct ResultsView: View {
         EdgeInsets(top: 0, leading: LandscapeContentInsets.contentMargin,
                    bottom: 0, trailing: LandscapeContentInsets.contentMargin - listRailInset)
     }
+    private var listSource: ResultsListPresentation.Source? {
+        guard showsResultsList, model.cloudSyncEnabled else { return nil }
+        return .init(event: model.event, groupID: model.currentGroup?.id,
+                     solves: model.groupSolves.sorted(by: Solve.newestFirst), lastCloudSync: model.lastSuccessfulCloudSync)
+    }
+    private var visibleListPresentation: ResultsListPresentation? {
+        guard showsResultsList, model.cloudSyncEnabled, let listPresentation,
+              listPresentation.matches(event: model.event, groupID: model.currentGroup?.id) else { return nil }
+        return listPresentation
+    }
     private var results: [Solve] {
-        model.groupSolves.sorted(by: Solve.newestFirst)
+        visibleListPresentation?.displayedSolves ?? model.groupSolves.sorted(by: Solve.newestFirst)
     }
 
     private var canRequestReview: Bool {
@@ -523,7 +589,7 @@ private struct ResultsView: View {
     }
 
     var body: some View {
-        let groupSolves = model.groupSolves
+        let groupSolves = results
         let showsPageContent = page == .statistics || !groupSolves.isEmpty
         let availableKinds = SolveAverage.allCases.filter { $0.count <= groupSolves.count }
         let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
@@ -598,6 +664,21 @@ private struct ResultsView: View {
                 selectionControls
                     .padding(.horizontal, 24)
                     .padding(.bottom, 8)
+            } else if visibleListPresentation?.hasCloudUpdates == true, detailPath.isEmpty {
+                cloudResultsUpdateToast
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+            }
+        }
+        .onChange(of: listSource, initial: true) { _, source in
+            guard let source else {
+                listPresentation = nil
+                return
+            }
+            if listPresentation == nil {
+                listPresentation = ResultsListPresentation(source: source)
+            } else {
+                listPresentation?.update(from: source)
             }
         }
         .task(id: canRequestReview) {
@@ -612,6 +693,27 @@ private struct ResultsView: View {
             didRequestAppStoreReview = true
             requestReview()
         }
+    }
+
+    private var cloudResultsUpdateToast: some View {
+        Button {
+            listPresentation?.showLatest()
+        } label: {
+            HStack(spacing: 14) {
+                Label(language.text("iCloud 成绩有更新", "iCloud results updated"), systemImage: "icloud")
+                    .foregroundStyle(.primary)
+                Text(language.text("刷新", "Refresh"))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.accentColor)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .contentShape(Capsule())
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("results.refreshCloudResults")
     }
 
     private var resultsHeader: some View {
