@@ -520,6 +520,12 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Import"].waitForExistence(timeout: 5))
         let entry = app.buttons["settings.results.importDCTimer"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        let browseHelp = app.staticTexts["settings.import.dctimerBrowseHelp"]
+        XCTAssertTrue(browseHelp.exists)
+        XCTAssertTrue(browseHelp.label.contains("Browse") && browseHelp.label.contains("Locations"))
+        XCTAssertLessThan(browseHelp.frame.maxY, entry.frame.minY)
+        let backupPath = app.staticTexts["settings.import.dctimerBackupPath"]
+        XCTAssertTrue(backupPath.label.contains("DCTimer²") && backupPath.label.contains("spdcube.sqlite"))
         tapCardRowEdge(entry)
         let cancel = app.buttons["Cancel"].firstMatch
         // Cold Files launches can exceed 10 seconds on hosted simulators.

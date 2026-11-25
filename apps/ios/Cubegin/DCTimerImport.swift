@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import SQLite3
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct DCTimerBackup: Sendable {
@@ -244,10 +245,31 @@ struct ResultsImportView: View {
     @State private var confirmUndo = false
 
     private var language: AppLanguage { locale.appLanguage }
+    private var localFilesLocation: String {
+        UIDevice.current.userInterfaceIdiom == .pad
+            ? language.text("我的 iPad", "On My iPad")
+            : language.text("我的 iPhone", "On My iPhone")
+    }
 
     var body: some View {
         Form {
             CardSection {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(language.text(
+                        "点「浏览」。如果已在其他文件夹，点左上角返回，直到看到「位置」。",
+                        "Tap Browse. If another folder is open, go back until you see Locations."
+                    ))
+                    .accessibilityIdentifier("settings.import.dctimerBrowseHelp")
+                    Text(language.text(
+                        "打开「\(localFilesLocation)」下的 DCTimer²，选择 spdcube.sqlite。",
+                        "Open DCTimer² under \(localFilesLocation) and select spdcube.sqlite."
+                    ))
+                    .accessibilityIdentifier("settings.import.dctimerBackupPath")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 12)
+
                 cardRowButton {
                     chooseBackup()
                 } label: {
@@ -259,9 +281,6 @@ struct ResultsImportView: View {
                 }
                 .accessibilityIdentifier("settings.results.importDCTimer")
                 .disabled(isReading || model.started != nil)
-            } footer: {
-                Text(language.text("选择文件：我的 iPhone → DCTimer² → spdcube.sqlite",
-                                   "Choose: On My iPhone → DCTimer² → spdcube.sqlite"))
             }
             if model.lastImportCount > 0 {
                 CardSection {

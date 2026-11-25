@@ -13,7 +13,7 @@ Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It
 - **Record celebrations** — Celebrate the first valid result and new single, Ao5, and Ao12 personal bests in the current solve group. Tap the celebration button next to the solve controls to replay while the result still qualifies.
 - **Results and statistics** — Organize solves into groups, apply +2 or DNF, and review individual attempts, rolling averages, trend charts and time distributions.
 - **Settings** — Choose the app language and theme, adjust the timer start delay, and turn timer haptics on or off.
-- **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.
+- **DCTimer import** — Open **Settings → Import → Import from DCTimer**. In the file picker, tap Browse and go back to Locations. Open DCTimer² under On My iPhone or On My iPad, then select `spdcube.sqlite`. Preview the results, select the groups to import, and undo the latest import if needed.
 
 In **Settings → About**, read the [changelog](CHANGELOG.md) offline or check for App Store updates.
 
