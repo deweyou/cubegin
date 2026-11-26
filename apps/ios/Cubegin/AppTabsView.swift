@@ -779,18 +779,13 @@ private struct ResultsView: View {
 
     private func loadingRows(total: Int?) -> some View {
         let count = min(6, max(1, total ?? 6))
-        let placeholderNumber = max(1, total ?? 1_000)
         return VStack(spacing: 0) {
             Divider().opacity(0.55)
             ForEach(0..<count, id: \.self) { index in
-                HStack(spacing: 12) {
-                    solveRowContent(number: placeholderNumber, total: placeholderNumber, date: "00-00") {
-                        solveTimeLabel("00.000")
-                    }
-                    .redacted(reason: .placeholder)
-                    Image(systemName: "chevron.forward")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.quaternary)
+                HStack {
+                    Capsule().fill(.secondary.opacity(0.16)).frame(width: 96, height: 12)
+                    Spacer(minLength: 8)
+                    Capsule().fill(.secondary.opacity(0.12)).frame(width: 48, height: 12)
                 }
                 .frame(minHeight: 52)
                 if index < count - 1 { Divider().opacity(0.55) }
@@ -815,7 +810,7 @@ private struct ResultsView: View {
             resultsHeader.disabled(isLoading && !isMounted)
             if page == .solves && !isSelecting && !availableKinds.isEmpty {
                 if isLoading {
-                    resultTypePlaceholder(averageCount: min(2, availableKinds.count))
+                    resultTypePlaceholder(count: min(3, availableKinds.count + 1))
                 } else {
                     resultTypePicker(availableKinds, selected: selected)
                 }
@@ -823,10 +818,9 @@ private struct ResultsView: View {
         }
     }
 
-    private func resultTypePlaceholder(averageCount: Int) -> some View {
+    private func resultTypePlaceholder(count: Int) -> some View {
         HStack(spacing: 8) {
-            Capsule().fill(.primary.opacity(0.06)).frame(width: 52, height: 30)
-            ForEach(0..<averageCount, id: \.self) { _ in
+            ForEach(0..<count, id: \.self) { _ in
                 Capsule().fill(.secondary.opacity(0.12)).frame(width: 22, height: 11)
                     .frame(width: 44)
             }
@@ -1574,35 +1568,23 @@ private struct ResultsView: View {
     }
 
     private func solveRowLabel(_ solve: Solve, number: Int, total: Int, highlight: (label: String, color: Color)?) -> some View {
-        solveRowContent(number: number, total: total, date: SolveDateLabel.text(for: solve.date),
-                        isSelected: isSelecting ? selectedSolveIDs.contains(solve.id) : nil) {
-            solveTimeLabel(solve.resultText)
-                .foregroundStyle(highlight?.color ?? (solve.penalty == .dnf ? .secondary : .primary))
-                .accessibilityValue(highlight?.label ?? "")
-        }
-    }
-
-    private func solveTimeLabel(_ time: String) -> some View {
-        Text(time)
-            .font(.system(.body, design: .monospaced).weight(.medium))
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .layoutPriority(1)
-    }
-
-    private func solveRowContent<Time: View>(
-        number: Int, total: Int, date: String, isSelected: Bool? = nil, @ViewBuilder time: () -> Time
-    ) -> some View {
         HStack(spacing: 12) {
-            if let isSelected {
+            if isSelecting {
+                let isSelected = selectedSolveIDs.contains(solve.id)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                     .accessibilityHidden(true)
             }
             solveNumberLabel(number, total: total)
-            time()
+            Text(solve.resultText)
+                .font(.system(.body, design: .monospaced).weight(.medium))
+                .foregroundStyle(highlight?.color ?? (solve.penalty == .dnf ? .secondary : .primary))
+                .accessibilityValue(highlight?.label ?? "")
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .layoutPriority(1)
             Spacer(minLength: 8)
-            Text(date)
+            Text(SolveDateLabel.text(for: solve.date))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
