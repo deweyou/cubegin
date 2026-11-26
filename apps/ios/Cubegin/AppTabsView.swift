@@ -181,16 +181,8 @@ struct AppTabsView: View {
             model.refresh()
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
-            if phase == .active {
-                model.requestCloudSync()
-            } else {
-                model.interrupt()
-            }
-        }
-        .onChange(of: selection) { _, destination in
-            if destination == .results && isActive && scenePhase == .active {
-                model.requestCloudSync()
-            }
+            model.setCloudForegroundActive(phase == .active)
+            if phase != .active { model.interrupt() }
         }
         .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
             UIApplication.shared.isIdleTimerDisabled = keepScreenOn
@@ -200,7 +192,7 @@ struct AppTabsView: View {
             switch page {
             case .statistics:
                 AppTelemetry.record(.statisticsViewed)
-            case .solves where !model.groupSolves.isEmpty:
+            case .solves where model.hasSolvesInCurrentGroup:
                 AppTelemetry.record(.solveListViewed(includesDNF: includesDNFInWorst))
             default:
                 break
@@ -208,6 +200,7 @@ struct AppTabsView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            model.setCloudForegroundActive(false)
         }
         .alert(language.text("提示", "Notice"), isPresented: Binding(get: { isActive && model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button(language.text("好", "OK")) { model.error = nil }
@@ -440,59 +433,6 @@ private enum ResultsPage: String, CaseIterable, Identifiable {
     }
 }
 
-struct ResultsListPresentation {
-    struct Source: Equatable {
-        let event: String
-        let groupID: String?
-        let solves: [Solve]
-        let lastCloudSync: Date?
-    }
-
-    private var source: Source
-    private(set) var displayedSolves: [Solve]
-    var hasCloudUpdates: Bool { displayedSolves != source.solves }
-
-    init(source: Source) {
-        self.source = source
-        displayedSolves = source.solves
-    }
-
-    func matches(event: String, groupID: String?) -> Bool {
-        source.event == event && source.groupID == groupID
-    }
-
-    mutating func update(from latest: Source) {
-        guard matches(event: latest.event, groupID: latest.groupID) else {
-            self = Self(source: latest)
-            return
-        }
-        defer { source = latest }
-        guard source.solves != latest.solves else { return }
-        let isCloudUpdate = source.lastCloudSync != latest.lastCloudSync
-        if !hasCloudUpdates && (displayedSolves.isEmpty || !isCloudUpdate) {
-            displayedSolves = latest.solves
-        } else if !isCloudUpdate {
-            applyLocalChanges(latest.solves)
-        }
-    }
-
-    mutating func showLatest() {
-        displayedSolves = source.solves
-    }
-
-    private mutating func applyLocalChanges(_ latest: [Solve]) {
-        let previousByID = source.solves.reduce(into: [Solve.ID: Solve]()) { $0[$1.id] = $1 }
-        let latestByID = latest.reduce(into: [Solve.ID: Solve]()) { $0[$1.id] = $1 }
-        displayedSolves = displayedSolves.compactMap { solve in
-            let updated = latestByID[solve.id]
-            return updated == previousByID[solve.id] ? solve : updated
-        }
-        let displayedIDs = Set(displayedSolves.map(\.id))
-        displayedSolves += latest.filter { !displayedIDs.contains($0.id) && $0 != previousByID[$0.id] }
-        displayedSolves.sort(by: Solve.newestFirst)
-    }
-}
-
 enum ResultsReviewEligibility {
     static func qualifies(_ solves: [Solve], calendar: Calendar = .current) -> Bool {
         guard solves.count >= 12 else { return false }
@@ -514,10 +454,36 @@ private struct AverageDestination: Hashable {
     let newestSolveID: Solve.ID
 }
 
-private struct AverageHighlightInput: Equatable {
-    let kind: SolveAverage
-    let times: [Double?]
-    let includesDNF: Bool
+private struct AverageDetailsLoader<Content: View>: View {
+    let reader: ResultsPageReader?
+    let destination: AverageDestination
+    @ViewBuilder let content: ([Solve]) -> Content
+    @State private var window: [Solve]?
+
+    var body: some View {
+        Group {
+            if let window {
+                content(window)
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: destination) {
+            guard let reader else {
+                window = []
+                return
+            }
+            do {
+                let values = try await reader.window(startingAt: destination.newestSolveID, count: destination.kind.count)
+                guard !Task.isCancelled else { return }
+                window = values
+            } catch is CancellationError {
+                return
+            } catch {
+                window = []
+            }
+        }
+    }
 }
 
 private struct ResultsView: View {
@@ -534,8 +500,18 @@ private struct ResultsView: View {
     @State private var detailPath = NavigationPath()
     @State private var averageKind: SolveAverage?
     @State private var resultTypeOverflow: HorizontalScrollOverflow = []
-    @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
-    @State private var listPresentation: ResultsListPresentation?
+    @State private var listReader: ResultsPageReader?
+    @State private var loadedGroup: ResultsGroupKey?
+    @State private var loadedPage: SolvePage?
+    @State private var statisticsGroup: ResultsGroupKey?
+    @State private var statisticsSolves: [Solve] = []
+    @State private var refreshRequest = 0
+    @State private var cloudChangePending = false
+    @State private var contentVersion = 0
+    @State private var paginationTask: Task<Void, Never>?
+    @State private var averagePage: (request: AveragePageRequest, rows: [AverageRow])?
+    @State private var averageHighlights: (request: AverageHighlightRequest, extremes: ResultExtremes)?
+    @State private var selectAllTask: Task<Void, Never>?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
     @State private var lastStatisticsGroup: StatisticsGroup?
@@ -564,24 +540,54 @@ private struct ResultsView: View {
         EdgeInsets(top: 0, leading: LandscapeContentInsets.contentMargin,
                    bottom: 0, trailing: LandscapeContentInsets.contentMargin - listRailInset)
     }
-    private var listSource: ResultsListPresentation.Source? {
-        guard showsResultsList, model.cloudSyncEnabled else { return nil }
-        return .init(event: model.event, groupID: model.currentGroup?.id,
-                     solves: model.groupSolves.sorted(by: Solve.newestFirst), lastCloudSync: model.lastSuccessfulCloudSync)
+    private static let pageSize = 80
+
+    private struct ListRequest: Equatable {
+        let group: ResultsGroupKey
+        let refresh: Int
     }
-    private var visibleListPresentation: ResultsListPresentation? {
-        guard showsResultsList, model.cloudSyncEnabled, let listPresentation,
-              listPresentation.matches(event: model.event, groupID: model.currentGroup?.id) else { return nil }
-        return listPresentation
+
+    private struct AveragePageRequest: Equatable {
+        let kind: SolveAverage
+        let contentVersion: Int
+        let count: Int
     }
-    private var results: [Solve] {
-        visibleListPresentation?.displayedSolves ?? model.groupSolves.sorted(by: Solve.newestFirst)
+
+    private struct AverageHighlightRequest: Equatable {
+        let kind: SolveAverage
+        let contentVersion: Int
+        let includesDNF: Bool
+    }
+
+    private struct AverageRow: Identifiable, Sendable {
+        let id: Solve.ID
+        let index: Int
+        let summary: SolveAverage.Summary?
+    }
+
+    private var groupKey: ResultsGroupKey? {
+        model.currentGroup.map { ResultsGroupKey(event: model.event, id: $0.id) }
+    }
+
+    private var listRequest: ListRequest? {
+        guard showsResultsList, let groupKey else { return nil }
+        return ListRequest(group: groupKey, refresh: refreshRequest)
+    }
+
+    private var displayedPage: SolvePage? {
+        guard loadedGroup == groupKey else { return nil }
+        return loadedPage
+    }
+
+    private var displayedStatistics: [Solve] {
+        guard statisticsGroup == groupKey else { return [] }
+        return statisticsSolves
     }
 
     private var canRequestReview: Bool {
         guard isReviewContextActive(), scenePhase == .active, page == .solves, !didRequestAppStoreReview,
               !isSelecting, detailPath.isEmpty, !showsMoveGroups, !showsProjects, !showsGroups,
-              model.error == nil, !model.groupSolves.isEmpty else { return false }
+              model.error == nil, displayedPage.map({ $0.total > 0 }) == true else { return false }
 #if DEBUG
         if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"] != nil { return false }
 #endif
@@ -589,9 +595,9 @@ private struct ResultsView: View {
     }
 
     var body: some View {
-        let groupSolves = results
-        let showsPageContent = page == .statistics || !groupSolves.isEmpty
-        let availableKinds = SolveAverage.allCases.filter { $0.count <= groupSolves.count }
+        let total = displayedPage?.total ?? 0
+        let showsPageContent = page == .statistics ? statisticsGroup == groupKey : total > 0
+        let availableKinds = SolveAverage.allCases.filter { $0.count <= total }
         let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
         NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
@@ -605,6 +611,10 @@ private struct ResultsView: View {
                                 }
                             }
                         }
+                } else if (showsResultsList && displayedPage == nil) || (showsStatistics && statisticsGroup != groupKey) {
+                    resultsHeader
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     resultsHeader
                     VStack(spacing: 12) {
@@ -664,22 +674,27 @@ private struct ResultsView: View {
                 selectionControls
                     .padding(.horizontal, 24)
                     .padding(.bottom, 8)
-            } else if visibleListPresentation?.hasCloudUpdates == true, detailPath.isEmpty {
+            } else if showsResultsList, cloudChangePending, detailPath.isEmpty {
                 cloudResultsUpdateToast
                     .padding(.horizontal, 24)
                     .padding(.bottom, 8)
             }
         }
-        .onChange(of: listSource, initial: true) { _, source in
-            guard let source else {
-                listPresentation = nil
-                return
-            }
-            if listPresentation == nil {
-                listPresentation = ResultsListPresentation(source: source)
-            } else {
-                listPresentation?.update(from: source)
-            }
+        .onDisappear {
+            paginationTask?.cancel()
+            paginationTask = nil
+            listReader = nil
+        }
+        .task(id: listRequest) {
+            await observeList(listRequest)
+        }
+        .task(id: showsStatistics ? groupKey : nil) {
+            guard showsStatistics, let groupKey else { return }
+            await observeStatistics(groupKey)
+        }
+        .onChange(of: includesDNFInWorst) { _, _ in
+            guard let reader = listReader else { return }
+            Task { await reloadList(using: reader, limit: loadedPage?.solves.count ?? Self.pageSize) }
         }
         .task(id: canRequestReview) {
             guard canRequestReview else { return }
@@ -695,9 +710,125 @@ private struct ResultsView: View {
         }
     }
 
+    private func observeList(_ request: ListRequest?) async {
+        paginationTask?.cancel()
+        paginationTask = nil
+        listReader = nil
+        cloudChangePending = false
+        guard let request else { return }
+        let persistence = model.resultsPersistence
+        let changes = persistence.changes()
+        let reader = persistence.reader(for: request.group)
+        listReader = reader
+        // Reuse the cached first page while SQLite opens a fresh read transaction.
+        if loadedGroup != request.group { loadedPage = nil }
+        loadedGroup = request.group
+        let limit = max(Self.pageSize, loadedPage?.solves.count ?? 0)
+        guard await reloadList(using: reader, limit: limit) else { return }
+        var appliedRevision = loadedPage?.revision ?? -1
+
+        for await change in changes {
+            guard !Task.isCancelled, listReader === reader else { return }
+            guard change.revision > appliedRevision, change.affectedGroups.contains(request.group) else { continue }
+            appliedRevision = change.revision
+            if change.origin == .cloud, (loadedPage?.total ?? 0) > 0 {
+                cloudChangePending = true
+                continue
+            }
+            do {
+                if change.origin == .cloud {
+                    await reader.reset()
+                } else {
+                    try await reader.applyLocal(change.entries.filter { $0.affects(request.group) })
+                }
+                guard !Task.isCancelled, listReader === reader else { return }
+                let limit = max(Self.pageSize, loadedPage?.solves.count ?? 0)
+                if await reloadList(using: reader, limit: limit, invalidatingAverages: true) {
+                    appliedRevision = max(appliedRevision, loadedPage?.revision ?? -1)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                showResultsReadError(error)
+            }
+        }
+    }
+
+    private func observeStatistics(_ group: ResultsGroupKey) async {
+        let persistence = model.resultsPersistence
+        let changes = persistence.changes()
+        await reloadStatistics(group, persistence: persistence)
+        for await change in changes {
+            guard !Task.isCancelled else { return }
+            if change.affectedGroups.contains(group) {
+                await reloadStatistics(group, persistence: persistence)
+            }
+        }
+    }
+
+    private func reloadStatistics(_ group: ResultsGroupKey, persistence: ResultsPersistence) async {
+        do {
+            let solves = try await persistence.reader(for: group).allSolves()
+            guard !Task.isCancelled, showsStatistics, group == groupKey else { return }
+            statisticsGroup = group
+            statisticsSolves = solves
+        } catch is CancellationError {
+            return
+        } catch {
+            showResultsReadError(error)
+        }
+    }
+
+    @discardableResult
+    private func reloadList(using reader: ResultsPageReader, limit: Int, invalidatingAverages: Bool = false) async -> Bool {
+        paginationTask?.cancel()
+        paginationTask = nil
+        do {
+            let page = try await reader.page(offset: 0, limit: limit, includesDNF: includesDNFInWorst)
+            guard !Task.isCancelled, listReader === reader else { return false }
+            if invalidatingAverages || loadedPage != page {
+                paginationTask?.cancel()
+                paginationTask = nil
+                loadedPage = page
+                contentVersion &+= 1
+            }
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            showResultsReadError(error)
+            return false
+        }
+    }
+
+    private func loadNextPage(near index: Int) {
+        guard showsResultsList, paginationTask == nil, let reader = listReader, let page = displayedPage,
+              page.solves.count < page.total, index >= page.solves.count - 8 else { return }
+        let version = contentVersion
+        paginationTask = Task {
+            defer {
+                if listReader === reader, contentVersion == version { paginationTask = nil }
+            }
+            do {
+                let next = try await reader.page(offset: page.solves.count, limit: Self.pageSize, includesDNF: includesDNFInWorst)
+                guard !Task.isCancelled, listReader === reader, contentVersion == version else { return }
+                loadedPage = SolvePage(solves: page.solves + next.solves, total: next.total, revision: next.revision,
+                                         bestID: next.bestID, worstID: next.worstID)
+            } catch is CancellationError {
+                return
+            } catch {
+                showResultsReadError(error)
+            }
+        }
+    }
+
+    private func showResultsReadError(_ error: Error) {
+        model.error = language.text("成绩读取失败：", "Could not read results: ") + error.localizedDescription
+    }
+
     private var cloudResultsUpdateToast: some View {
         Button {
-            listPresentation?.showLatest()
+            refreshRequest &+= 1
         } label: {
             HStack(spacing: 14) {
                 Label(language.text("iCloud 成绩有更新", "iCloud results updated"), systemImage: "icloud")
@@ -829,12 +960,10 @@ private struct ResultsView: View {
         case (.solves, .some(let kind)):
             averagesView(kind: kind, availableKinds: availableKinds)
         case (.solves, nil):
-            let orderedResults = results
-            let extremes = orderedResults.enumerated().reduce(into: ResultExtremes(includesDNF: includesDNFInWorst)) { extremes, entry in
-                extremes.record(entry.element.resultSeconds, at: entry.offset)
-            }
+            let orderedResults = displayedPage?.solves ?? []
+            let total = displayedPage?.total ?? 0
             List(Array(orderedResults.enumerated()), id: \.element.id) { index, solve in
-                let highlight = resultHighlight(at: index, best: extremes.best, worst: extremes.worst)
+                let highlight = resultHighlight(at: solve.id, best: displayedPage?.bestID, worst: displayedPage?.worstID)
                 Group {
                     if isSelecting {
                         Button {
@@ -842,13 +971,13 @@ private struct ResultsView: View {
                                 selectedSolveIDs.remove(solve.id)
                             }
                         } label: {
-                            solveRowLabel(solve, number: orderedResults.count - index, total: orderedResults.count, highlight: highlight)
+                            solveRowLabel(solve, number: total - index, total: total, highlight: highlight)
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(selectedSolveIDs.contains(solve.id) ? .isSelected : [])
                     } else {
                         NavigationLink(value: solve.id) {
-                            solveRowLabel(solve, number: orderedResults.count - index, total: orderedResults.count, highlight: highlight)
+                            solveRowLabel(solve, number: total - index, total: total, highlight: highlight)
                         }
                         .accessibilityAction(named: Text(language.text("多选", "Select multiple"))) {
                             selectedSolveIDs = [solve.id]
@@ -858,7 +987,8 @@ private struct ResultsView: View {
                 }
                 .listRowInsets(resultRowInsets)
                 .listRowBackground(selectedSolveIDs.contains(solve.id) ? Color.accentColor.opacity(0.06) : Color.clear)
-                .accessibilityIdentifier("solve-row-\(orderedResults.count - index)")
+                .accessibilityIdentifier("solve-row-\(total - index)")
+                .onAppear { loadNextPage(near: index) }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if !isSelecting {
                         Button {
@@ -898,7 +1028,7 @@ private struct ResultsView: View {
             }
         case (.statistics, _):
             let group = StatisticsGroup(project: model.event, id: model.currentGroup?.id)
-            let solves = results
+            let solves = displayedStatistics
             ResultsOverview(solves: solves, contentInsets: contentInsets,
                             tracksChartVisibility: showsStatistics, onChartViewed: onChartViewed,
                             isVisible: statisticsVisible) { start in
@@ -971,29 +1101,27 @@ private struct ResultsView: View {
     }
 
     private func averagesView(kind: SolveAverage, availableKinds: [SolveAverage]) -> some View {
-        let orderedResults = results
-        let input = AverageHighlightInput(kind: kind, times: orderedResults.map(\.resultSeconds), includesDNF: includesDNFInWorst)
-        let extremes = averageHighlights?.input == input ? averageHighlights?.extremes : nil
-        return List(orderedResults.indices, id: \.self) { index in
-            let number = orderedResults.count - index
+        let total = displayedPage?.total ?? 0
+        let request = AveragePageRequest(kind: kind, contentVersion: contentVersion, count: displayedPage?.solves.count ?? 0)
+        let highlightRequest = AverageHighlightRequest(kind: kind, contentVersion: contentVersion, includesDNF: includesDNFInWorst)
+        let rows = averagePage.flatMap { $0.request.kind == kind && $0.request.contentVersion == contentVersion ? $0.rows : nil } ?? []
+        let extremes = averageHighlights.flatMap { $0.request == highlightRequest ? $0.extremes : nil }
+        return List(rows) { row in
+            let number = total - row.index
             Group {
                 if number >= kind.count {
-                    let window = orderedResults[index..<(index + kind.count)]
-                    NavigationLink(value: AverageDestination(kind: kind, newestSolveID: orderedResults[index].id)) {
-                        averageRowLabel(
-                            number: number,
-                            total: orderedResults.count,
-                            summary: kind.summarize(window),
-                            highlight: resultHighlight(at: index, best: extremes?.best, worst: extremes?.worst)
-                        )
+                    NavigationLink(value: AverageDestination(kind: kind, newestSolveID: row.id)) {
+                        averageRowLabel(number: number, total: total, summary: row.summary,
+                                        highlight: resultHighlight(at: row.index, best: extremes?.best, worst: extremes?.worst))
                     }
                 } else {
-                    averageRowLabel(number: number, total: orderedResults.count, summary: nil)
+                    averageRowLabel(number: number, total: total, summary: nil)
                 }
             }
             .listRowInsets(resultRowInsets)
             .listRowBackground(Color.clear)
-            .accessibilityIdentifier("average-row-\(index)")
+            .accessibilityIdentifier("average-row-\(row.index)")
+            .onAppear { loadNextPage(near: row.index) }
         }
         .listStyle(.plain)
         .padding(.trailing, listRailInset)
@@ -1012,11 +1140,59 @@ private struct ResultsView: View {
             }
         )
         .id(kind)
-        .task(id: input) {
-            let extremes = await kind.rollingExtremes(input.times, includesDNF: input.includesDNF)
-            guard !Task.isCancelled else { return }
-            averageHighlights = (input, extremes)
+        .task(id: request) {
+            await loadAverageRows(request)
         }
+        .task(id: highlightRequest) {
+            guard let reader = listReader else { return }
+            do {
+                let times = try await reader.allTimes()
+                let extremes = await kind.rollingExtremes(times, includesDNF: highlightRequest.includesDNF)
+                guard !Task.isCancelled, reader === listReader else { return }
+                averageHighlights = (highlightRequest, extremes)
+            } catch is CancellationError {
+                return
+            } catch {
+                showResultsReadError(error)
+            }
+        }
+    }
+
+    private func loadAverageRows(_ request: AveragePageRequest) async {
+        guard let reader = listReader, request.count > 0 else { return }
+        let previous: [AverageRow]
+        if let averagePage, averagePage.request.kind == request.kind,
+           averagePage.request.contentVersion == request.contentVersion {
+            previous = averagePage.rows
+        } else {
+            previous = []
+        }
+        guard request.count > previous.count else { return }
+        do {
+            let page = try await reader.page(offset: previous.count,
+                                             limit: request.count - previous.count + request.kind.count - 1,
+                                             includesDNF: includesDNFInWorst)
+            let rows = await Self.averageRows(page.solves, startingAt: previous.count, count: request.count - previous.count,
+                                         kind: request.kind)
+            guard !Task.isCancelled, reader === listReader, contentVersion == request.contentVersion else { return }
+            averagePage = (request, previous + rows)
+        } catch is CancellationError {
+            return
+        } catch {
+            showResultsReadError(error)
+        }
+    }
+
+    @concurrent private static func averageRows(_ solves: [Solve], startingAt start: Int, count: Int,
+                                         kind: SolveAverage) async -> [AverageRow] {
+        var results: [AverageRow] = []
+        for index in solves.indices.prefix(count) {
+            guard !Task.isCancelled else { break }
+            let end = index + kind.count
+            let summary = end <= solves.count ? kind.summarize(solves[index..<end]) : nil
+            results.append(AverageRow(id: solves[index].id, index: start + index, summary: summary))
+        }
+        return results
     }
 
     private func averageRowLabel(number: Int, total: Int, summary: SolveAverage.Summary?, highlight: (label: String, color: Color)? = nil) -> some View {
@@ -1044,12 +1220,15 @@ private struct ResultsView: View {
     }
 
     private func averageDetails(_ destination: AverageDestination) -> some View {
-        let orderedResults = results
-        let kind = destination.kind
+        AverageDetailsLoader(reader: listReader, destination: destination) { window in
+            averageDetails(window: window, kind: destination.kind)
+        }
+    }
+
+    private func averageDetails(window: [Solve], kind: SolveAverage) -> some View {
         return Group {
-            if let start = orderedResults.firstIndex(where: { $0.id == destination.newestSolveID }),
-               orderedResults.count - start >= kind.count {
-                let window = orderedResults[start..<(start + kind.count)]
+            if window.count == kind.count {
+                let window = window[...]
                 let summary = kind.summarize(window)
                 let extremes = window.indices.reduce(into: ResultExtremes(includesDNF: includesDNFInWorst)) { extremes, index in
                     extremes.record(window[index].resultSeconds, at: index)
@@ -1077,10 +1256,10 @@ private struct ResultsView: View {
                             ForEach(0..<rowCount, id: \.self) { row in
                                 HStack(spacing: spacing) {
                                     ForEach(0..<columns, id: \.self) { column in
-                                        let index = start + row * columns + column
+                                        let index = row * columns + column
                                         if index < window.endIndex {
                                             averageSolveTile(window[index], highlight: resultHighlight(at: index, best: extremes.best, worst: extremes.worst))
-                                                .accessibilityIdentifier("average-solve-\(index - start)")
+                                                .accessibilityIdentifier("average-solve-\(index)")
                                         } else {
                                             Color.clear
                                                 .frame(maxWidth: .infinity)
@@ -1110,7 +1289,7 @@ private struct ResultsView: View {
         .toolbar(.visible, for: .navigationBar)
     }
 
-    private func resultHighlight(at index: Int, best: Int?, worst: Int?) -> (label: String, color: Color)? {
+    private func resultHighlight<ID: Equatable>(at index: ID, best: ID?, worst: ID?) -> (label: String, color: Color)? {
         if index == best {
             return (language.text("最快", "Fastest"), resultBestColor(for: colorScheme))
         }
@@ -1178,10 +1357,24 @@ private struct ResultsView: View {
     }
 
     private var selectAllButton: some View {
-        let allIDs = Set(results.map(\.id))
-        let allSelected = selectedSolveIDs == allIDs
+        let allSelected = !selectedSolveIDs.isEmpty && selectedSolveIDs.count == displayedPage?.total
         return Button(allSelected ? language.text("取消全选", "Deselect all") : language.text("全选", "Select all")) {
-            selectedSolveIDs = allSelected ? [] : allIDs
+            if allSelected {
+                selectedSolveIDs = []
+            } else if let reader = listReader {
+                selectAllTask?.cancel()
+                selectAllTask = Task {
+                    do {
+                        let ids = try await reader.allIDs()
+                        guard !Task.isCancelled, isSelecting, listReader === reader else { return }
+                        selectedSolveIDs = ids
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        showResultsReadError(error)
+                    }
+                }
+            }
         }
         .font(.subheadline)
         .buttonStyle(.plain)
@@ -1230,6 +1423,8 @@ private struct ResultsView: View {
     }
 
     private func endSelection() {
+        selectAllTask?.cancel()
+        selectAllTask = nil
         showsMoveGroups = false
         isSelecting = false
         selectedSolveIDs = []

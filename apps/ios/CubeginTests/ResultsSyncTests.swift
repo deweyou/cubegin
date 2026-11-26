@@ -4,46 +4,92 @@ import SQLite3
 import Testing
 @testable import CubeginApp
 
-struct ResultsListPresentationTests {
-    @Test func keepsCloudChangesPendingWhileApplyingLocalEdits() {
+struct ResultsPagingTests {
+    @Test func keepsCloudRowsAndEditsPendingAcrossPagesWhileApplyingLocalEdits() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = ResultsPersistence(url: directory.appending(path: "solves.sqlite"))
         let old = Solve(seconds: 12, event: "333", scramble: "R U", date: .distantPast)
         let removedLocally = Solve(seconds: 13, event: "333", scramble: "R U2", date: .distantPast + 1)
         let remote = Solve(seconds: 14, event: "333", scramble: "U R", date: .distantPast + 2)
         let local = Solve(seconds: 15, event: "333", scramble: "U R2", date: .distantPast + 3)
-        let syncedAt = Date(timeIntervalSinceReferenceDate: 100)
         var editedRemotely = old
         editedRemotely.penalty = .plusTwo
 
-        var list = ResultsListPresentation(source: source([removedLocally, old]))
-        list.update(from: source([remote, removedLocally, editedRemotely], syncedAt: syncedAt))
-        #expect(list.displayedSolves == [removedLocally, old])
-        #expect(list.hasCloudUpdates)
+        let initial = try storage.save(ResultsStore(solves: [removedLocally, old]), replacing: storage.load(), origin: .local)
+        let reader = ResultsPageReader(database: storage.database, group: ResultsGroupKey(old))
+        let first = try await reader.page(offset: 0, limit: 1, includesDNF: true)
+        #expect(first.solves == [removedLocally])
+        #expect(first.total == 2)
 
-        list.update(from: source([local, remote, editedRemotely], syncedAt: syncedAt))
-        #expect(list.displayedSolves == [local, old])
-        #expect(list.hasCloudUpdates)
+        let cloud = try storage.save(ResultsStore(solves: [remote, removedLocally, editedRemotely]),
+                                     replacing: initial, origin: .cloud)
+        let second = try await reader.page(offset: 1, limit: 1, includesDNF: true)
+        #expect(second.solves == [old])
 
-        list.showLatest()
-        #expect(list.displayedSolves == [local, remote, editedRemotely])
-        #expect(!list.hasCloudUpdates)
+        var changes = storage.changes().makeAsyncIterator()
+        _ = try storage.save(ResultsStore(solves: [local, remote, editedRemotely]), replacing: cloud, origin: .local)
+        let change = try #require(await changes.next())
+        #expect(change.origin == .local)
+        try await reader.applyLocal(change.entries)
+        #expect(try await reader.allSolves() == [local, old])
+        #expect(try await reader.allIDs() == [local.id, old.id])
+
+        let refreshed = ResultsPageReader(database: storage.database, group: ResultsGroupKey(old))
+        #expect(try await refreshed.allSolves() == [local, remote, editedRemotely])
     }
 
-    @Test func displaysTheFirstSyncedSolvesAndShowsTheSelectedGroupImmediately() {
-        let first = Solve(seconds: 12, event: "333", scramble: "R U")
-        let other = Solve(seconds: 13, event: "333", scramble: "R U2", groupID: "practice")
-        var list = ResultsListPresentation(source: source([]))
+    @Test func backgroundApplyRetriesAfterALocalCommitWithoutReplacingIt() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = ResultsPersistence(url: directory.appending(path: "solves.sqlite"))
+        let group = SolveGroup(id: SolveGroup.initialID(for: "333"), event: "333", name: "", isDefault: true)
+        let existing = Solve(seconds: 12, event: "333", scramble: "R U", date: .distantPast)
+        let local = Solve(seconds: 14, event: "333", scramble: "F2 L")
+        _ = try storage.save(ResultsStore(solves: [existing], groups: [group]), replacing: storage.load(), origin: .local)
+        let server = SyntheticSyncServer()
+        let worker = ResultsSyncWorker(persistence: storage, transport: server)
+        let preparation = try await worker.synchronize(groups: [group], preferences: [:], editedKeys: []) { _, _ in }
 
-        list.update(from: source([first], syncedAt: Date(timeIntervalSinceReferenceDate: 100)))
-        #expect(list.displayedSolves == [first])
-        #expect(!list.hasCloudUpdates)
+        let before = storage.current
+        var updated = before.store
+        updated.solves.insert(local, at: 0)
+        _ = try storage.save(updated, replacing: before, origin: .local)
+        await #expect(throws: ResultsDatabase.Failure.staleSnapshot) {
+            _ = try await worker.apply(preparation, groups: [group])
+        }
 
-        list.update(from: source([other], groupID: "practice", syncedAt: Date(timeIntervalSinceReferenceDate: 101)))
-        #expect(list.displayedSolves == [other])
-        #expect(!list.hasCloudUpdates)
+        let retry = try await worker.synchronize(groups: [group], preferences: [:], editedKeys: []) { _, _ in }
+        _ = try await worker.apply(retry, groups: [group])
+        #expect(storage.current.store.solves == [local, existing])
+        #expect(try await server.fetch().contains(where: { $0.solve == local }))
     }
 
-    private func source(_ solves: [Solve], groupID: String? = nil, syncedAt: Date? = nil) -> ResultsListPresentation.Source {
-        .init(event: "333", groupID: groupID, solves: solves, lastCloudSync: syncedAt)
+    @Test func pagesOnlyTheSelectedGroupInStableOrderAndKeepsOverallHighlights() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let database = ResultsDatabase(url: directory.appending(path: "solves.sqlite"))
+        let solves = (0..<8_126).map { index in
+            Solve(seconds: Double(index + 1), event: "333", scramble: "R U",
+                  date: Date(timeIntervalSinceReferenceDate: Double(index)))
+        }
+        let other = Solve(seconds: 0.1, event: "333", scramble: "U R", groupID: "practice")
+        _ = try database.save(ResultsStore(solves: solves + [other]), replacing: database.load())
+        let reader = ResultsPageReader(database: database, group: ResultsGroupKey(solves[0]))
+        let first = try await reader.page(offset: 0, limit: 80, includesDNF: true)
+        let next = try await reader.page(offset: 80, limit: 80, includesDNF: true)
+        #expect(first.total == 8_126)
+        #expect(first.solves == Array(solves.reversed().prefix(80)))
+        #expect(next.solves == Array(solves.reversed().dropFirst(80).prefix(80)))
+        #expect(first.bestID == solves.first?.id)
+        #expect(first.worstID == solves.last?.id)
+        #expect(try await reader.window(startingAt: first.solves[79].id, count: 3)
+                    == [first.solves[79], next.solves[0], next.solves[1]])
+        let otherReader = ResultsPageReader(database: database, group: ResultsGroupKey(other))
+        #expect(try await otherReader.page(offset: 0, limit: 80, includesDNF: true).solves == [other])
     }
 }
 

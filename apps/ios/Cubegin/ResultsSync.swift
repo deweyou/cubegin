@@ -40,7 +40,7 @@ struct SyncRecord: Codable, Equatable, Sendable {
         guard let other else { return true }
         if isDeletion != other.isDeletion { return isDeletion }
         if revision != other.revision { return revision > other.revision }
-        return replicaID.uuidString > other.replicaID.uuidString
+        return replicaID != other.replicaID && replicaID.uuidString > other.replicaID.uuidString
     }
 }
 
@@ -191,7 +191,7 @@ private actor LateResultsPreviewCloudTransport: ResultsCloudTransport {
 struct ResultsSyncReplica: Sendable {
     private static let uploadBatchSize = 100
 
-    struct State: Codable, Sendable {
+    struct State: Codable, Equatable, Sendable {
         let replicaID: UUID
         var records: [UUID: SyncRecord] = [:]
     }
@@ -480,6 +480,13 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
     private let zoneID: CKRecordZone.ID
     private let metadataZoneID: CKRecordZone.ID
     private var expectedAccount: String?
+    private var preparedAccount: String?
+    private var zoneSnapshots: [CKRecordZone.ID: ZoneSnapshot] = [:]
+
+    private struct ZoneSnapshot {
+        var token: CKServerChangeToken?
+        var records: [UUID: SyncRecord] = [:]
+    }
     private let container: CKContainer
     private var database: CKDatabase { container.privateCloudDatabase }
 
@@ -502,11 +509,17 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
     }
 
     func prepareZone(for account: String) async throws {
-        expectedAccount = account
+        if expectedAccount != account {
+            zoneSnapshots.removeAll()
+            preparedAccount = nil
+            expectedAccount = account
+        }
         try await verifyAccount()
+        guard preparedAccount != account else { return }
         _ = try await database.save(CKRecordZone(zoneID: zoneID))
         try await verifyAccount()
         _ = try await database.save(CKRecordZone(zoneID: metadataZoneID))
+        preparedAccount = account
     }
 
     private func verifyAccount() async throws {
@@ -523,18 +536,34 @@ actor CloudKitResultsTransport: ResultsCloudTransport {
     }
 
     private func fetch(in zoneID: CKRecordZone.ID) async throws -> [SyncRecord] {
-        var token: CKServerChangeToken?
-        var records: [UUID: SyncRecord] = [:]
+        let previous = zoneSnapshots[zoneID] ?? ZoneSnapshot()
+        do {
+            let snapshot = try await fetchChanges(in: zoneID, since: previous)
+            zoneSnapshots[zoneID] = snapshot
+            return Array(snapshot.records.values)
+        } catch let error as CKError where error.code == .changeTokenExpired && previous.token != nil {
+            let snapshot = try await fetchChanges(in: zoneID, since: ZoneSnapshot())
+            zoneSnapshots[zoneID] = snapshot
+            return Array(snapshot.records.values)
+        } catch let error as CKError where error.code == .zoneNotFound {
+            preparedAccount = nil
+            zoneSnapshots[zoneID] = nil
+            throw error
+        }
+    }
+
+    private func fetchChanges(in zoneID: CKRecordZone.ID, since previous: ZoneSnapshot) async throws -> ZoneSnapshot {
+        var snapshot = previous
         while true {
             try await verifyAccount()
-            let page = try await database.recordZoneChanges(inZoneWith: zoneID, since: token)
+            let page = try await database.recordZoneChanges(inZoneWith: zoneID, since: snapshot.token)
             guard page.deletions.isEmpty else { throw Failure.unexpectedServerDeletion }
             for result in page.modificationResultsByID.values {
                 let record = try decode(result.get().record)
-                if record.wins(over: records[record.id]) { records[record.id] = record }
+                if record.wins(over: snapshot.records[record.id]) { snapshot.records[record.id] = record }
             }
-            if !page.moreComing { return Array(records.values) }
-            token = page.changeToken
+            snapshot.token = page.changeToken
+            if !page.moreComing { return snapshot }
         }
     }
 
@@ -651,6 +680,127 @@ struct CloudKitResultsBatchWriter: Sendable {
         } catch {
             try Task.checkCancellation()
             return Dictionary(uniqueKeysWithValues: ids.map { ($0, .failure(error)) })
+        }
+    }
+}
+
+actor ResultsSyncWorker {
+    struct Preparation: Sendable {
+        let snapshot: ResultsDatabase.Snapshot
+        let replica: ResultsSyncReplica
+        let account: String
+        let recordCount: Int
+    }
+
+    struct Applied: Sendable {
+        let preferences: [SyncedMetadata]
+        let hasRepairsToUpload: Bool
+    }
+
+    private let persistence: ResultsPersistence
+    private let transport: any ResultsCloudTransport
+
+    init(persistence: ResultsPersistence, transport: any ResultsCloudTransport) {
+        self.persistence = persistence
+        self.transport = transport
+    }
+
+    func synchronize(groups: [SolveGroup], preferences: [String: [String]], editedKeys: Set<String>,
+                     onProgress: @escaping @MainActor @Sendable (Int, Int) -> Void) async throws -> Preparation {
+        let account = try await transport.accountID()
+        try Task.checkCancellation()
+        var snapshot = persistence.current
+        let storedAccount = snapshot.store.cloudAccount
+        if let storedAccount, storedAccount != account { throw CloudSyncFailure.accountChanged }
+        var replica = ResultsSyncReplica(state: snapshot.store.cloudState ?? .init(replicaID: UUID()))
+        // Seed results from older builds and durably reserve revisions before uploading.
+        try replica.importSolves(snapshot.store.solves)
+        replica.importGroups(self.groups(from: snapshot, supplementedBy: groups))
+        for (key, values) in preferences {
+            replica.recordMetadata(.preference(key: key, values: values),
+                                   migrationRevision: editedKeys.contains(key) ? nil : 0)
+        }
+        if snapshot.store.cloudState != replica.state || storedAccount == nil {
+            var prepared = snapshot.store
+            prepared.cloudState = replica.state
+            prepared.cloudAccount = account
+            snapshot = try save(prepared, replacing: snapshot)
+        }
+
+        try await transport.prepareZone(for: account)
+        let recordCount = try await replica.sync(with: transport, onUploadProgress: onProgress)
+        try Task.checkCancellation()
+        guard try await transport.accountID() == account else { throw CloudSyncFailure.accountChanged }
+        try Task.checkCancellation()
+        return Preparation(snapshot: snapshot, replica: replica, account: account, recordCount: recordCount)
+    }
+
+    func apply(_ preparation: Preparation, groups: [SolveGroup]) throws -> Applied {
+        try Task.checkCancellation()
+        guard persistence.current.revision == preparation.snapshot.revision else {
+            throw ResultsDatabase.Failure.staleSnapshot
+        }
+        var replica = preparation.replica
+        let groupMerge = replica.mergeGroups(self.groups(from: preparation.snapshot, supplementedBy: groups))
+        var updatedGroups = groupMerge.groups
+        var groupKeys = Set(updatedGroups.map { ResultsGroupKey(event: $0.event, id: $0.id) })
+        var defaults = Dictionary(updatedGroups.filter(\.isDefault).map { ($0.event, $0.id) },
+                                  uniquingKeysWith: { first, _ in first })
+        let deleted = Set(replica.metadata.compactMap { metadata -> ResultsGroupKey? in
+            guard case .group(let event, let id, nil) = metadata else { return nil }
+            return ResultsGroupKey(event: event, id: id)
+        })
+        var needsUpload = groupMerge.didRecover
+        var solves = replica.solves
+        for index in solves.indices {
+            let key = ResultsGroupKey(solves[index])
+            guard !groupKeys.contains(key) else { continue }
+            if deleted.contains(key), let fallback = defaults[key.event] {
+                // Keep a concurrent solve when its destination group was removed remotely.
+                solves[index].groupID = fallback
+                try replica.edit(solves[index])
+                needsUpload = true
+            } else {
+                let isDefault = defaults[key.event] == nil
+                updatedGroups.append(SolveGroup(id: key.id, event: key.event,
+                                                name: key.id == SolveGroup.initialID(for: key.event) ? "" : SolveGroup.cloudPlaceholderName,
+                                                isDefault: isDefault))
+                groupKeys.insert(key)
+                if isDefault { defaults[key.event] = key.id }
+            }
+        }
+
+        var store = preparation.snapshot.store
+        if store.solves != solves {
+            store.solves = solves
+            if let importedIDs = store.lastImportedSolveIDs {
+                let remaining = importedIDs.intersection(solves.lazy.map(\.id))
+                store.lastImportedSolveIDs = remaining.isEmpty ? nil : remaining
+                if remaining.isEmpty { store.lastImportDate = nil }
+            }
+        }
+        store.groups = updatedGroups
+        store.cloudState = replica.state
+        store.cloudAccount = preparation.account
+        _ = try save(store, replacing: preparation.snapshot)
+        return Applied(preferences: replica.metadata, hasRepairsToUpload: needsUpload)
+    }
+
+    private func groups(from snapshot: ResultsDatabase.Snapshot, supplementedBy defaults: [SolveGroup]) -> [SolveGroup] {
+        let stored = snapshot.store.groups
+        let events = Set(stored.map(\.event))
+        return stored + defaults.filter { !events.contains($0.event) }
+    }
+
+    private func save(_ store: ResultsStore, replacing snapshot: ResultsDatabase.Snapshot) throws -> ResultsDatabase.Snapshot {
+        do {
+            return try persistence.save(store, replacing: snapshot, origin: .cloud)
+        } catch ResultsDatabase.Failure.staleSnapshot {
+            throw ResultsDatabase.Failure.staleSnapshot
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw CloudSyncFailure.localStorage
         }
     }
 }

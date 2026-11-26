@@ -477,7 +477,7 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testReturningToResultsFetchesNewCloudSolvesWithoutLeavingAgain() {
+    func testBackgroundSyncFillsAnEmptyResultsListWithoutSwitchingAway() {
         continueAfterFailure = false
         let app = openSyncPreview("--preview-icloud-late-results", language: "en",
                                   arguments: ["-scramble.mode", "standard", "-scramble.standard", "333"])
@@ -494,11 +494,10 @@ final class SolveFlowTests: XCTestCase {
         let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         tapSyncToggle(toggle)
-        XCTAssertTrue(app.staticTexts["settings.sync.lastCloudSync"].waitForExistence(timeout: 8))
 
         results.tap()
         let solve = app.buttons["solve-row-1"]
-        XCTAssertTrue(solve.waitForExistence(timeout: 8))
+        XCTAssertTrue(solve.waitForExistence(timeout: 15))
         XCTAssertTrue(solve.label.contains("12.345"))
         XCTAssertFalse(empty.exists)
     }
@@ -512,14 +511,13 @@ final class SolveFlowTests: XCTestCase {
         let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         tapSyncToggle(toggle)
-        XCTAssertTrue(app.staticTexts["settings.sync.lastCloudSync"].waitForExistence(timeout: 8))
 
         app.tabBars.buttons["Results"].tap()
         let existingSolve = app.buttons["solve-row-12"]
         let cloudSolve = app.buttons["solve-row-13"]
         XCTAssertTrue(existingSolve.waitForExistence(timeout: 5))
         let refresh = app.buttons["results.refreshCloudResults"]
-        XCTAssertTrue(refresh.waitForExistence(timeout: 8))
+        XCTAssertTrue(refresh.waitForExistence(timeout: 15))
         XCTAssertTrue(existingSolve.exists)
         XCTAssertFalse(cloudSolve.exists)
         captureScreen("Results — iCloud update notice")
@@ -533,7 +531,7 @@ final class SolveFlowTests: XCTestCase {
     @MainActor
     func testResultsSyncShowsUploadProgress() {
         continueAfterFailure = false
-        let app = openSyncPreview("--preview-icloud-upload")
+        let app = openSyncPreview("--preview-icloud-upload", environment: ["CUBEGIN_UI_TEST_LONG_SOLVE": "1"])
         let toggle = app.switches["settings.sync.icloudSync"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         tapSyncToggle(toggle)
@@ -583,9 +581,16 @@ final class SolveFlowTests: XCTestCase {
 
     @MainActor
     private func tapSyncToggle(_ toggle: XCUIElement) {
-        // The accessibility frame covers the card. Tap inside the trailing switch.
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-            .withOffset(CGVector(dx: -48, dy: 0)).tap()
+        let before = toggle.value as? String
+        if toggle.frame.width < 100 {
+            toggle.tap()
+        } else {
+            // Some runtimes expose the entire card as the switch's accessibility frame.
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+                .withOffset(CGVector(dx: -48, dy: 0)).tap()
+            if (toggle.value as? String) == before { toggle.tap() }
+        }
+        XCTAssertNotEqual(toggle.value as? String, before)
     }
 
     @MainActor
