@@ -4,6 +4,58 @@ import XCTest
 
 final class SolveFlowTests: XCTestCase {
     @MainActor
+    func testFirstTabLoadingRevealsContentAndSubsequentVisitsReuseIt() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchEnvironment["CUBEGIN_UI_TEST_SHOW_TAB_LOADING"] = "1"
+        app.launchArguments = ["-app.language", "en", "-scramble.standard", "333",
+                               "-timer.entryMethod", "timer", "-timer.wcaInspection", "NO", "-timer.startDelayTenths", "2"]
+        app.launch()
+
+        let elements = app.descendants(matching: .any)
+        let timer = elements["timer.readout"].firstMatch
+        XCTAssertTrue(elements["timer.scramble"].firstMatch.waitForExistence(timeout: 20))
+        let touch = timer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        touch.press(forDuration: 0.45)
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        touch.tap()
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+
+        let settings = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR label == %@", "side-nav.settings", "Settings"
+        )).firstMatch
+        let results = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR label == %@", "side-nav.results", "Results"
+        )).firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        XCTAssertTrue(app.staticTexts["settings.title"].firstMatch.exists)
+        XCTAssertTrue(elements["settings.loading"].firstMatch.exists)
+        captureScreen("Settings loading")
+        let theme = elements["settings.theme"].firstMatch
+        XCTAssertTrue(theme.waitForExistence(timeout: 5))
+        XCTAssertFalse(elements["settings.loading"].firstMatch.exists)
+
+        results.tap()
+        XCTAssertTrue(app.buttons["Group"].firstMatch.exists)
+        XCTAssertTrue(elements["results.loading"].firstMatch.exists)
+        captureScreen("Results loading")
+        let newest = elements.matching(NSPredicate(format: "identifier BEGINSWITH %@", "solve-row-")).firstMatch
+        XCTAssertTrue(newest.waitForExistence(timeout: 5))
+        XCTAssertFalse(elements["results.loading"].firstMatch.exists)
+
+        settings.tap()
+        XCTAssertTrue(theme.exists)
+        XCTAssertFalse(elements["settings.loading"].firstMatch.exists)
+        results.tap()
+        XCTAssertTrue(newest.exists)
+        XCTAssertFalse(elements["results.loading"].firstMatch.exists)
+    }
+
+    @MainActor
     func testFeedbackOpensNativeFormWithOptionalEmail() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -1367,15 +1419,20 @@ final class SolveFlowTests: XCTestCase {
         captureLandscapePage("Duo statistics scrolled", cutout: "right")
 
         settings.tap()
+        let settingsTitle = app.staticTexts["settings.title"]
+        let theme = app.buttons["settings.theme"]
+        XCTAssertTrue(theme.waitForExistence(timeout: 5))
+        let titleFrame = settingsTitle.frame
+        let themeY = theme.frame.midY
+        app.swipeUp()
+        XCTAssertTrue(!theme.exists || theme.frame.midY < themeY)
+        XCTAssertEqual(settingsTitle.frame, titleFrame)
+
         let dnf = app.switches["settings.results.includeDNFInWorst"]
-        XCTAssertTrue(dnf.waitForExistence(timeout: 5))
+        for _ in 0..<3 where !dnf.isHittable { app.swipeUp() }
+        XCTAssertTrue(dnf.isHittable)
         XCTAssertLessThan(dnf.frame.maxX, settings.frame.minX)
         captureLandscapePage("Duo settings", cutout: "right")
-        let settingsTitle = app.staticTexts["settings.title"]
-        let titleFrame = settingsTitle.frame
-        let toggleY = dnf.frame.midY
-        app.swipeUp()
-        XCTAssertTrue(!dnf.exists || dnf.frame.midY < toggleY)
         XCTAssertEqual(settingsTitle.frame, titleFrame)
         captureLandscapePage("Duo settings scrolled", cutout: "right")
     }

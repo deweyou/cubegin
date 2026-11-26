@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var padProjectAnchor: CGRect?
     private var isTiming: Bool { model.started != nil }
     @Binding var isInTimerCancelZone: Bool
+    let timerReadinessChanged: (Bool) -> Void
     private static let cancelZoneHeight: CGFloat = 88
     private var showsTimingLayout: Bool {
         isTiming || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
@@ -158,6 +159,9 @@ struct ContentView: View {
         }
         .onChange(of: isTimerActive && isScrambleReady, initial: true) { _, ready in
             if ready { AppTelemetry.recordTimerReady() }
+        }
+        .onChange(of: canUseTimerInput && isScrambleReady, initial: true) { _, ready in
+            timerReadinessChanged(ready)
         }
         .onChange(of: presentedCelebration) { _, celebration in
             if let confettiBurst, confettiBurst.record != celebration { stopCelebration() }

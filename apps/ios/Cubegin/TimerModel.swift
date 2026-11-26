@@ -341,7 +341,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         lastSolveCelebration = SolveCelebration(solve: solve, history: history)
     }
     private var storageReadFailed = false
-    @ObservationIgnored private var persisted = ResultsDatabase.Snapshot(store: ResultsStore(), revision: nil)
+    private var persisted = ResultsDatabase.Snapshot(store: ResultsStore(), revision: nil)
+    var resultsRevision: Int64? { persisted.revision }
     private var persistedSolves: [Solve] { persisted.store.solves }
     let resultsPersistence: ResultsPersistence
     private let defaults: UserDefaults

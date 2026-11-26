@@ -69,6 +69,54 @@ private extension View {
     }
 }
 
+private struct ResultsFirstPageRequest: Equatable {
+    let group: ResultsGroupKey
+    let includesDNF: Bool
+    let revision: Int64?
+
+    static let limit = 80
+}
+
+private func settingsHeader(language: AppLanguage, contentInsets: LandscapeContentInsets?) -> some View {
+    Text(language.text("设置", "Settings"))
+        .font(.headline)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("settings.title")
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, LandscapeContentInsets.contentMargin)
+        .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
+}
+
+private struct TabLoadingRows: View {
+    @Environment(\.locale) private var locale
+    let isForm: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<(isForm ? 3 : 6), id: \.self) { index in
+                HStack {
+                    Capsule().fill(.secondary.opacity(0.16)).frame(width: isForm ? 104 : 30, height: 11)
+                    Spacer(minLength: 12)
+                    Capsule().fill(.secondary.opacity(0.12)).frame(width: isForm ? 54 : 76, height: 11)
+                }
+                .padding(.horizontal, isForm ? 20 : 0)
+                .frame(height: isForm ? 54 : 52)
+                if index < (isForm ? 2 : 5) { Divider().opacity(0.55) }
+            }
+        }
+        .background {
+            if isForm { cardSurface(RoundedRectangle(cornerRadius: 24)) }
+        }
+        .padding(.horizontal, LandscapeContentInsets.contentMargin)
+        .frame(maxWidth: 880)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(locale.appLanguage.text("正在加载", "Loading"))
+        .accessibilityIdentifier(isForm ? "settings.loading" : "results.loading")
+    }
+}
+
 struct AppTabsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
@@ -87,6 +135,18 @@ struct AppTabsView: View {
         model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
     }
     @State private var selection = Destination.initial
+    @State private var timerIsReady = false
+    @State private var mountedTabs: Set<Destination> = []
+    @State private var prefetchedResults: (request: ResultsFirstPageRequest, page: SolvePage)?
+    private var resultsFirstPageRequest: ResultsFirstPageRequest? {
+        model.currentGroup.map {
+            ResultsFirstPageRequest(group: ResultsGroupKey(event: model.event, id: $0.id),
+                                    includesDNF: includesDNFInWorst, revision: model.resultsRevision)
+        }
+    }
+    private var canPreloadTabs: Bool {
+        isActive && scenePhase == .active && selection == .home && timerIsReady && !showsTimingLayout && !model.busy
+    }
     @State private var resultsPage = ResultsPage.solves
     @State private var viewedCharts: Set<ResultsChartMode> = []
     private var visibleResultsPage: ResultsPage? {
@@ -100,6 +160,14 @@ struct AppTabsView: View {
     private let sideNavigationWidth: CGFloat = 52
     // Measured from the portrait tab capsule to the display edge on iPhone 17 Pro.
     private let sideNavigationEdgeGap: CGFloat = 21
+    private static var firstTabLayoutDelay: Duration {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SHOW_TAB_LOADING"] == "1" {
+            return .seconds(2)
+        }
+#endif
+        return .milliseconds(40)
+    }
 
     private enum Destination: String, CaseIterable {
         case home, results, settings
@@ -180,6 +248,21 @@ struct AppTabsView: View {
         .task(id: model.event) {
             model.refresh()
         }
+        .task(id: canPreloadTabs && !mountedTabs.contains(.results) ? resultsFirstPageRequest : nil, priority: .utility) {
+            guard canPreloadTabs, !mountedTabs.contains(.results), let request = resultsFirstPageRequest,
+                  request != prefetchedResults?.request else { return }
+            await prefetchResults(request)
+        }
+        .task(id: selection) { [destination = selection] in
+            guard destination != .home, !mountedTabs.contains(destination) else { return }
+            do {
+                // Let the lightweight screen render before mounting the native List or Form.
+                try await Task.sleep(for: Self.firstTabLayoutDelay)
+                try Task.checkCancellation()
+                guard selection == destination else { return }
+                mountedTabs.insert(destination)
+            } catch { return }
+        }
         .onChange(of: scenePhase, initial: true) { _, phase in
             model.setCloudForegroundActive(phase == .active)
             if phase != .active { model.interrupt() }
@@ -209,6 +292,21 @@ struct AppTabsView: View {
         }
     }
 
+    private func prefetchResults(_ request: ResultsFirstPageRequest) async {
+        do {
+            try await Task.sleep(for: .milliseconds(450))
+            guard canPreloadTabs, model.allowsIdleActions else { return }
+            let page = try await model.resultsPersistence.reader(for: request.group)
+                .page(offset: 0, limit: ResultsFirstPageRequest.limit, includesDNF: request.includesDNF)
+            try Task.checkCancellation()
+            guard canPreloadTabs, model.allowsIdleActions, request == resultsFirstPageRequest,
+                  page.revision == (request.revision ?? -1) else { return }
+            prefetchedResults = (request, page)
+        } catch {
+            // The selected tab still performs its normal read and reports any persistent error.
+        }
+    }
+
     private func tabs(sideNavigationInset: CGFloat?,
                       railOnLeft: Bool = false,
                       alignsSideNavigationWithCoverCamera: Bool = false,
@@ -229,7 +327,8 @@ struct AppTabsView: View {
                     isDuoInnerDisplay: isDuoInnerDisplay,
                     isDuoOuterDisplay: isDuoOuterDisplay,
                     landscapeContentInsets: contentInsets,
-                    isInTimerCancelZone: $isInTimerCancelZone
+                    isInTimerCancelZone: $isInTimerCancelZone,
+                    timerReadinessChanged: { timerIsReady = $0 }
                 )
                     .ignoresSafeArea(.keyboard, edges: .bottom)
                     .labelStyle(.titleAndIcon)
@@ -243,7 +342,9 @@ struct AppTabsView: View {
                             isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
                             showsResultsList: visibleResultsPage == .solves,
-                            showsStatistics: visibleResultsPage == .statistics) { mode in
+                            showsStatistics: visibleResultsPage == .statistics,
+                            isMounted: mountedTabs.contains(.results),
+                            prefetchedFirstPage: prefetchedResults?.request == resultsFirstPageRequest ? prefetchedResults?.page : nil) { mode in
                     if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
                         AppTelemetry.record(.featureUsed(.chartViewed(mode)))
                     }
@@ -254,7 +355,19 @@ struct AppTabsView: View {
                 tabLabel(.results)
             }
             Tab(value: Destination.settings) {
-                SettingsView(model: model, contentInsets: contentInsets, isSelected: selection == .settings)
+                Group {
+                    if mountedTabs.contains(.settings) {
+                        SettingsView(model: model, contentInsets: contentInsets, isSelected: selection == .settings)
+                    } else {
+                        VStack(spacing: 12) {
+                            settingsHeader(language: language, contentInsets: contentInsets)
+                            TabLoadingRows(isForm: true)
+                        }
+                        .padding(.leading, contentInsets?.containerLeading ?? 0)
+                        .padding(.trailing, contentInsets?.containerTrailing ?? 0)
+                        .appBackground()
+                    }
+                }
                     .labelStyle(.titleAndIcon)
                     .toolbar(usesSideNavigation ? .hidden : .automatic, for: .tabBar)
             } label: {
@@ -530,6 +643,8 @@ private struct ResultsView: View {
     let contentInsets: LandscapeContentInsets?
     let showsResultsList: Bool
     let showsStatistics: Bool
+    let isMounted: Bool
+    let prefetchedFirstPage: SolvePage?
     let onChartViewed: (ResultsChartMode) -> Void
     @State private var selectedSolveIDs: Set<Solve.ID> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -540,7 +655,7 @@ private struct ResultsView: View {
         EdgeInsets(top: 0, leading: LandscapeContentInsets.contentMargin,
                    bottom: 0, trailing: LandscapeContentInsets.contentMargin - listRailInset)
     }
-    private static let pageSize = 80
+    private static let pageSize = ResultsFirstPageRequest.limit
 
     private struct ListRequest: Equatable {
         let group: ResultsGroupKey
@@ -570,11 +685,12 @@ private struct ResultsView: View {
     }
 
     private var listRequest: ListRequest? {
-        guard showsResultsList, let groupKey else { return nil }
+        guard isMounted, showsResultsList, let groupKey else { return nil }
         return ListRequest(group: groupKey, refresh: refreshRequest)
     }
 
     private var displayedPage: SolvePage? {
+        if loadedGroup == nil { return prefetchedFirstPage }
         guard loadedGroup == groupKey else { return nil }
         return loadedPage
     }
@@ -595,11 +711,31 @@ private struct ResultsView: View {
     }
 
     var body: some View {
+        Group {
+            if isMounted {
+                resultsScreen
+            } else {
+                loadingScreen
+                    .padding(.leading, contentInsets?.containerLeading ?? 0)
+                    .padding(.trailing, contentInsets?.containerTrailing ?? 0)
+                    .appBackground()
+            }
+        }
+    }
+
+    private var loadingScreen: some View {
+        VStack(spacing: 12) {
+            resultsHeader.disabled(!isMounted)
+            TabLoadingRows(isForm: false)
+        }
+    }
+
+    private var resultsScreen: some View {
         let total = displayedPage?.total ?? 0
         let showsPageContent = page == .statistics ? statisticsGroup == groupKey : total > 0
         let availableKinds = SolveAverage.allCases.filter { $0.count <= total }
         let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
-        NavigationStack(path: $detailPath) {
+        return NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
                 if showsPageContent {
                     pageContent(selectedKind: selectedKind, availableKinds: availableKinds)
@@ -611,7 +747,9 @@ private struct ResultsView: View {
                                 }
                             }
                         }
-                } else if (showsResultsList && displayedPage == nil) || (showsStatistics && statisticsGroup != groupKey) {
+                } else if showsResultsList && displayedPage == nil {
+                    loadingScreen
+                } else if showsStatistics && statisticsGroup != groupKey {
                     resultsHeader
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -721,7 +859,9 @@ private struct ResultsView: View {
         let reader = persistence.reader(for: request.group)
         listReader = reader
         // Reuse the cached first page while SQLite opens a fresh read transaction.
-        if loadedGroup != request.group { loadedPage = nil }
+        if loadedGroup != request.group {
+            loadedPage = loadedGroup == nil ? prefetchedFirstPage : nil
+        }
         loadedGroup = request.group
         let limit = max(Self.pageSize, loadedPage?.solves.count ?? 0)
         guard await reloadList(using: reader, limit: limit) else { return }
@@ -2589,13 +2729,7 @@ private struct SettingsView: View {
                 }
             }
             .pinnedScrollHeader {
-                Text(language.text("设置", "Settings"))
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("settings.title")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, LandscapeContentInsets.contentMargin)
-                    .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
+                settingsHeader(language: language, contentInsets: contentInsets)
             }
             .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
             .contentMargins(.trailing, contentInsets?.formTrailingMargin, for: .scrollContent)

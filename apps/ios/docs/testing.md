@@ -88,6 +88,12 @@ CI 使用 arm64 macOS 和 Xcode 26.2。iOS Release 和模拟器测试构建复�
 
 ## 模拟器与交互验证
 
+冷启动后，从计时页首次进入「设置」或「成绩」，检查标题和占位行先出现，
+表单或真实成绩就绪后替换占位。返回再切入时，保留已加载页面。计时页可用且空闲后
+会预读当前分组的首批成绩。验证时在首次切页前也按住起表，确认计时输入和停止正常。
+`SolveFlowTests.testFirstTabLoadingRevealsContentAndSubsequentVisitsReuseIt`
+在测试中延长占位显示时间，以便断言首次和再次切入的界面。
+
 Debug 构建传入 `--measure-picker` 可按默认动态字体逐项测量中英文项目按钮。
 结果写入模拟器 App 容器的 `Documents/picker-widths.json`，包含 220 条记录。
 `compactPicker` 和 `regularPicker` 包含选中态图标、训练文案、箭头及最小点击宽度。
