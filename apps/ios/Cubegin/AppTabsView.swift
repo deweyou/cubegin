@@ -102,8 +102,6 @@ private enum SettingsSection {
 
 private struct SettingsLoadingView: View {
     @Environment(\.locale) private var locale
-    @AppStorage(TimerModel.entryMethodKey) private var entryMethod = SolveEntryMethod.timer
-    @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
     let supportsCloudSync: Bool
     let contentInsets: LandscapeContentInsets?
     let hasCoverStatusColumn: Bool
@@ -112,54 +110,26 @@ private struct SettingsLoadingView: View {
     private var trailingCardMargin: CGFloat {
         contentInsets?.formTrailingMargin ?? (hasCoverStatusColumn ? cardShadowInset : LandscapeContentInsets.contentMargin)
     }
-    private var timerControls: [Control] {
-        var controls: [Control] = [.toggle, .picker]
-        if entryMethod == .timer {
-            controls += [.picker, .toggle, .slider, .toggle]
-            if usesInspection { controls += [.toggle, .picker] }
-        }
-        controls.append(.link)
-        return controls
-    }
-
-    private enum Control {
-        case picker, toggle, slider, link, value
-
-        var width: CGFloat {
-            switch self {
-            case .picker: 64
-            case .value: 44
-            case .toggle: 63
-            case .slider: 112
-            case .link: 8
-            }
-        }
-
-        var height: CGFloat {
-            switch self {
-            case .toggle: 28
-            case .slider: 6
-            default: 12
-            }
-        }
+    private var generalSection: some View {
+        section(rowCount: supportsCloudSync ? 3 : 2)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             settingsHeader(language: language, contentInsets: contentInsets)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    section(.general, controls: supportsCloudSync ? [.picker, .picker, .link] : [.picker, .picker])
-                    section(.timer, controls: timerControls)
-                    section(.results, controls: [.link, .link, .toggle])
-                    section(.about, controls: [.link, .value, .link, .link, .link])
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 22) {
+                    generalSection
+                    section(rowCount: 3)
                 }
-                .padding(.leading, contentInsets?.formLeadingMargin ?? LandscapeContentInsets.contentMargin)
-                .padding(.trailing, trailingCardMargin)
-                .frame(maxWidth: 880)
-                .frame(maxWidth: .infinity)
+                generalSection
+                section(rowCount: 1)
+                Color.clear.frame(height: 0)
             }
-            .scrollIndicators(.hidden)
+            .padding(.leading, contentInsets?.formLeadingMargin ?? LandscapeContentInsets.contentMargin)
+            .padding(.trailing, trailingCardMargin)
+            .frame(maxWidth: 880)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(language.text("正在加载设置", "Loading settings"))
             .accessibilityIdentifier("settings.loading")
@@ -169,25 +139,23 @@ private struct SettingsLoadingView: View {
         .appBackground()
     }
 
-    private func section(_ section: SettingsSection, controls: [Control]) -> some View {
+    private func section(rowCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(section.title(in: language))
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Capsule()
+                .fill(.secondary.opacity(0.16))
+                .frame(width: 48, height: 14)
                 .padding(.leading, 16)
                 .frame(minHeight: 40)
                 .padding(.bottom, 4)
-                .redacted(reason: .placeholder)
             VStack(spacing: 0) {
-                ForEach(controls.indices, id: \.self) { index in
-                    let control = controls[index]
+                ForEach(0..<rowCount, id: \.self) { index in
                     HStack {
                         Capsule().fill(.secondary.opacity(0.16)).frame(width: 104, height: 12)
                         Spacer(minLength: 8)
-                        Capsule().fill(.secondary.opacity(0.12)).frame(width: control.width, height: control.height)
+                        Capsule().fill(.secondary.opacity(0.12)).frame(width: 64, height: 12)
                     }
                     .cardRowLayout()
-                    if index < controls.count - 1 { Divider().padding(.horizontal, 20) }
+                    if index < rowCount - 1 { Divider().padding(.horizontal, 20) }
                 }
             }
             .background { cardSurface(RoundedRectangle(cornerRadius: 24)) }
@@ -242,7 +210,7 @@ struct AppTabsView: View {
     private static var firstTabLayoutDelay: Duration {
 #if DEBUG
         if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SHOW_TAB_LOADING"] == "1" {
-            return .seconds(2)
+            return .seconds(3)
         }
 #endif
         return .milliseconds(40)
@@ -729,6 +697,9 @@ private struct ResultsView: View {
         EdgeInsets(top: 0, leading: LandscapeContentInsets.contentMargin,
                    bottom: 0, trailing: LandscapeContentInsets.contentMargin - listRailInset)
     }
+    private var resultTypeInsets: EdgeInsets {
+        EdgeInsets(top: 4, leading: resultRowInsets.leading, bottom: 4, trailing: resultRowInsets.trailing + listRailInset)
+    }
     private static let pageSize = ResultsFirstPageRequest.limit
 
     private struct ListRequest: Equatable {
@@ -843,19 +814,30 @@ private struct ResultsView: View {
         VStack(spacing: 0) {
             resultsHeader.disabled(isLoading && !isMounted)
             if page == .solves && !isSelecting && !availableKinds.isEmpty {
-                let picker = resultTypePicker(availableKinds, selected: selected)
                 if isLoading {
-                    picker
-                        .redacted(reason: .placeholder)
-                        .disabled(true)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(language.text("正在加载成绩类型", "Loading result types"))
-                        .accessibilityIdentifier("results.loading-types")
+                    resultTypePlaceholder(averageCount: min(2, availableKinds.count))
                 } else {
-                    picker
+                    resultTypePicker(availableKinds, selected: selected)
                 }
             }
         }
+    }
+
+    private func resultTypePlaceholder(averageCount: Int) -> some View {
+        HStack(spacing: 8) {
+            Capsule().fill(.primary.opacity(0.06)).frame(width: 52, height: 30)
+            ForEach(0..<averageCount, id: \.self) { _ in
+                Capsule().fill(.secondary.opacity(0.12)).frame(width: 22, height: 11)
+                    .frame(width: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 44)
+        .padding(resultTypeInsets)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("正在加载成绩类型", "Loading result types"))
+        .accessibilityIdentifier("results.loading-types")
     }
 
     private var resultsScreen: some View {
@@ -1358,9 +1340,7 @@ private struct ResultsView: View {
             }
         }
         .frame(height: 44)
-        .padding(.leading, resultRowInsets.leading)
-        .padding(.trailing, resultRowInsets.trailing + listRailInset)
-        .padding(.vertical, 4)
+        .padding(resultTypeInsets)
     }
 
     private func averagesView(kind: SolveAverage, availableKinds: [SolveAverage]) -> some View {
