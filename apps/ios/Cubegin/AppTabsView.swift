@@ -87,33 +87,112 @@ private func settingsHeader(language: AppLanguage, contentInsets: LandscapeConte
         .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
 }
 
-private struct TabLoadingRows: View {
+private enum SettingsSection {
+    case general, timer, results, about
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .general: language.text("通用", "General")
+        case .timer: language.text("计时", "Timer")
+        case .results: language.text("成绩", "Results")
+        case .about: language.text("关于", "About")
+        }
+    }
+}
+
+private struct SettingsLoadingView: View {
     @Environment(\.locale) private var locale
-    let isForm: Bool
+    @AppStorage(TimerModel.entryMethodKey) private var entryMethod = SolveEntryMethod.timer
+    @AppStorage(TimerModel.inspectionKey) private var usesInspection = false
+    let supportsCloudSync: Bool
+    let contentInsets: LandscapeContentInsets?
+    let hasCoverStatusColumn: Bool
+
+    private var language: AppLanguage { locale.appLanguage }
+    private var trailingCardMargin: CGFloat {
+        contentInsets?.formTrailingMargin ?? (hasCoverStatusColumn ? cardShadowInset : LandscapeContentInsets.contentMargin)
+    }
+    private var timerControls: [Control] {
+        var controls: [Control] = [.toggle, .picker]
+        if entryMethod == .timer {
+            controls += [.picker, .toggle, .slider, .toggle]
+            if usesInspection { controls += [.toggle, .picker] }
+        }
+        controls.append(.link)
+        return controls
+    }
+
+    private enum Control {
+        case picker, toggle, slider, link, value
+
+        var width: CGFloat {
+            switch self {
+            case .picker: 64
+            case .value: 44
+            case .toggle: 63
+            case .slider: 112
+            case .link: 8
+            }
+        }
+
+        var height: CGFloat {
+            switch self {
+            case .toggle: 28
+            case .slider: 6
+            default: 12
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(0..<(isForm ? 3 : 6), id: \.self) { index in
-                HStack {
-                    Capsule().fill(.secondary.opacity(0.16)).frame(width: isForm ? 104 : 30, height: 11)
-                    Spacer(minLength: 12)
-                    Capsule().fill(.secondary.opacity(0.12)).frame(width: isForm ? 54 : 76, height: 11)
+            settingsHeader(language: language, contentInsets: contentInsets)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 22) {
+                    section(.general, controls: supportsCloudSync ? [.picker, .picker, .link] : [.picker, .picker])
+                    section(.timer, controls: timerControls)
+                    section(.results, controls: [.link, .link, .toggle])
+                    section(.about, controls: [.link, .value, .link, .link, .link])
                 }
-                .padding(.horizontal, isForm ? 20 : 0)
-                .frame(height: isForm ? 54 : 52)
-                if index < (isForm ? 2 : 5) { Divider().opacity(0.55) }
+                .padding(.leading, contentInsets?.formLeadingMargin ?? LandscapeContentInsets.contentMargin)
+                .padding(.trailing, trailingCardMargin)
+                .frame(maxWidth: 880)
+                .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.hidden)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(language.text("正在加载设置", "Loading settings"))
+            .accessibilityIdentifier("settings.loading")
         }
-        .background {
-            if isForm { cardSurface(RoundedRectangle(cornerRadius: 24)) }
+        .padding(.leading, contentInsets?.containerLeading ?? 0)
+        .padding(.trailing, contentInsets?.containerTrailing ?? 0)
+        .appBackground()
+    }
+
+    private func section(_ section: SettingsSection, controls: [Control]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(section.title(in: language))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 16)
+                .frame(minHeight: 40)
+                .padding(.bottom, 4)
+                .redacted(reason: .placeholder)
+            VStack(spacing: 0) {
+                ForEach(controls.indices, id: \.self) { index in
+                    let control = controls[index]
+                    HStack {
+                        Capsule().fill(.secondary.opacity(0.16)).frame(width: 104, height: 12)
+                        Spacer(minLength: 8)
+                        Capsule().fill(.secondary.opacity(0.12)).frame(width: control.width, height: control.height)
+                    }
+                    .cardRowLayout()
+                    if index < controls.count - 1 { Divider().padding(.horizontal, 20) }
+                }
+            }
+            .background { cardSurface(RoundedRectangle(cornerRadius: 24)) }
+            .accessibilityHidden(true)
         }
-        .padding(.horizontal, LandscapeContentInsets.contentMargin)
-        .frame(maxWidth: 880)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(locale.appLanguage.text("正在加载", "Loading"))
-        .accessibilityIdentifier(isForm ? "settings.loading" : "results.loading")
     }
 }
 
@@ -359,13 +438,8 @@ struct AppTabsView: View {
                     if mountedTabs.contains(.settings) {
                         SettingsView(model: model, contentInsets: contentInsets, isSelected: selection == .settings)
                     } else {
-                        VStack(spacing: 12) {
-                            settingsHeader(language: language, contentInsets: contentInsets)
-                            TabLoadingRows(isForm: true)
-                        }
-                        .padding(.leading, contentInsets?.containerLeading ?? 0)
-                        .padding(.trailing, contentInsets?.containerTrailing ?? 0)
-                        .appBackground()
+                        SettingsLoadingView(supportsCloudSync: model.supportsCloudSync, contentInsets: contentInsets,
+                                            hasCoverStatusColumn: isDuoOuterDisplay && contentInsets == nil)
                     }
                 }
                     .labelStyle(.titleAndIcon)
@@ -724,28 +798,77 @@ private struct ResultsView: View {
     }
 
     private var loadingScreen: some View {
-        VStack(spacing: 12) {
-            resultsHeader.disabled(!isMounted)
-            TabLoadingRows(isForm: false)
+        let total = displayedPage?.total
+        let availableKinds = total.map(averageKinds) ?? [.mo3, .ao5, .ao12, .ao50]
+        return VStack(spacing: 0) {
+            resultsListHeader(availableKinds, selected: nil, isLoading: true)
+            loadingRows(total: total)
+        }
+    }
+
+    private func loadingRows(total: Int?) -> some View {
+        let count = min(6, max(1, total ?? 6))
+        let placeholderNumber = max(1, total ?? 1_000)
+        return VStack(spacing: 0) {
+            Divider().opacity(0.55)
+            ForEach(0..<count, id: \.self) { index in
+                HStack(spacing: 12) {
+                    solveRowContent(number: placeholderNumber, total: placeholderNumber, date: "00-00") {
+                        solveTimeLabel("00.000")
+                    }
+                    .redacted(reason: .placeholder)
+                    Image(systemName: "chevron.forward")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.quaternary)
+                }
+                .frame(minHeight: 52)
+                if index < count - 1 { Divider().opacity(0.55) }
+            }
+        }
+        .padding(.leading, resultRowInsets.leading)
+        .padding(.trailing, resultRowInsets.trailing + listRailInset)
+        .frame(maxWidth: 880)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("正在加载", "Loading"))
+        .accessibilityIdentifier("results.loading")
+    }
+
+    private func averageKinds(for total: Int) -> [SolveAverage] {
+        SolveAverage.allCases.filter { $0.count <= total }
+    }
+
+    private func resultsListHeader(_ availableKinds: [SolveAverage], selected: SolveAverage?, isLoading: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            resultsHeader.disabled(isLoading && !isMounted)
+            if page == .solves && !isSelecting && !availableKinds.isEmpty {
+                let picker = resultTypePicker(availableKinds, selected: selected)
+                if isLoading {
+                    picker
+                        .redacted(reason: .placeholder)
+                        .disabled(true)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(language.text("正在加载成绩类型", "Loading result types"))
+                        .accessibilityIdentifier("results.loading-types")
+                } else {
+                    picker
+                }
+            }
         }
     }
 
     private var resultsScreen: some View {
         let total = displayedPage?.total ?? 0
         let showsPageContent = page == .statistics ? statisticsGroup == groupKey : total > 0
-        let availableKinds = SolveAverage.allCases.filter { $0.count <= total }
+        let availableKinds = averageKinds(for: total)
         let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
         return NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
                 if showsPageContent {
                     pageContent(selectedKind: selectedKind, availableKinds: availableKinds)
                         .pinnedScrollHeader {
-                            VStack(spacing: 0) {
-                                resultsHeader
-                                if page == .solves && !isSelecting && !availableKinds.isEmpty {
-                                    resultTypePicker(availableKinds, selected: selectedKind)
-                                }
-                            }
+                            resultsListHeader(availableKinds, selected: selectedKind)
                         }
                 } else if showsResultsList && displayedPage == nil {
                     loadingScreen
@@ -1471,22 +1594,35 @@ private struct ResultsView: View {
     }
 
     private func solveRowLabel(_ solve: Solve, number: Int, total: Int, highlight: (label: String, color: Color)?) -> some View {
+        solveRowContent(number: number, total: total, date: SolveDateLabel.text(for: solve.date),
+                        isSelected: isSelecting ? selectedSolveIDs.contains(solve.id) : nil) {
+            solveTimeLabel(solve.resultText)
+                .foregroundStyle(highlight?.color ?? (solve.penalty == .dnf ? .secondary : .primary))
+                .accessibilityValue(highlight?.label ?? "")
+        }
+    }
+
+    private func solveTimeLabel(_ time: String) -> some View {
+        Text(time)
+            .font(.system(.body, design: .monospaced).weight(.medium))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .layoutPriority(1)
+    }
+
+    private func solveRowContent<Time: View>(
+        number: Int, total: Int, date: String, isSelected: Bool? = nil, @ViewBuilder time: () -> Time
+    ) -> some View {
         HStack(spacing: 12) {
-            if isSelecting {
-                Image(systemName: selectedSolveIDs.contains(solve.id) ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selectedSolveIDs.contains(solve.id) ? Color.accentColor : Color.secondary)
+            if let isSelected {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                     .accessibilityHidden(true)
             }
             solveNumberLabel(number, total: total)
-            Text(solve.resultText)
-                .font(.system(.body, design: .monospaced).weight(.medium))
-                .foregroundStyle(highlight?.color ?? (solve.penalty == .dnf ? .secondary : .primary))
-                .accessibilityValue(highlight?.label ?? "")
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .layoutPriority(1)
+            time()
             Spacer(minLength: 8)
-            Text(SolveDateLabel.text(for: solve.date))
+            Text(date)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -2588,7 +2724,7 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Form {
-                CardSection(language.text("通用", "General")) {
+                CardSection(SettingsSection.general.title(in: language)) {
                     Picker(language.text("主题", "Theme"), selection: trackedSetting(
                         SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }, as: FeatureSettingValue.theme
                     )) {
@@ -2617,7 +2753,7 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.general.sync")
                     }
                 }
-                CardSection(language.text("计时", "Timer")) {
+                CardSection(SettingsSection.timer.title(in: language)) {
                     Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: trackedSetting(
                         SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 }, as: FeatureSettingValue.keepScreenOn
                     ))
@@ -2649,7 +2785,7 @@ private struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.timer.gestures")
                 }
-                CardSection(language.text("成绩", "Results")) {
+                CardSection(SettingsSection.results.title(in: language)) {
                     cardRowButton {
                         path.append(.imports)
                     } label: {
@@ -2669,7 +2805,7 @@ private struct SettingsView: View {
                     ))
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
-                CardSection(language.text("关于", "About")) {
+                CardSection(SettingsSection.about.title(in: language)) {
                     cardRowButton {
                         isCheckingForUpdate = true
                     } label: {

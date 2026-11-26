@@ -11,7 +11,7 @@ final class SolveFlowTests: XCTestCase {
         app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
         app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
         app.launchEnvironment["CUBEGIN_UI_TEST_SHOW_TAB_LOADING"] = "1"
-        app.launchArguments = ["-app.language", "en", "-scramble.standard", "333",
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
                                "-timer.entryMethod", "timer", "-timer.wcaInspection", "NO", "-timer.startDelayTenths", "2"]
         app.launch()
 
@@ -34,18 +34,28 @@ final class SolveFlowTests: XCTestCase {
         settings.tap()
         XCTAssertTrue(app.staticTexts["settings.title"].firstMatch.exists)
         XCTAssertTrue(elements["settings.loading"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["General"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["Timer"].firstMatch.exists)
         captureScreen("Settings loading")
         let theme = elements["settings.theme"].firstMatch
         XCTAssertTrue(theme.waitForExistence(timeout: 5))
         XCTAssertFalse(elements["settings.loading"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["General"].firstMatch.exists)
 
         results.tap()
         XCTAssertTrue(app.buttons["Group"].firstMatch.exists)
         XCTAssertTrue(elements["results.loading"].firstMatch.exists)
+        let loadingTypes = elements["results.loading-types"].firstMatch
+        XCTAssertTrue(loadingTypes.exists)
+        let loadingTypesFrame = loadingTypes.frame
+        let single = app.buttons["results.average-type.single"].firstMatch
+        XCTAssertFalse(single.exists)
         captureScreen("Results loading")
         let newest = elements.matching(NSPredicate(format: "identifier BEGINSWITH %@", "solve-row-")).firstMatch
         XCTAssertTrue(newest.waitForExistence(timeout: 5))
         XCTAssertFalse(elements["results.loading"].firstMatch.exists)
+        XCTAssertTrue(single.isEnabled)
+        XCTAssertEqual(elements["results.average-types"].firstMatch.frame.midY, loadingTypesFrame.midY, accuracy: 2)
 
         settings.tap()
         XCTAssertTrue(theme.exists)
