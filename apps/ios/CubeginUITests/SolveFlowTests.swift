@@ -1832,6 +1832,35 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testReadyTimerStartsAfterFingerMovement() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments += ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                                "-timer.entryMethod", "timer", "-timer.wcaInspection", "NO",
+                                "-timer.startDelayTenths", "3", "-timer.swipe.left", "manualEntry",
+                                "-timer.swipe.right", "none"]
+        app.launch()
+
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        let hints = app.buttons["timer.formula-hints"]
+        let foldedPrompt = app.staticTexts["timer.folded-prompt"]
+        let offsets = [CGVector(dx: 14, dy: 0), CGVector(dx: 0, dy: 14), CGVector(dx: -70, dy: 0)]
+        for offset in offsets {
+            XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+            let surface = foldedPrompt.exists ? foldedPrompt : app
+            let touch = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            touch.press(forDuration: 0.8, thenDragTo: touch.withOffset(offset),
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+            XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5), "Offset: \(offset)")
+            XCTAssertFalse(app.textFields["manual-result.time"].exists)
+            touch.tap()
+            XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        }
+    }
+
+    @MainActor
     func testTimerSwipeShortcutsPersistAndUseTheExistingSolveFlows() throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
                       "The Duo has a separate touch surface.")
@@ -1866,8 +1895,8 @@ final class SolveFlowTests: XCTestCase {
             app.buttons[option].tap()
         }
 
-        func swipe(to end: XCUICoordinate, hold: TimeInterval = 0.01) {
-            center.press(forDuration: hold, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        func swipe(to end: XCUICoordinate) {
+            center.press(forDuration: 0.01, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
         }
 
         func expectResult(_ result: String) {
@@ -1889,10 +1918,6 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         let originalScramble = scramble.label
         let field = app.textFields["manual-result.time"]
-        swipe(to: left, hold: 0.5)
-        XCTAssertFalse(field.exists)
-        XCTAssertEqual(readout.label, "Start timer")
-
         swipe(to: center.withOffset(CGVector(dx: 22, dy: 0)))
         XCTAssertEqual(scramble.label, originalScramble)
         XCTAssertEqual(readout.label, "Start timer")
@@ -1906,6 +1931,10 @@ final class SolveFlowTests: XCTestCase {
         swipe(to: left)
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("0012345")
+        let enteredDigits = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "0012345"), object: field
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [enteredDigits], timeout: 5), .completed)
         app.buttons["Save"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         expectResult("12.345")

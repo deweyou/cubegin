@@ -1649,7 +1649,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
                     movement = .swipe
                     if zone != .scramble { callbacks.onCancel() }
                     if zone != .timer, state == .possible { state = .began }
-                } else {
+                } else if !callbacks.showsReadyFeedback {
                     state = .failed
                 }
             }
