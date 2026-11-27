@@ -1103,6 +1103,46 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTimeDistributionShowsAndSelectsHorizontalRows() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
+        app.launchArguments += ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333"]
+        app.launch()
+
+        let results = app.buttons["Results"].firstMatch
+        XCTAssertTrue(results.waitForExistence(timeout: 20))
+        results.tap()
+        let view = app.buttons["results.view"]
+        XCTAssertTrue(view.waitForExistence(timeout: 10))
+        view.tap()
+        app.buttons["Statistics"].tap()
+
+        let mode = app.segmentedControls["charts.mode"]
+        for _ in 0..<4 where !mode.isHittable { app.swipeUp() }
+        XCTAssertTrue(mode.isHittable)
+        mode.buttons.element(boundBy: 1).tap()
+
+        let distribution = app.descendants(matching: .any)["charts.distribution"].firstMatch
+        XCTAssertTrue(distribution.waitForExistence(timeout: 10))
+        let rows = distribution.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "charts.distribution.bin."))
+        XCTAssertGreaterThan(rows.count, 1)
+        let first = rows.element(boundBy: 0)
+        let second = rows.element(boundBy: 1)
+        XCTAssertLessThan(first.frame.maxY, second.frame.midY)
+        XCTAssertGreaterThan(first.frame.width, first.frame.height)
+        XCTAssertTrue(first.label.contains("–"))
+        XCTAssertTrue(first.value as? String == "1 solve" || first.value as? String == "2 solves")
+
+        let next = first.isSelected ? second : first
+        next.tap()
+        XCTAssertTrue(next.isSelected)
+    }
+
+    @MainActor
     func testLandscapeResultsKeepPickersFixedWhileScrolling() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

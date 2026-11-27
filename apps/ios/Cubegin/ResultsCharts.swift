@@ -45,12 +45,15 @@ struct ResultsCharts: View {
     let onViewed: (ResultsChartMode) -> Void
 
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var mode = ResultsChartMode.trend
     @State private var plotIsVisible = false
     @State private var range = AttemptRange.recent100
     @State private var selectedDistributionBin: Int?
     @State private var hiddenAverages: Set<SolveAverage> = []
     @ScaledMetric(relativeTo: .caption) private var minimumChartHeight = 225.0
+    @ScaledMetric(relativeTo: .caption2) private var distributionLineHeight = 15.0
+    @State private var distributionHeight: CGFloat = 0
     @State private var chartWidth: CGFloat = 0
     @State private var plotColumns = 320
     @State private var rendered: (Request, ChartData)?
@@ -132,6 +135,10 @@ struct ResultsCharts: View {
         .frame(minHeight: 44)
     }
 
+    private var baseChartHeight: CGFloat { max(minimumChartHeight, min(340, chartWidth * 0.27)) }
+
+    private var chartHeight: CGFloat { max(baseChartHeight, distributionHeight) }
+
     private func chartCard(_ request: Request, rangeCounts: [AttemptRange: Int]?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             chartControls(rangeCounts: rangeCounts)
@@ -141,15 +148,20 @@ struct ResultsCharts: View {
                     case let .trend(data):
                         TrendChart(data: data)
                             .id(request.range)
+                            .frame(height: chartHeight)
                     case .distribution(let data):
                         distribution(data)
+                            .frame(minHeight: baseChartHeight)
+                            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                                distributionHeight = height
+                            }
                     }
                 } else {
                     ProgressView()
+                        .frame(height: chartHeight)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: max(minimumChartHeight, min(340, chartWidth * 0.27)))
             .onScrollVisibilityChange(threshold: 0.5) { plotIsVisible = $0 }
         }
         .padding(.horizontal, 16)
@@ -241,66 +253,57 @@ struct ResultsCharts: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         } else {
-            let interval = language.text("用时区间", "Time interval")
-            let count = language.text("次数", "Solves")
-            let tickStep = max(1, Int(ceil(Double(data.peak) / 4)))
-            let upperBound = max(2, (data.peak + tickStep - 1) / tickStep * tickStep)
-            let barWidth = min(56, max(3, (chartWidth - 64) / CGFloat(data.bins.count) * 0.5))
             let highlightedID = selectedDistributionBin ?? data.bins.first { $0.count == data.peak }?.id
-            let headroom = max(1, Int(ceil(Double(upperBound) * 0.08)))
-            let labelBudget = max(2, Int((chartWidth - 60) / 100))
-            let labelStep = max(1, (data.bins.count + labelBudget - 1) / labelBudget)
-            let labels = data.bins.map { $0.label(locale) }
-            let ticks = Array(stride(from: 0, to: labels.count, by: labelStep)).map { labels[$0] }
+            let labelShare = dynamicTypeSize.isAccessibilitySize ? 0.45 : 0.34
+            let labelWidth = min(220, max(100, (chartWidth - 32) * labelShare))
+            let rowHeight = baseChartHeight / CGFloat(data.bins.count)
+            let peakText = data.peak.formatted(.number.locale(locale))
 
-            Chart(data.bins) { bin in
-                let isHighlighted = bin.id == highlightedID
-                BarMark(x: .value(interval, bin.label(locale)), y: .value(count, bin.count),
-                        width: .fixed(barWidth))
-                    .cornerRadius(4)
-                    .foregroundStyle(Color.accentColor.opacity(isHighlighted ? 0.72 : 0.27))
-                    .annotation(position: .top, spacing: 4) {
-                        if isHighlighted {
-                            Text(bin.count.formatted())
-                                .font(.caption2.weight(.semibold).monospacedDigit())
+            VStack(spacing: 0) {
+                ForEach(data.bins) { bin in
+                    let label = bin.label(locale)
+                    let count = bin.count.formatted(.number.locale(locale))
+                    let isHighlighted = bin.id == highlightedID
+                    Button {
+                        selectedDistributionBin = bin.id
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text(label.replacingOccurrences(of: "–", with: "–\u{200B}"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(width: labelWidth, alignment: .leading)
                                 .foregroundStyle(.secondary)
-                                .fixedSize()
-                                .accessibilityHidden(true)
+                            HStack(spacing: 6) {
+                                GeometryReader { geometry in
+                                    HStack(spacing: 6) {
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(Color.accentColor.opacity(isHighlighted ? 0.72 : 0.32))
+                                            .frame(width: geometry.size.width * CGFloat(bin.count) / CGFloat(data.peak),
+                                                   height: min(14, distributionLineHeight * 0.64))
+                                        Text(count)
+                                            .fixedSize()
+                                            .foregroundStyle(isHighlighted ? .primary : .secondary)
+                                    }
+                                    .frame(maxHeight: .infinity, alignment: .leading)
+                                }
+                                Text(peakText)
+                                    .fixedSize()
+                                    .hidden()
+                            }
+                            .frame(height: distributionLineHeight)
                         }
+                        .padding(.vertical, 2)
+                        .frame(minHeight: rowHeight)
+                        .contentShape(Rectangle())
                     }
-            }
-            .chartXScale(domain: labels)
-            .chartYScale(domain: 0...(upperBound + headroom))
-            .chartXAxis {
-                AxisMarks(values: ticks) { _ in
-                    AxisValueLabel()
-                        .font(.caption2.monospacedDigit())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(label)
+                    .accessibilityValue(language.text("\(count) 次", bin.count == 1 ? "\(count) solve" : "\(count) solves"))
+                    .accessibilityAddTraits(isHighlighted ? .isSelected : [])
+                    .accessibilityIdentifier("charts.distribution.bin.\(bin.id)")
                 }
             }
-            .chartYAxis {
-                AxisMarks(position: .leading, values: Array(stride(from: 0, through: upperBound, by: tickStep))) { _ in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(Color.secondary.opacity(0.14))
-                    AxisValueLabel()
-                        .font(.caption2.monospacedDigit())
-                }
-            }
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    if let plotFrame = proxy.plotFrame {
-                        let plot = geometry[plotFrame]
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .simultaneousGesture(SpatialTapGesture().onEnded { tap in
-                                guard plot.contains(tap.location),
-                                      let label = proxy.value(atX: tap.location.x - plot.minX, as: String.self),
-                                      let index = labels.firstIndex(of: label) else { return }
-                                selectedDistributionBin = data.bins[index].id
-                            })
-                            .accessibilityHidden(true)
-                    }
-                }
-            }
+            .font(.caption2.monospacedDigit())
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("charts.distribution")
         }
     }
