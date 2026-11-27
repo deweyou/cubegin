@@ -254,8 +254,14 @@ struct ResultsCharts: View {
                 .foregroundStyle(.secondary)
         } else {
             let highlightedID = selectedDistributionBin ?? data.bins.first { $0.count == data.peak }?.id
+            let labelFont = UIFont.monospacedDigitSystemFont(
+                ofSize: AppTypography.preferredFont(for: .caption2).pointSize, weight: .regular
+            )
+            let widestLabel = data.bins.map {
+                ($0.label(locale) as NSString).size(withAttributes: [.font: labelFont]).width
+            }.max() ?? 0
             let labelShare = dynamicTypeSize.isAccessibilitySize ? 0.45 : 0.34
-            let labelWidth = min(220, max(100, (chartWidth - 32) * labelShare))
+            let labelWidth = min(ceil(widestLabel), 220, max(100, (chartWidth - 32) * labelShare))
             let rowHeight = baseChartHeight / CGFloat(data.bins.count)
             let peakText = data.peak.formatted(.number.locale(locale))
 
@@ -269,6 +275,7 @@ struct ResultsCharts: View {
                     } label: {
                         HStack(spacing: 10) {
                             Text(label.replacingOccurrences(of: "–", with: "–\u{200B}"))
+                                .font(Font(labelFont))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(width: labelWidth, alignment: .leading)
                                 .foregroundStyle(.secondary)
