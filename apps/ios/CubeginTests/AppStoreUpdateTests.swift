@@ -4,6 +4,13 @@ import Testing
 
 struct AppStoreUpdateTests {
     @Test
+    func displaysTheInstalledVersionAndBuildTogether() throws {
+        let version = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+        let build = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+        #expect(AppStoreUpdate.installedVersionDisplay == "\(version)(\(build))")
+    }
+
+    @Test
     func comparesNumericVersionAndPreservesOptionalNotes() throws {
         let update = try AppStoreUpdate.evaluate(lookup(), installedVersion: "0.9.0", osVersion: "26.0.0")
         guard case .available(let release) = update else {

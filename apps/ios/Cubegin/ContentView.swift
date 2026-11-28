@@ -21,13 +21,19 @@ struct ContentView: View {
     @State private var postSolveControlsFrame: CGRect = .null
     @State private var padProjectAnchor: CGRect?
     private var isTiming: Bool { model.started != nil }
-    @Binding var isInTimerCancelZone: Bool
+    @State private var isInTimerCancelZone = false
+    let timerReadinessChanged: (Bool) -> Void
     private static let cancelZoneHeight: CGFloat = 88
     private var showsTimingLayout: Bool {
-        isTiming || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
+        isTiming || model.inspectionStarted != nil
     }
     private var showsCancelHint: Bool {
-        (model.showsReadyFeedback && model.isTouchReady) || isInTimerCancelZone
+        (model.hasSettledPress && model.isTouchReady) || isInTimerCancelZone
+    }
+    private var timerPressColor: Color? {
+        if isInTimerCancelZone { return .red }
+        if model.isReady { return .green }
+        return model.isPressing ? .red : nil
     }
     @State private var showsProjectList = false
     @State private var assistScramble: AssistScramble?
@@ -47,10 +53,10 @@ struct ContentView: View {
     @State private var showsCelebrationToast = false
     @State private var celebrationScoreMotion = CelebrationScoreMotion.rest
     @Environment(\.locale) private var locale
-    @Environment(\.colorScheme) private var colorScheme
     private var language: AppLanguage { locale.appLanguage }
     private let controlIconSize: CGFloat = 20
     private let controlRowHeight: CGFloat = 44
+    private let headerControlTargetWidth: CGFloat = 64
     private let padToolbarMargin: CGFloat = 20
     private var controlIconInset: CGFloat { (controlRowHeight - controlIconSize) / 2 }
     private var padProjectToolbarInset: CGFloat { padToolbarMargin + controlIconInset }
@@ -63,7 +69,6 @@ struct ContentView: View {
     @ScaledMetric(relativeTo: .footnote) private var celebrationPillLineHeight: CGFloat = 16
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     private let celebrationPillPadding: CGFloat = 7
-    private let celebrationPillSpacing: CGFloat = 10
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
     static let landscapeBottomInset: CGFloat = 8
 
@@ -78,7 +83,7 @@ struct ContentView: View {
         canUseTimerInput && (timerTouchResumesAt.map { ContinuousClock.now >= $0 } ?? true)
     }
     private var presentedCelebration: SolveCelebration? {
-        canUseTimerInput && !showsTimingLayout ? model.lastSolveCelebration : nil
+        canUseTimerInput && !showsTimingLayout && !model.isPressing ? model.lastSolveCelebration : nil
     }
 
     private var scoreCelebration: ScoreCelebration? {
@@ -101,14 +106,14 @@ struct ContentView: View {
                                 } else {
                                     HStack(spacing: 0) { projectMenu }
                                         .fixedSize(horizontal: true, vertical: false)
-                                        .disabled(model.busy || model.started != nil)
+                                        .disabled(model.busy || isTiming)
                                 }
                             }
                             .sharedBackgroundVisibility(.hidden)
                             ToolbarItem(placement: .topBarTrailing) {
                                 trailingControls
                                     .padding(.trailing, usesTopNavigation ? padToolbarMargin : 0)
-                                    .disabled(model.busy || model.started != nil)
+                                    .disabled(model.busy || isTiming)
                             }
                             .sharedBackgroundVisibility(.hidden)
                         }
@@ -123,7 +128,7 @@ struct ContentView: View {
             }
         }
         .appBackground()
-        .sensoryFeedback(.impact(weight: .heavy), trigger: model.showsReadyFeedback) { _, isShowing in
+        .sensoryFeedback(.impact(weight: .heavy), trigger: model.hasSettledPress) { _, isShowing in
             isShowing && entryMethod == .timer && usesTimerHaptics && isTimerActive && !model.isTouchReady
                 && !model.usesInspection && model.inspectionStarted == nil
         }
@@ -157,6 +162,9 @@ struct ContentView: View {
         }
         .onChange(of: isTimerActive && isScrambleReady, initial: true) { _, ready in
             if ready { AppTelemetry.recordTimerReady() }
+        }
+        .onChange(of: canUseTimerInput && isScrambleReady, initial: true) { _, ready in
+            timerReadinessChanged(ready)
         }
         .onChange(of: presentedCelebration) { _, celebration in
             if let confettiBurst, confettiBurst.record != celebration { stopCelebration() }
@@ -261,17 +269,19 @@ struct ContentView: View {
     }
 
     private func cancelHint(atLowerDisplay: Bool) -> some View {
-        Text(language.text("上滑到这里取消", "Slide here to cancel"))
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.top, isDuoOuterDisplay ? 24 : 12)
+        Text(isInTimerCancelZone ? language.text("松开取消", "Release to cancel")
+             : language.text("上滑到这里取消", "Slide here to cancel"))
+            .font(.headline)
+            .foregroundStyle(isInTimerCancelZone ? Color.red : Color.primary.opacity(0.8))
+            .padding(.top, isDuoOuterDisplay ? 32 : 20)
             .frame(maxWidth: .infinity)
-            .frame(height: Self.cancelZoneHeight, alignment: .top)
-            .background {
+            .frame(minHeight: Self.cancelZoneHeight, alignment: .top)
+            .background(alignment: .top) {
                 LinearGradient(
-                    colors: [Color.primary.opacity(0.07), .clear],
+                    colors: [Color.primary.opacity(0.16), .clear],
                     startPoint: .top, endPoint: .bottom
                 )
+                .frame(height: Self.cancelZoneHeight + 16)
                 .ignoresSafeArea(edges: atLowerDisplay ? .horizontal : [.top, .horizontal])
             }
             .allowsHitTesting(false)
@@ -294,7 +304,7 @@ struct ContentView: View {
             } else {
                 frame
             }
-            let fold = isDuoInnerDisplay && !isLandscape ? horizontalFold(in: geometry) : nil
+            let fold = isPhone && !isLandscape ? horizontalFold(in: geometry) : nil
             let usesDuoWideLayout = isLandscape && isDuoInnerDisplay
             Group {
                 if let fold {
@@ -369,13 +379,18 @@ struct ContentView: View {
     private func horizontalFold(in geometry: GeometryProxy) -> CGRect? {
         // The iOS 26 SDK does not declare SwiftUI's reserved region API.
 #if compiler(>=6.4)
-        if #available(iOS 27.1, *),
-           let fold = geometry.reservedRegions(kind: .division).first?.frame,
-           fold.width > fold.height, fold.minY > 0, fold.maxY < geometry.size.height {
-            return fold
+        if #available(iOS 27.1, *) {
+            return Self.horizontalFold(in: geometry.reservedRegions(kind: .division).map(\.frame),
+                                       pageHeight: geometry.size.height)
         }
 #endif
         return nil
+    }
+
+    static func horizontalFold(in divisions: [CGRect], pageHeight: CGFloat) -> CGRect? {
+        divisions.first { fold in
+            !fold.isEmpty && fold.width > fold.height && fold.minY > 0 && fold.maxY < pageHeight
+        }
     }
 
     private func foldedPortraitPage(frame: CGRect, fold: CGRect) -> some View {
@@ -403,9 +418,7 @@ struct ContentView: View {
         let readoutY = centersReadout ? max(0, (upperHeight - frame.minY) / 2)
             : upperHeight - timerHeight + readoutAreaHeight / 2
         let actionCenterY = readoutY + numberHeight / 2 + rowSpacing + compactControlSize / 2
-        let toastCount = CGFloat(confettiBurst?.record.achievements.count ?? 0)
-        let toastHeight = toastCount * (celebrationPillLineHeight + 2 * celebrationPillPadding)
-            + max(0, toastCount - 1) * celebrationPillSpacing
+        let toastHeight = celebrationPillLineHeight + 2 * celebrationPillPadding
         let controlsBottom = readoutY + numberHeight / 2 + actionHeight
         let canCenterToast = controlsBottom + toastHeight + 2 * foldClearance <= upperHeight
         let showsScrambleDetails = !showsTimingLayout
@@ -422,8 +435,7 @@ struct ContentView: View {
                         .padding(.top, rowSpacing)
                         .allowsHitTesting(false)
                 }
-                timerNumber(fontSize: timerFontSize, height: numberHeight, showsStartPrompt: false,
-                            feedbackColor: foldedTimerFeedbackColor, showsZero: model.showsReadyFeedback || isInTimerCancelZone)
+                timerNumber(fontSize: timerFontSize, height: numberHeight)
                     .frame(width: width)
                     .animation(positionAnimation) { content in
                         content.position(x: width / 2, y: readoutY)
@@ -436,7 +448,7 @@ struct ContentView: View {
             .frame(width: width, height: upperHeight)
             .frame(width: size.width)
             .overlay(alignment: canCenterToast ? .bottom : .bottomTrailing) {
-                celebrationToasts
+                celebrationToast
                     .padding(.trailing, canCenterToast ? 0 : padding)
                     .padding(.bottom, foldClearance)
             }
@@ -470,13 +482,19 @@ struct ContentView: View {
                 .accessibilityHidden(!showsScrambleDetails)
                 .allowsHitTesting(false)
 
-                foldedTimerPrompt
-                    .padding(.horizontal, padding)
-                    .frame(width: size.width)
-                    .animation(positionAnimation) { content in
-                        content.position(x: size.width / 2, y: promptY)
-                    }
-                    .allowsHitTesting(false)
+                if let prompt = foldedTimerPrompt {
+                    Text(prompt)
+                        .font(isTiming ? .title3 : .title2.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(model.hasSettledPress ? Color.green : .secondary)
+                        .padding(.horizontal, padding)
+                        .frame(width: size.width)
+                        .accessibilityIdentifier(isTiming ? "timer.folded-stop" : "timer.folded-prompt")
+                        .animation(positionAnimation) { content in
+                            content.position(x: size.width / 2, y: promptY)
+                        }
+                        .allowsHitTesting(false)
+                }
 
                 if showsCancelHint {
                     cancelHint(atLowerDisplay: true)
@@ -487,40 +505,19 @@ struct ContentView: View {
         .frame(width: size.width, height: size.height, alignment: .top)
     }
 
-    private var foldedTimerFeedbackColor: Color? {
-        if isInTimerCancelZone { return .red }
-        return model.showsReadyFeedback ? .green : nil
-    }
-
-    private var foldedTimerPrompt: some View {
+    private var foldedTimerPrompt: String? {
+        if isTiming { return language.text("轻点停止", "Tap to stop") }
+        guard entryMethod == .timer, isScrambleReady, !isInTimerCancelZone else { return nil }
         let startsInspection = model.usesInspection && model.inspectionStarted == nil
-        let prompt: String
-        if entryMethod == .manual && !isTiming {
-            prompt = ""
-        } else if isInTimerCancelZone {
-            prompt = language.text("松开取消", "Release to cancel")
-        } else if isTiming {
-            prompt = language.text("轻点停止", "Tap to stop")
-        } else if model.showsReadyFeedback {
-            prompt = startsInspection ? language.text("松开开始观察", "Release to inspect")
+        if model.hasSettledPress {
+            return startsInspection ? language.text("松开开始观察", "Release to inspect")
                 : language.text("松开开始计时", "Release to start")
-        } else if startsInspection {
-            prompt = language.text("轻点开始观察", "Tap to inspect")
-        } else if model.inspectionStarted != nil {
-            prompt = language.text("按下开始", "Press to start")
-        } else if startDelayTenths == 0 {
-            prompt = language.text("轻点开始计时", "Tap to start")
-        } else {
-            prompt = language.text("长按开始", "Hold to start")
         }
-
-        return Text(prompt)
-            .font(isTiming ? .title3 : .title2.weight(.medium))
-            .multilineTextAlignment(.center)
-            .foregroundStyle(foldedTimerFeedbackColor ?? .secondary)
-            .opacity(isScrambleReady ? 1 : 0)
-            .accessibilityHidden(prompt.isEmpty || !isScrambleReady)
-            .accessibilityIdentifier("timer.folded-prompt")
+        if startsInspection { return language.text("轻点开始观察", "Tap to inspect") }
+        if model.inspectionStarted != nil || startDelayTenths == 0 {
+            return language.text("轻点开始计时", "Tap to start")
+        }
+        return language.text("长按开始", "Hold to start")
     }
 
     private func landscapePage(frame: CGRect, timerFrame: CGRect, screenCenter: CGPoint) -> some View {
@@ -611,7 +608,7 @@ struct ContentView: View {
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .overlay(alignment: .bottom) {
-            celebrationToasts
+            celebrationToast
                 .padding(.bottom, Self.landscapeBottomInset)
                 .frame(width: frame.width - headerLeadingInset - headerTrailingInset)
                 .offset(x: (headerLeadingInset - headerTrailingInset) / 2)
@@ -735,8 +732,8 @@ struct ContentView: View {
         }
         .frame(height: height)
         .overlay(alignment: .bottom) {
-            celebrationToasts
-                .padding(.bottom, 16)
+            celebrationToast
+                .padding(.bottom, 24)
         }
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: maximumWidth)
@@ -874,7 +871,7 @@ struct ContentView: View {
             canBeginSwipe: { canUseTimerTouch && model.allowsIdleActions },
             onSwipe: performSwipeAction,
             isReady: model.isTouchReady,
-            showsReadyFeedback: model.showsReadyFeedback,
+            hasSettledPress: model.hasSettledPress,
             cancelZoneHeight: Self.cancelZoneHeight,
             cancelZoneTop: cancelZoneTop,
             onCancelZoneChange: { isInTimerCancelZone = $0 }
@@ -890,7 +887,7 @@ struct ContentView: View {
             trailingControls
         }
         .frame(height: controlRowHeight)
-        .disabled(model.busy || model.started != nil)
+        .disabled(model.busy || isTiming)
     }
 
     private func currentScramble(width: CGFloat, fontScale: CGFloat = 1) -> some View {
@@ -919,10 +916,10 @@ struct ContentView: View {
             .onDisappear { displayedDiagram = nil }
     }
 
-    private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5,
-                             showsStartPrompt: Bool = true, feedbackColor: Color? = nil, showsZero: Bool = false) -> some View {
+    private func timerNumber(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat = 0.5) -> some View {
         Group {
             if let inspectionStart = model.inspectionStarted {
+                let color = timerPressColor ?? .red
                 TimelineView(.animation(minimumInterval: 0.1)) { _ in
                     let elapsed = inspectionStart.duration(to: .now)
                     let readout = switch TimerModel.penalty(forInspection: elapsed) {
@@ -932,7 +929,7 @@ struct ContentView: View {
                     }
                     Text(readout)
                         .font(.system(size: fontSize, weight: .light, design: .rounded).monospacedDigit())
-                        .foregroundStyle(feedbackColor ?? (model.showsReadyFeedback && !isInTimerCancelZone ? .green : .red))
+                        .foregroundStyle(color)
                         .lineLimit(1)
                         .minimumScaleFactor(minimumScale)
                         .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: 1, weight: .light))
@@ -954,36 +951,26 @@ struct ContentView: View {
                         .alignmentGuide(.bottom) { $0[.top] - 6 }
                         .accessibilityHidden(true)
                 }
-            } else if showsStartPrompt, model.showsReadyFeedback || isInTimerCancelZone {
-                let prompt = isInTimerCancelZone
-                    ? language.text("松开取消", "Release to cancel")
-                    : language.text("松开开启", "Release to start")
-                timerPrompt(prompt, fontSize: fontSize, height: height, minimumScale: minimumScale,
-                            color: isInTimerCancelZone ? .red : .green)
-                    .accessibilityIdentifier("timer.start-prompt")
             } else if isTiming, displayDuringSolve == .observation {
                 let prompt = language.text("还原中", "Solving")
-                timerPrompt(prompt, fontSize: fontSize, height: height, minimumScale: minimumScale,
-                            color: feedbackColor ?? .primary)
+                timerPrompt(prompt, fontSize: fontSize, height: height, minimumScale: minimumScale)
                     .accessibilityLabel(language.text("停止计时", "Stop timer"))
                     .accessibilityValue(prompt)
                     .accessibilityIdentifier("timer.readout")
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { model.activateAccessibleTimer() }
             } else {
-                timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale,
-                                 feedbackColor: feedbackColor, showsZero: showsZero)
+                timerReadoutView(fontSize: fontSize, height: height, minimumScale: minimumScale)
             }
         }
         .allowsHitTesting(false)
     }
 
     private func timerPrompt(_ prompt: String, fontSize: CGFloat, height: CGFloat,
-                             minimumScale: CGFloat, color: Color) -> some View {
+                             minimumScale: CGFloat) -> some View {
         let scale: CGFloat = 0.45
         return Text(prompt)
             .font(.system(size: fontSize * scale, weight: .regular, design: .rounded))
-            .foregroundStyle(color)
             .lineLimit(1)
             .minimumScaleFactor(minimumScale)
             .offset(y: readoutCenterAdjustment(fontSize: fontSize, scale: scale, weight: .regular))
@@ -993,8 +980,7 @@ struct ContentView: View {
             .transition(.identity)
     }
 
-    private func timerReadoutView(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat,
-                                  feedbackColor: Color?, showsZero: Bool) -> some View {
+    private func timerReadoutView(fontSize: CGFloat, height: CGFloat, minimumScale: CGFloat) -> some View {
         let entersManually = entryMethod == .manual && !isTiming
         let actionTitle = if entersManually {
             language.text("录入成绩", "Enter result")
@@ -1003,17 +989,14 @@ struct ContentView: View {
         } else {
             language.text("开始计时", "Start timer")
         }
-        let celebration = scoreCelebration
-        let highlight = celebration?.motion(for: .single) ?? celebration?.motion(for: .first)
-        let readoutMotion = highlight ?? .rest
-        let color = feedbackColor ?? (highlight == nil ? .primary : resultBestColor(for: colorScheme))
+        let color = timerPressColor ?? .primary
+        let crown = !showsTimingLayout && !model.isPressing && model.lastSolve?.resultSeconds != nil
+            ? model.lastSolveCelebration?.crownKind : nil
         return TimelineView(.animation(minimumInterval: displayDuringSolve == .seconds ? 0.1 : 0.03,
                                 paused: !isTiming)) { _ in
-            let readout = timerReadoutContent(fontSize: fontSize, showsZero: showsZero)
-            Text(readout)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.18)) { content in
-                    content.foregroundStyle(color)
-                }
+            let readout = timerReadoutContent(fontSize: fontSize)
+            timerText(readout, crown: crown)
+                .foregroundStyle(color)
                 .contentTransition(.identity)
                 .lineLimit(1)
                 .minimumScaleFactor(minimumScale)
@@ -1021,7 +1004,8 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
                 .accessibilityLabel(actionTitle)
-                .accessibilityValue((isTiming || showsZero ? nil : model.lastSolve?.resultText) ?? String(readout.characters))
+                .accessibilityValue((isTiming ? nil : model.lastSolve?.resultText) ?? String(readout.characters))
+                .accessibilityHint(crown.flatMap { SolveCelebration.toastTitle(for: [$0], in: language) } ?? "")
                 .accessibilityIdentifier("timer.readout")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction {
@@ -1032,12 +1016,25 @@ struct ContentView: View {
                     }
                 }
         }
-        .scaleEffect(1 + 0.14 * readoutMotion.emphasis)
-        .offset(x: 8 * readoutMotion.sway)
         .allowsHitTesting(false)
     }
 
-    private func timerReadoutContent(fontSize: CGFloat, showsZero: Bool) -> AttributedString {
+    @ViewBuilder
+    private func timerText(_ readout: AttributedString, crown: SolveCelebration.Kind?) -> some View {
+        if let crown {
+            let digits: String? = switch crown {
+            case .ao5: "5"
+            case .ao12: "12"
+            default: nil
+            }
+            Text(readout)
+                .textRenderer(RecordCrownRenderer(digits: digits, hasTrailingPlus: readout.characters.last == "+"))
+        } else {
+            Text(readout)
+        }
+    }
+
+    private func timerReadoutContent(fontSize: CGFloat) -> AttributedString {
         let font = Font.system(size: fontSize, design: .rounded)
         if let start = model.started {
             let duration = start.duration(to: .now)
@@ -1048,7 +1045,7 @@ struct ContentView: View {
             let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
             return timerReadout(seconds, fontSize: fontSize, showsPlus: false)
         }
-        return finishedTimerReadout(showsZero ? nil : model.lastSolve, fontSize: fontSize,
+        return finishedTimerReadout(model.lastSolve, fontSize: fontSize,
                                     showsPlus: UIDevice.current.userInterfaceIdiom == .pad)
     }
 
@@ -1074,22 +1071,31 @@ struct ContentView: View {
     private var postSolveControls: some View {
         Group {
             if !showsTimingLayout, let solve = model.lastSolve {
+                let celebration = model.lastSolveCelebration
+                let offsetStep: CGFloat = layoutDirection == .leftToRight ? 3 : -3
+                let leadingOffset = offsetStep * (celebration == nil ? 1 : 1.5)
+
                 HStack(spacing: 0) {
-                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, solve: solve)
-                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, solve: solve)
+                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"),
+                                  penalty: .plusTwo, solve: solve, horizontalOffset: leadingOffset)
+                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"),
+                                  penalty: .dnf, solve: solve, horizontalOffset: leadingOffset - offsetStep)
                     Button(role: .destructive) {
+                        guard model.canPerformPostSolveAction(for: solve.id) else { return }
                         model.cancelPress()
                         solveToDelete = solve
                     } label: {
                         Image(systemName: "trash")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
-                            .modifier(CompactControlTarget(size: compactControlSize))
+                            .modifier(CompactControlTarget(minimumWidth: compactControlSize,
+                                                           horizontalOffset: leadingOffset - 2 * offsetStep, visualScale: 0.82))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
-                    if let celebration = model.lastSolveCelebration {
+                    if let celebration {
                         Button {
+                            guard model.canPerformPostSolveAction(for: solve.id) else { return }
                             // A replay during the delay also satisfies the first playback.
                             _ = model.takeAutomaticCelebration()
                             playCelebration(celebration)
@@ -1098,7 +1104,8 @@ struct ContentView: View {
                             Image(systemName: "party.popper")
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.secondary)
-                                .modifier(CompactControlTarget(size: compactControlSize))
+                                .modifier(CompactControlTarget(minimumWidth: compactControlSize,
+                                                               horizontalOffset: leadingOffset - 3 * offsetStep, visualScale: 0.74))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(language.text("重播庆祝", "Replay celebration"))
@@ -1106,16 +1113,20 @@ struct ContentView: View {
                     }
                 }
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { postSolveControlsFrame = $0 }
+                .offset(x: layoutDirection == .leftToRight ? 2 : -2)
             } else {
                 Color.clear
                     .allowsHitTesting(false)
             }
         }
+        // Keep the readout and summary layout tied to the original row height.
         .frame(height: compactControlSize)
     }
 
-    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, solve: Solve) -> some View {
+    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, solve: Solve,
+                               horizontalOffset: CGFloat) -> some View {
         Button {
+            guard model.canPerformPostSolveAction(for: solve.id) else { return }
             model.togglePenalty(penalty)
         } label: {
             Text(title)
@@ -1124,7 +1135,7 @@ struct ContentView: View {
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(solve.penalty == penalty ? Color.accentColor : Color.secondary)
                 .opacity(solve.allowsPenaltyChange || solve.penalty == penalty ? 1 : 0.5)
-                .modifier(CompactControlTarget(size: compactControlSize))
+                .modifier(CompactControlTarget(minimumWidth: compactControlSize, horizontalOffset: horizontalOffset))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -1199,7 +1210,7 @@ struct ContentView: View {
     }
 
     private var projectMenu: some View {
-        EventPicker(model: model, isPresented: $showsProjectList)
+        EventPicker(model: model, isPresented: $showsProjectList, minimumTargetWidth: headerControlTargetWidth)
     }
 
     private var padProjectToolbarAnchor: some View {
@@ -1224,9 +1235,10 @@ struct ContentView: View {
                 let tabBarReserve: CGFloat = 96
                 let titleSpace = bounds.width / 2 - leading - tabBarReserve - EventPicker.minimumButtonWidth
                 EventPicker(model: model, isPresented: $showsProjectList, large: true,
-                            titleWidthLimit: titleSpace >= 24 ? titleSpace : 0)
+                            titleWidthLimit: titleSpace >= 24 ? titleSpace : 0,
+                            minimumTargetWidth: headerControlTargetWidth)
                     .fixedSize(horizontal: true, vertical: false)
-                    .disabled(model.busy || model.started != nil)
+                    .disabled(model.busy || isTiming)
                     .offset(x: isRightToLeft ? -leading : leading, y: anchor.minY - bounds.minY)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -1250,8 +1262,12 @@ struct ContentView: View {
             choices.map { choice in
                 ["language": language.rawValue, "id": choice.id,
                  "title": ScrambleCatalog.trainingSelectionTitle(choice.id, in: language) ?? choice.title(in: language),
-                 "compactPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: false, action: {}), language: language),
-                 "regularPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: true, action: {}), language: language)] as [String: Any]
+                 "compactPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: false,
+                                                                  minimumTargetWidth: headerControlTargetWidth, action: {}),
+                                        language: language),
+                 "regularPicker": width(EventPicker.projectButton(event: choice.id, language: language, large: true,
+                                                                  minimumTargetWidth: headerControlTargetWidth, action: {}),
+                                        language: language)] as [String: Any]
             }
         }
         do {
@@ -1290,22 +1306,21 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var celebrationToasts: some View {
-        if let confettiBurst, showsCelebrationToast, isTimerActive, !showsTimingLayout {
-            VStack(spacing: celebrationPillSpacing) {
-                ForEach(confettiBurst.record.achievements, id: \.kind) { celebrationPill($0.kind) }
-            }
-            .padding(.horizontal, 12)
-            .allowsHitTesting(false)
-            .transition(reduceMotion ? .identity : .opacity)
+    private var celebrationToast: some View {
+        if let confettiBurst, showsCelebrationToast, isTimerActive, !showsTimingLayout,
+           let title = SolveCelebration.toastTitle(for: Set(confettiBurst.record.achievements.map(\.kind)), in: language) {
+            celebrationPill(title)
+                .padding(.horizontal, 12)
+                .allowsHitTesting(false)
+                .transition(reduceMotion ? .identity : .opacity)
         }
     }
 
-    private func celebrationPill(_ kind: SolveCelebration.Kind) -> some View {
-        let title = kind.title(in: language)
-        return Label {
+    private func celebrationPill(_ title: String) -> some View {
+        Label {
             Text(title)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
         } icon: {
             Image(systemName: "trophy.fill")
                 .foregroundStyle(.secondary)
@@ -1323,12 +1338,12 @@ struct ContentView: View {
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityIdentifier("timer.celebration-toast.\(kind)")
+        .accessibilityIdentifier("timer.celebration-toast")
     }
 
     private var assistButton: some View {
         Button {
-            guard let algorithm = model.scramble?.algorithm else { return }
+            guard !model.isPressing, let algorithm = model.scramble?.algorithm else { return }
             model.cancelPress()
             isInTimerCancelZone = false
             hasTimerKeyboardFocus = false
@@ -1342,7 +1357,7 @@ struct ContentView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: controlIconSize, height: controlIconSize)
-                .frame(width: controlRowHeight, height: controlRowHeight, alignment: .trailing)
+                .frame(width: headerControlTargetWidth, height: controlRowHeight, alignment: .trailing)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1357,13 +1372,70 @@ struct ContentView: View {
     }
 }
 
-private extension SolveCelebration.Kind {
-    func title(in language: AppLanguage) -> String {
-        switch self {
-        case .first: language.text("首次成绩", "First result")
-        case .single: language.text("单次 PB", "Single PB")
-        case .ao5: language.text("Ao5 PB", "Ao5 PB")
-        case .ao12: language.text("Ao12 PB", "Ao12 PB")
+extension SolveCelebration {
+    static func toastTitle(for kinds: Set<Kind>, in language: AppLanguage) -> String? {
+        switch kinds {
+        case [.first]: language.text("首次成绩", "First result")
+        case [.single]: language.text("单次新纪录", "Single PB")
+        case [.ao5]: language.text("Ao5 新纪录", "Ao5 PB")
+        case [.ao12]: language.text("Ao12 新纪录", "Ao12 PB")
+        case [.single, .ao5]: language.text("单次、Ao5 新纪录", "Single & Ao5 PBs")
+        case [.single, .ao12]: language.text("单次、Ao12 新纪录", "Single & Ao12 PBs")
+        case [.ao5, .ao12]: language.text("Ao5、Ao12 新纪录", "Ao5 & Ao12 PBs")
+        case [.single, .ao5, .ao12]: language.text("单次、Ao5、Ao12 新纪录", "Single, Ao5 & Ao12 PBs")
+        default: nil
+        }
+    }
+}
+
+private struct RecordCrownRenderer: TextRenderer {
+    let digits: String?
+    let hasTrailingPlus: Bool
+
+    var displayPadding: EdgeInsets { EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4) }
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        for line in layout { context.draw(line) }
+        guard !layout.isTruncated, let line = layout.last,
+              let glyph = line.reversed().lazy.flatMap({ $0.reversed() }).dropFirst(hasTrailingPlus ? 1 : 0).first else {
+            return
+        }
+
+        let digit = glyph.typographicBounds
+        let width = min(24, digit.width * 0.9)
+        let height = width * 0.54
+        let capTop = digit.origin.y - digit.ascent * 0.79
+        let position = CGPoint(x: digit.rect.maxX - width * 0.35, y: capTop - height * 0.65)
+        let gold = context.environment.colorScheme == .dark
+            ? Color(red: 0.78, green: 0.65, blue: 0.42)
+            : Color(red: 0.56, green: 0.40, blue: 0.16)
+
+        // Keep the knockout in its own layer so it can only erase the gold.
+        context.drawLayer { layer in
+            layer.translateBy(x: position.x, y: position.y)
+            layer.rotate(by: .degrees(17))
+            layer.translateBy(x: -width / 2, y: -height / 2)
+            layer.fill(crownPath(width: width, height: height), with: .color(gold))
+            if let digits {
+                layer.blendMode = .destinationOut
+                layer.draw(Text(digits).font(.system(size: height * 0.60, weight: .heavy, design: .rounded)),
+                           at: CGPoint(x: width / 2, y: height * 0.70))
+            }
+        }
+    }
+
+    private func crownPath(width: CGFloat, height: CGFloat) -> Path {
+        Path { path in
+            path.addLines([
+                .zero,
+                CGPoint(x: width * 0.25, y: height * 0.37),
+                CGPoint(x: width * 0.50, y: 0),
+                CGPoint(x: width * 0.75, y: height * 0.37),
+                CGPoint(x: width, y: 0),
+                CGPoint(x: width * 0.94, y: height),
+                CGPoint(x: width * 0.06, y: height)
+            ])
+            path.closeSubpath()
         }
     }
 }
@@ -1459,13 +1531,17 @@ private struct LandscapeScrambleLayout: Layout {
 }
 
 private struct CompactControlTarget: ViewModifier {
-    let size: CGFloat
+    let minimumWidth: CGFloat
+    let horizontalOffset: CGFloat
+    var visualScale: CGFloat = 1
 
     func body(content: Content) -> some View {
         content
+            .scaleEffect(visualScale)
+            .offset(x: horizontalOffset)
             .padding(.horizontal, 10)
-            .frame(minWidth: size)
-            .frame(height: size)
+            .frame(minWidth: minimumWidth)
+            .frame(height: 44)
             .contentShape(Rectangle())
     }
 }
@@ -1482,7 +1558,7 @@ private struct TimerTouchSurface: UIViewRepresentable {
     var canBeginSwipe: () -> Bool
     var onSwipe: (TimerSwipeDirection) -> Void
     var isReady: Bool
-    var showsReadyFeedback: Bool
+    var hasSettledPress: Bool
     var cancelZoneHeight: CGFloat
     var cancelZoneTop: CGFloat?
     var onCancelZoneChange: (Bool) -> Void
@@ -1628,12 +1704,12 @@ private struct TimerTouchSurface: UIViewRepresentable {
                 if callbacks.isReady, -dy > abs(dx) {
                     movement = .cancelZone
                     updateCancelZone(at: point, callbacks: callbacks)
-                } else if canSwipe, !callbacks.showsReadyFeedback, abs(dx) > abs(dy) {
+                } else if canSwipe, !callbacks.hasSettledPress, abs(dx) > abs(dy) {
                     // Abandon the press at its movement limit. A swipe still needs to travel far enough.
                     movement = .swipe
                     if zone != .scramble { callbacks.onCancel() }
                     if zone != .timer, state == .possible { state = .began }
-                } else {
+                } else if !callbacks.isReady {
                     state = .failed
                 }
             }
@@ -1748,7 +1824,8 @@ private struct TimerSummary: View {
                     accessibilityName: language.text("总平均", "Overall mean"),
                     id: "mean", fontSize: fontSize, height: rowHeight)
                 row("best", value: best.resultText, accessibilityName: language.text("最好单次", "Best single"),
-                    id: "best", fontSize: fontSize, height: rowHeight)
+                    id: "best", fontSize: fontSize, height: rowHeight,
+                    celebrationMotion: scoreCelebration?.motion(for: .single) ?? scoreCelebration?.motion(for: .first))
             }
         }
         let rolling = VStack(spacing: 0) {
@@ -2071,13 +2148,16 @@ struct EventPicker: View {
     @Binding var isPresented: Bool
     var large = false
     var titleWidthLimit: CGFloat?
+    var minimumTargetWidth = Self.minimumButtonWidth
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
     @State private var browsingMode = ScrambleMode.standard
     @State private var expandedTrainingGroups: Set<String> = []
 
     var body: some View {
-        Self.projectButton(event: model.event, language: language, large: large, titleWidthLimit: titleWidthLimit) {
+        Self.projectButton(event: model.event, language: language, large: large, titleWidthLimit: titleWidthLimit,
+                           minimumTargetWidth: minimumTargetWidth) {
+            guard !model.isPressing else { return }
             browsingMode = model.mode
             expandedTrainingGroups.removeAll()
             isPresented = true
@@ -2166,9 +2246,12 @@ struct EventPicker: View {
     }
 
     static func projectButton(event: String, language: AppLanguage, large: Bool,
-                              titleWidthLimit: CGFloat? = nil, action: @escaping () -> Void) -> some View {
+                              titleWidthLimit: CGFloat? = nil, minimumTargetWidth: CGFloat = minimumButtonWidth,
+                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             projectMenuLabel(event: event, language: language, large: large, titleWidthLimit: titleWidthLimit)
+                .frame(minWidth: minimumTargetWidth, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .controlSize(large ? .regular : .small)
@@ -2176,7 +2259,7 @@ struct EventPicker: View {
         .accessibilityValue(ScrambleCatalog.title(event, in: language))
     }
 
-    static func projectMenuLabel(event: String, language: AppLanguage, large: Bool, titleWidthLimit: CGFloat?) -> some View {
+    private static func projectMenuLabel(event: String, language: AppLanguage, large: Bool, titleWidthLimit: CGFloat?) -> some View {
         let iconID = String(event.prefix { $0 != "." })
         return HStack(spacing: 6) {
             Image("Event-\(iconID)")
@@ -2196,8 +2279,6 @@ struct EventPicker: View {
         }
         .font(large ? .body.weight(.medium) : .subheadline.weight(.medium))
         .foregroundStyle(.primary)
-        .frame(minWidth: minimumButtonWidth, minHeight: 44, alignment: .leading)
-        .contentShape(Rectangle())
     }
 
 }

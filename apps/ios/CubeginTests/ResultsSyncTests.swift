@@ -4,6 +4,95 @@ import SQLite3
 import Testing
 @testable import CubeginApp
 
+struct ResultsPagingTests {
+    @Test func keepsCloudRowsAndEditsPendingAcrossPagesWhileApplyingLocalEdits() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = ResultsPersistence(url: directory.appending(path: "solves.sqlite"))
+        let old = Solve(seconds: 12, event: "333", scramble: "R U", date: .distantPast)
+        let removedLocally = Solve(seconds: 13, event: "333", scramble: "R U2", date: .distantPast + 1)
+        let remote = Solve(seconds: 14, event: "333", scramble: "U R", date: .distantPast + 2)
+        let local = Solve(seconds: 15, event: "333", scramble: "U R2", date: .distantPast + 3)
+        var editedRemotely = old
+        editedRemotely.penalty = .plusTwo
+
+        let initial = try storage.save(ResultsStore(solves: [removedLocally, old]), replacing: storage.load(), origin: .local)
+        let reader = ResultsPageReader(database: storage.database, group: ResultsGroupKey(old))
+        let first = try await reader.page(offset: 0, limit: 1, includesDNF: true)
+        #expect(first.solves == [removedLocally])
+        #expect(first.total == 2)
+
+        let cloud = try storage.save(ResultsStore(solves: [remote, removedLocally, editedRemotely]),
+                                     replacing: initial, origin: .cloud)
+        let second = try await reader.page(offset: 1, limit: 1, includesDNF: true)
+        #expect(second.solves == [old])
+
+        var changes = storage.changes().makeAsyncIterator()
+        _ = try storage.save(ResultsStore(solves: [local, remote, editedRemotely]), replacing: cloud, origin: .local)
+        let change = try #require(await changes.next())
+        #expect(change.origin == .local)
+        try await reader.applyLocal(change.entries)
+        #expect(try await reader.allSolves() == [local, old])
+        #expect(try await reader.allIDs() == [local.id, old.id])
+
+        let refreshed = ResultsPageReader(database: storage.database, group: ResultsGroupKey(old))
+        #expect(try await refreshed.allSolves() == [local, remote, editedRemotely])
+    }
+
+    @Test func backgroundApplyRetriesAfterALocalCommitWithoutReplacingIt() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = ResultsPersistence(url: directory.appending(path: "solves.sqlite"))
+        let group = SolveGroup(id: SolveGroup.initialID(for: "333"), event: "333", name: "", isDefault: true)
+        let existing = Solve(seconds: 12, event: "333", scramble: "R U", date: .distantPast)
+        let local = Solve(seconds: 14, event: "333", scramble: "F2 L")
+        _ = try storage.save(ResultsStore(solves: [existing], groups: [group]), replacing: storage.load(), origin: .local)
+        let server = SyntheticSyncServer()
+        let worker = ResultsSyncWorker(persistence: storage, transport: server)
+        let preparation = try await worker.synchronize(groups: [group], preferences: [:], editedKeys: []) { _, _ in }
+
+        let before = storage.current
+        var updated = before.store
+        updated.solves.insert(local, at: 0)
+        _ = try storage.save(updated, replacing: before, origin: .local)
+        await #expect(throws: ResultsDatabase.Failure.staleSnapshot) {
+            _ = try await worker.apply(preparation, groups: [group])
+        }
+
+        let retry = try await worker.synchronize(groups: [group], preferences: [:], editedKeys: []) { _, _ in }
+        _ = try await worker.apply(retry, groups: [group])
+        #expect(storage.current.store.solves == [local, existing])
+        #expect(try await server.fetch().contains(where: { $0.solve == local }))
+    }
+
+    @Test func pagesOnlyTheSelectedGroupInStableOrderAndKeepsOverallHighlights() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let database = ResultsDatabase(url: directory.appending(path: "solves.sqlite"))
+        let solves = (0..<8_126).map { index in
+            Solve(seconds: Double(index + 1), event: "333", scramble: "R U",
+                  date: Date(timeIntervalSinceReferenceDate: Double(index)))
+        }
+        let other = Solve(seconds: 0.1, event: "333", scramble: "U R", groupID: "practice")
+        _ = try database.save(ResultsStore(solves: solves + [other]), replacing: database.load())
+        let reader = ResultsPageReader(database: database, group: ResultsGroupKey(solves[0]))
+        let first = try await reader.page(offset: 0, limit: 80, includesDNF: true)
+        let next = try await reader.page(offset: 80, limit: 80, includesDNF: true)
+        #expect(first.total == 8_126)
+        #expect(first.solves == Array(solves.reversed().prefix(80)))
+        #expect(next.solves == Array(solves.reversed().dropFirst(80).prefix(80)))
+        #expect(first.bestID == solves.first?.id)
+        #expect(first.worstID == solves.last?.id)
+        #expect(try await reader.window(startingAt: first.solves[79].id, count: 3)
+                    == [first.solves[79], next.solves[0], next.solves[1]])
+        let otherReader = ResultsPageReader(database: database, group: ResultsGroupKey(other))
+        #expect(try await otherReader.page(offset: 0, limit: 80, includesDNF: true).solves == [other])
+    }
+}
+
 private actor SyntheticSyncServer: ResultsCloudTransport {
     enum Failure: Error { case offline, interrupted }
     private enum AccountCheckFailure { case afterUpload, nextCheck }
@@ -12,6 +101,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
     private var account = "original"
     private var writesUntilFailure: Int?
     private var accountCheckFailure: AccountCheckFailure?
+    private(set) var batchSizes: [Int] = []
 
     func switchAccount() { account = "different" }
     func accountID() throws -> String {
@@ -36,7 +126,7 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
         return Array(records.values)
     }
 
-    func merge(_ record: SyncRecord) throws -> SyncRecord {
+    private func merge(_ record: SyncRecord) throws -> SyncRecord {
         guard online else { throw Failure.offline }
         if let count = writesUntilFailure {
             guard count > 0 else { throw Failure.interrupted }
@@ -47,9 +137,159 @@ private actor SyntheticSyncServer: ResultsCloudTransport {
         if accountCheckFailure == .afterUpload { accountCheckFailure = .nextCheck }
         return record
     }
+
+    func merge(_ batch: [SyncRecord]) -> SyncBatchResults {
+        batchSizes.append(batch.count)
+        return Dictionary(uniqueKeysWithValues: batch.map { record in
+            (record.id, Result { try merge(record) })
+        })
+    }
+}
+
+private actor SyntheticCloudKitBatch {
+    private let maximumRequestSize: Int
+    private let rejected: Set<CKRecord.ID>
+    private var concurrentWrites: [CKRecord.ID: SyncRecord]
+    private var stored: [CKRecord.ID: Data] = [:]
+    private(set) var fetches: [[CKRecord.ID]] = []
+    private(set) var saves: [[CKRecord.ID]] = []
+
+    init(maximumRequestSize: Int = 100, concurrentWrites: [CKRecord.ID: SyncRecord] = [:], rejected: Set<CKRecord.ID> = []) {
+        self.maximumRequestSize = maximumRequestSize
+        self.concurrentWrites = concurrentWrites
+        self.rejected = rejected
+    }
+
+    nonisolated func writer() -> CloudKitResultsBatchWriter {
+        CloudKitResultsBatchWriter(recordType: "CubeginResult", fetchRecords: { try await self.fetch($0) },
+                                   saveRecords: { try await self.save($0) }, decode: { record in
+            guard let payload = record["payload"] as? Data else { throw SyncBatchFailure.invalidRecord }
+            return try JSONDecoder().decode(SyncRecord.self, from: payload)
+        })
+    }
+
+    private func fetch(_ ids: [CKRecord.ID]) throws -> CloudKitResultsBatchWriter.RecordResults {
+        fetches.append(ids)
+        guard ids.count <= maximumRequestSize else { throw CKError(.limitExceeded) }
+        return Dictionary(uniqueKeysWithValues: ids.map { id in
+            guard let payload = stored[id] else { return (id, .failure(CKError(.unknownItem))) }
+            let record = CKRecord(recordType: "CubeginResult", recordID: id)
+            record["payload"] = payload as NSData
+            return (id, .success(record))
+        })
+    }
+
+    private func save(_ batch: [CKRecord]) throws -> CloudKitResultsBatchWriter.RecordResults {
+        saves.append(batch.map(\.recordID))
+        guard batch.count <= maximumRequestSize else { throw CKError(.limitExceeded) }
+        return Dictionary(uniqueKeysWithValues: batch.map { record in
+            (record.recordID, Result { try save(record) })
+        })
+    }
+
+    private func save(_ record: CKRecord) throws -> CKRecord {
+        let id = record.recordID
+        if let concurrent = concurrentWrites.removeValue(forKey: id) {
+            stored[id] = try JSONEncoder().encode(concurrent)
+            throw CKError(.serverRecordChanged)
+        }
+        guard !rejected.contains(id) else { throw CKError(.quotaExceeded) }
+        stored[id] = record["payload"] as? Data
+        return record
+    }
+}
+
+struct CloudKitResultsBatchWriterTests {
+    @Test func retriesConflictsWithoutResendingSuccessfulRecords() async throws {
+        let deleted = candidate()
+        let stillLocal = candidate()
+        let accepted = candidate()
+        let rejected = candidate()
+        let tombstone = SyncRecord(id: deleted.id, revision: 1, replicaID: UUID(), solve: nil)
+        let older = SyncRecord(id: stillLocal.id, revision: 1, replicaID: UUID(), solve: stillLocal.solve)
+        let ids = [deleted, stillLocal, accepted, rejected].map(recordID)
+        let cloud = SyntheticCloudKitBatch(concurrentWrites: [ids[0]: tombstone, ids[1]: older], rejected: [ids[3]])
+
+        let candidates = Dictionary(uniqueKeysWithValues: zip(ids, [deleted, stillLocal, accepted, rejected]))
+        let results = try await cloud.writer().merge(candidates)
+
+        let fetches = await cloud.fetches.map(Set.init)
+        let saves = await cloud.saves.map(Set.init)
+        #expect(fetches == [Set(ids), [ids[0], ids[1]]])
+        #expect(saves == [Set(ids), [ids[1]]])
+        #expect(try results[deleted.id]?.get() == tombstone)
+        #expect(try results[stillLocal.id]?.get() == stillLocal)
+        #expect(try results[accepted.id]?.get() == accepted)
+        #expect(throws: CKError(.quotaExceeded)) { try results[rejected.id]?.get() }
+    }
+
+    @Test func splitsOversizeFetchesAndSaves() async throws {
+        let candidates = (0..<3).map { _ in candidate() }
+        let cloud = SyntheticCloudKitBatch(maximumRequestSize: 2)
+        let records = Dictionary(uniqueKeysWithValues: candidates.map { (recordID($0), $0) })
+
+        let results = try await cloud.writer().merge(records)
+
+        #expect(await cloud.fetches.map(\.count) == [3, 1, 2])
+        #expect(await cloud.saves.map(\.count) == [3, 1, 2])
+        for candidate in candidates {
+            #expect(try results[candidate.id]?.get() == candidate)
+        }
+    }
+
+    private func candidate() -> SyncRecord {
+        let solve = Solve(seconds: 12, event: "333", scramble: "R U")
+        return SyncRecord(id: solve.id, revision: 2, replicaID: UUID(), solve: solve)
+    }
+
+    private func recordID(_ record: SyncRecord) -> CKRecord.ID {
+        CKRecord.ID(recordName: record.id.uuidString, zoneID: CKRecordZone.ID(zoneName: "CubeginResultsV1"))
+    }
 }
 
 struct ResultsSyncTests {
+    @MainActor
+    @Test func reportsProcessedUploadsOnlyForPendingChanges() async throws {
+        let server = SyntheticSyncServer()
+        var replica = ResultsSyncReplica(state: .init(replicaID: UUID()))
+        try replica.importSolves((0..<201).map { index in
+            Solve(seconds: 12, event: "333", scramble: "R U", date: Date(timeIntervalSinceReferenceDate: Double(index)))
+        })
+
+        var processed: [Int] = []
+        var totals: [Int] = []
+        try await replica.sync(with: server) { completed, total in
+            processed.append(completed)
+            totals.append(total)
+        }
+        #expect(await server.batchSizes == [100, 100, 1])
+        #expect(processed == [0, 100, 200, 201])
+        #expect(totals == [201, 201, 201, 201])
+
+        processed.removeAll()
+        try await replica.sync(with: server) { completed, _ in processed.append(completed) }
+        #expect(processed.isEmpty)
+        #expect(await server.batchSizes == [100, 100, 1])
+    }
+
+    @Test func routesReleaseAndDevBuildsToSeparateCloudKitEnvironments() {
+        let production = CloudKitResultsTransport.Environment.production
+        let development = CloudKitResultsTransport.Environment.development
+
+        #expect(production.matching(bundleIdentifier: "io.github.deweyou.cubegin") == production)
+        #expect(production.matching(bundleIdentifier: "io.github.deweyou.cubegin.dev") == nil)
+        #expect(development.matching(bundleIdentifier: "io.github.deweyou.cubegin") == nil)
+        #expect(development.matching(bundleIdentifier: "io.github.deweyou.cubegin.dev") == development)
+        #expect(production.matching(bundleIdentifier: nil) == nil)
+
+        #expect(production.containerID == "iCloud.io.github.deweyou.cubegin")
+        #expect(production.recordType == "CubeginResult")
+        #expect(production.zoneName == "CubeginResultsV1")
+        #expect(development.containerID == "iCloud.io.github.deweyou.cubegin.sync-prototype")
+        #expect(development.recordType == "PrototypeSolve")
+        #expect(development.zoneName == "DevAppResultsV1")
+    }
+
     @Test func recoversAStableGroupAfterConcurrentDeletionAndSyncsItsRename() async throws {
         let server = SyntheticSyncServer()
         let event = "333"
@@ -115,6 +355,7 @@ struct ResultsSyncTests {
         #expect(restored.first?.isDefault == true)
     }
 
+    @MainActor
     @Test func firstSyncMergesBothHistoriesAndRetriesPartialUpload() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -129,11 +370,16 @@ struct ResultsSyncTests {
         try ipad.importSolves([c])
         try await ipad.sync(with: server)
         await server.interruptAfterWrites(1)
-        await #expect(throws: SyntheticSyncServer.Failure.interrupted) { try await iphone.sync(with: server) }
+        var processed: [Int] = []
+        await #expect(throws: SyntheticSyncServer.Failure.interrupted) {
+            try await iphone.sync(with: server) { count, _ in processed.append(count) }
+        }
+        #expect(processed == [0, 1])
         #expect(try await server.fetch().count == 2)
         iphone = try ResultsSyncReplica(file: file)
         await server.interruptAfterWrites(nil)
         #expect(try await iphone.sync(with: server) == 2)
+        #expect(await server.batchSizes == [1, 2, 1])
         try await ipad.sync(with: server)
         #expect(iphone.solves == ipad.solves)
         #expect(Set(iphone.solves.map(\.id)) == Set([a.id, b.id, c.id]))
@@ -248,7 +494,7 @@ struct ResultsSyncTests {
     @Test func sharesOnePreferenceAndKeepsThePreviousResultsChoice() throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = directory.appending(path: "solves.json")
+        let storage = directory.appending(path: "solves.sqlite")
         let suite = "icloud-sync-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -272,14 +518,14 @@ struct ResultsSyncTests {
     @Test func integratesLegacyResultsAndPersistsOfflineDeletionWithoutClearingOtherScores() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = directory.appending(path: "solves.json")
+        let storage = directory.appending(path: "solves.sqlite")
         let suite = "results-sync-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let local = Solve(seconds: 12, event: "333", scramble: "R U")
         let remote = Solve(seconds: 17, event: "333", scramble: "R U2")
-        try JSONEncoder().encode([local]).write(to: storage)
+        try JSONEncoder().encode([local]).write(to: directory.appending(path: "solves.json"))
         let server = SyntheticSyncServer()
         var replica = ResultsSyncReplica(state: .init(replicaID: UUID()))
         try replica.importSolves([remote])
@@ -323,9 +569,9 @@ struct ResultsSyncTests {
             tabletDefaults.removePersistentDomain(forName: tabletSuite)
         }
         let server = SyntheticSyncServer()
-        let phoneStorage = directory.appending(path: "phone.json")
+        let phoneStorage = directory.appending(path: "phone.sqlite")
         let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
-        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.sqlite"),
                                 defaults: tabletDefaults, cloudTransport: server)
         phone.requestCloudSync()
         try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
@@ -380,7 +626,7 @@ struct ResultsSyncTests {
             tabletDefaults.removePersistentDomain(forName: tabletSuite)
         }
         let server = SyntheticSyncServer()
-        let phoneStorage = directory.appending(path: "phone.json")
+        let phoneStorage = directory.appending(path: "phone.sqlite")
         let phone = TimerModel(storage: phoneStorage, defaults: phoneDefaults, cloudTransport: server)
         phone.requestCloudSync()
         try await waitForSync(phone) { if case .synced = $0 { true } else { false } }
@@ -400,7 +646,7 @@ struct ResultsSyncTests {
         let secondUpload = try #require(secondRecords.first { $0.id == firstPreference.id })
         #expect(secondUpload.revision > firstUpload.revision)
 
-        let tablet = TimerModel(storage: directory.appending(path: "tablet.json"),
+        let tablet = TimerModel(storage: directory.appending(path: "tablet.sqlite"),
                                 defaults: tabletDefaults, cloudTransport: server)
         tablet.requestCloudSync()
         try await waitForSync(tablet) { if case .synced = $0 { true } else { false } }
@@ -412,12 +658,12 @@ struct ResultsSyncTests {
     @Test func refusesToSyncLocalResultsToADifferentAccount() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let storage = directory.appending(path: "solves.json")
+        let storage = directory.appending(path: "solves.sqlite")
         let suite = "results-sync-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let score = Solve(seconds: 12, event: "333", scramble: "R U")
-        try JSONEncoder().encode([score]).write(to: storage)
+        try JSONEncoder().encode([score]).write(to: directory.appending(path: "solves.json"))
         let server = SyntheticSyncServer()
         let model = TimerModel(storage: storage, defaults: defaults, cloudTransport: server)
         model.requestCloudSync()

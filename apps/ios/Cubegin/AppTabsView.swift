@@ -2,6 +2,20 @@ import StoreKit
 import SwiftUI
 import UIKit
 
+enum DuoDisplay: Equatable {
+    case outer, inner, other
+
+    init(hasHinge: Bool, matchesDuoModel: Bool, nativeShortEdge: CGFloat) {
+        if hasHinge || (matchesDuoModel && nativeShortEdge == 2007) {
+            self = .inner
+        } else if matchesDuoModel && nativeShortEdge == 1398 {
+            self = .outer
+        } else {
+            self = .other
+        }
+    }
+}
+
 struct LandscapeContentInsets {
     static let contentMargin: CGFloat = 24
     private static let clearEdgeMargin: CGFloat = 44
@@ -55,6 +69,101 @@ private extension View {
     }
 }
 
+private struct ResultsFirstPageRequest: Equatable {
+    let group: ResultsGroupKey
+    let includesDNF: Bool
+    let revision: Int64?
+
+    static let limit = 80
+}
+
+private func settingsHeader(language: AppLanguage, contentInsets: LandscapeContentInsets?) -> some View {
+    Text(language.text("设置", "Settings"))
+        .font(.headline)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("settings.title")
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, LandscapeContentInsets.contentMargin)
+        .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
+}
+
+private enum SettingsSection {
+    case general, timer, results, about
+
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .general: language.text("通用", "General")
+        case .timer: language.text("计时", "Timer")
+        case .results: language.text("成绩", "Results")
+        case .about: language.text("关于", "About")
+        }
+    }
+}
+
+private struct SettingsLoadingView: View {
+    @Environment(\.locale) private var locale
+    let supportsCloudSync: Bool
+    let contentInsets: LandscapeContentInsets?
+    let hasCoverStatusColumn: Bool
+
+    private var language: AppLanguage { locale.appLanguage }
+    private var trailingCardMargin: CGFloat {
+        contentInsets?.formTrailingMargin ?? (hasCoverStatusColumn ? cardShadowInset : LandscapeContentInsets.contentMargin)
+    }
+    private var generalSection: some View {
+        section(rowCount: supportsCloudSync ? 3 : 2)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            settingsHeader(language: language, contentInsets: contentInsets)
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 22) {
+                    generalSection
+                    section(rowCount: 3)
+                }
+                generalSection
+                section(rowCount: 1)
+                Color.clear.frame(height: 0)
+            }
+            .padding(.leading, contentInsets?.formLeadingMargin ?? LandscapeContentInsets.contentMargin)
+            .padding(.trailing, trailingCardMargin)
+            .frame(maxWidth: 880)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(language.text("正在加载设置", "Loading settings"))
+            .accessibilityIdentifier("settings.loading")
+        }
+        .padding(.leading, contentInsets?.containerLeading ?? 0)
+        .padding(.trailing, contentInsets?.containerTrailing ?? 0)
+        .appBackground()
+    }
+
+    private func section(rowCount: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Capsule()
+                .fill(.secondary.opacity(0.16))
+                .frame(width: 48, height: 14)
+                .padding(.leading, 16)
+                .frame(minHeight: 40)
+                .padding(.bottom, 4)
+            VStack(spacing: 0) {
+                ForEach(0..<rowCount, id: \.self) { index in
+                    HStack {
+                        Capsule().fill(.secondary.opacity(0.16)).frame(width: 104, height: 12)
+                        Spacer(minLength: 8)
+                        Capsule().fill(.secondary.opacity(0.12)).frame(width: 64, height: 12)
+                    }
+                    .cardRowLayout()
+                    if index < rowCount - 1 { Divider().padding(.horizontal, 20) }
+                }
+            }
+            .background { cardSurface(RoundedRectangle(cornerRadius: 24)) }
+            .accessibilityHidden(true)
+        }
+    }
+}
+
 struct AppTabsView: View {
     @Environment(\.locale) private var locale
     private var language: AppLanguage { locale.appLanguage }
@@ -64,16 +173,31 @@ struct AppTabsView: View {
 
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
-    @State private var isInTimerCancelZone = false
     private var shouldKeepScreenOn: Bool {
         isActive && scenePhase == .active && selection == .home
             && (keepsTimerScreenOn || model.started != nil || model.inspectionStarted != nil)
     }
     private var showsTimingLayout: Bool {
-        model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
+        model.started != nil || model.inspectionStarted != nil
     }
     @State private var selection = Destination.initial
+    @State private var timerIsReady = false
+    @State private var mountedTabs: Set<Destination> = []
+    @State private var prefetchedResults: (request: ResultsFirstPageRequest, page: SolvePage)?
+    private var resultsFirstPageRequest: ResultsFirstPageRequest? {
+        model.currentGroup.map {
+            ResultsFirstPageRequest(group: ResultsGroupKey(event: model.event, id: $0.id),
+                                    includesDNF: includesDNFInWorst, revision: model.resultsRevision)
+        }
+    }
+    private var canPreloadTabs: Bool {
+        isActive && scenePhase == .active && selection == .home && timerIsReady && model.allowsIdleActions
+    }
     @State private var resultsPage = ResultsPage.solves
+    @State private var resultsAverageKind: SolveAverage?
+    @State private var resultsDetailPath = NavigationPath()
+    @State private var resultsListReset = 0
+    @State private var lastHandledTimedSolveID: Solve.ID?
     @State private var viewedCharts: Set<ResultsChartMode> = []
     private var visibleResultsPage: ResultsPage? {
         isActive && scenePhase != .background && selection == .results ? resultsPage : nil
@@ -86,6 +210,14 @@ struct AppTabsView: View {
     private let sideNavigationWidth: CGFloat = 52
     // Measured from the portrait tab capsule to the display edge on iPhone 17 Pro.
     private let sideNavigationEdgeGap: CGFloat = 21
+    private static var firstTabLayoutDelay: Duration {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SHOW_TAB_LOADING"] == "1" {
+            return .seconds(3)
+        }
+#endif
+        return .milliseconds(40)
+    }
 
     private enum Destination: String, CaseIterable {
         case home, results, settings
@@ -166,12 +298,27 @@ struct AppTabsView: View {
         .task(id: model.event) {
             model.refresh()
         }
+        .onChange(of: model.event) { _, _ in
+            showSingleResults()
+        }
+        .task(id: canPreloadTabs && !mountedTabs.contains(.results) ? resultsFirstPageRequest : nil, priority: .utility) {
+            guard canPreloadTabs, !mountedTabs.contains(.results), let request = resultsFirstPageRequest,
+                  request != prefetchedResults?.request else { return }
+            await prefetchResults(request)
+        }
+        .task(id: selection) { [destination = selection] in
+            guard destination != .home, !mountedTabs.contains(destination) else { return }
+            do {
+                // Let the lightweight screen render before mounting the native List or Form.
+                try await Task.sleep(for: Self.firstTabLayoutDelay)
+                try Task.checkCancellation()
+                guard selection == destination else { return }
+                mountedTabs.insert(destination)
+            } catch { return }
+        }
         .onChange(of: scenePhase, initial: true) { _, phase in
-            if phase == .active {
-                model.requestCloudSync()
-            } else {
-                model.interrupt()
-            }
+            model.setCloudForegroundActive(phase == .active)
+            if phase != .active { model.interrupt() }
         }
         .onChange(of: shouldKeepScreenOn, initial: true) { _, keepScreenOn in
             UIApplication.shared.isIdleTimerDisabled = keepScreenOn
@@ -181,7 +328,7 @@ struct AppTabsView: View {
             switch page {
             case .statistics:
                 AppTelemetry.record(.statisticsViewed)
-            case .solves where !model.groupSolves.isEmpty:
+            case .solves where model.hasSolvesInCurrentGroup:
                 AppTelemetry.record(.solveListViewed(includesDNF: includesDNFInWorst))
             default:
                 break
@@ -189,12 +336,44 @@ struct AppTabsView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            model.setCloudForegroundActive(false)
         }
         .alert(language.text("提示", "Notice"), isPresented: Binding(get: { isActive && model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button(language.text("好", "OK")) { model.error = nil }
         } message: {
             Text(model.error ?? "")
         }
+    }
+
+    private func prefetchResults(_ request: ResultsFirstPageRequest) async {
+        do {
+            try await Task.sleep(for: .milliseconds(450))
+            guard canPreloadTabs else { return }
+            let page = try await model.resultsPersistence.reader(for: request.group)
+                .page(offset: 0, limit: ResultsFirstPageRequest.limit, includesDNF: request.includesDNF)
+            try Task.checkCancellation()
+            guard canPreloadTabs, request == resultsFirstPageRequest,
+                  page.revision == (request.revision ?? -1) else { return }
+            prefetchedResults = (request, page)
+        } catch {
+            // The selected tab still performs its normal read and reports any persistent error.
+        }
+    }
+
+    private func showSingleResults() {
+        resultsPage = .solves
+        resultsAverageKind = nil
+        resultsDetailPath = NavigationPath()
+        resultsListReset &+= 1
+        lastHandledTimedSolveID = model.lastSavedTimedSolveID
+    }
+
+    private func selectTab(_ destination: Destination) {
+        guard !model.isPressing else { return }
+        if destination == .results, selection != .results, lastHandledTimedSolveID != model.lastSavedTimedSolveID {
+            showSingleResults()
+        }
+        selection = destination
     }
 
     private func tabs(sideNavigationInset: CGFloat?,
@@ -205,7 +384,9 @@ struct AppTabsView: View {
         let usesSideNavigation = sideNavigationInset != nil
         let railSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
 
-        return TabView(selection: $selection) {
+        let tabSelection = Binding(get: { selection }, set: selectTab)
+
+        return TabView(selection: tabSelection) {
             Tab(value: Destination.home) {
                 ContentView(
                     model: model,
@@ -217,7 +398,7 @@ struct AppTabsView: View {
                     isDuoInnerDisplay: isDuoInnerDisplay,
                     isDuoOuterDisplay: isDuoOuterDisplay,
                     landscapeContentInsets: contentInsets,
-                    isInTimerCancelZone: $isInTimerCancelZone
+                    timerReadinessChanged: { timerIsReady = $0 }
                 )
                     .ignoresSafeArea(.keyboard, edges: .bottom)
                     .labelStyle(.titleAndIcon)
@@ -226,11 +407,15 @@ struct AppTabsView: View {
                 tabLabel(.home)
             }
             Tab(value: Destination.results) {
-                ResultsView(model: model, page: $resultsPage,
-                            isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
+                ResultsView(model: model, page: $resultsPage, averageKind: $resultsAverageKind,
+                            detailPath: $resultsDetailPath, isSelecting: $isSelectingResults,
+                            listReset: resultsListReset, usesSideNavigation: usesSideNavigation,
                             isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
-                            showsStatistics: visibleResultsPage == .statistics) { mode in
+                            showsResultsList: visibleResultsPage == .solves,
+                            showsStatistics: visibleResultsPage == .statistics,
+                            isMounted: mountedTabs.contains(.results),
+                            prefetchedFirstPage: prefetchedResults?.request == resultsFirstPageRequest ? prefetchedResults?.page : nil) { mode in
                     if visibleResultsPage == .statistics, viewedCharts.insert(mode).inserted {
                         AppTelemetry.record(.featureUsed(.chartViewed(mode)))
                     }
@@ -241,7 +426,14 @@ struct AppTabsView: View {
                 tabLabel(.results)
             }
             Tab(value: Destination.settings) {
-                SettingsView(model: model, contentInsets: contentInsets, isSelected: selection == .settings)
+                Group {
+                    if mountedTabs.contains(.settings) {
+                        SettingsView(model: model, contentInsets: contentInsets, isSelected: selection == .settings)
+                    } else {
+                        SettingsLoadingView(supportsCloudSync: model.supportsCloudSync, contentInsets: contentInsets,
+                                            hasCoverStatusColumn: isDuoOuterDisplay && contentInsets == nil)
+                    }
+                }
                     .labelStyle(.titleAndIcon)
                     .toolbar(usesSideNavigation ? .hidden : .automatic, for: .tabBar)
             } label: {
@@ -258,7 +450,7 @@ struct AppTabsView: View {
                         .offset(x: alignsSideNavigationWithCoverCamera || alignsSideNavigationWithStatusIndicators ? 10 : 0)
                 }
             }
-            .allowsHitTesting(!showsTimingLayout)
+            .allowsHitTesting(!showsTimingLayout && !model.isPressing)
             .accessibilityHidden(showsTimingLayout)
         }
     }
@@ -275,7 +467,7 @@ struct AppTabsView: View {
         VStack(spacing: 2) {
             ForEach(Destination.allCases, id: \.self) { destination in
                 Button {
-                    selection = destination
+                    selectTab(destination)
                 } label: {
                     destination.icon
                         .resizable()
@@ -328,7 +520,11 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
 
         private static let isDuo: Bool = {
 #if targetEnvironment(simulator)
-            ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4"
+            let environment = ProcessInfo.processInfo.environment
+#if DEBUG
+            if environment["CUBEGIN_UI_TEST_UNRECOGNIZED_DUO"] == "1" { return false }
+#endif
+            return environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4"
 #else
             var device = utsname()
             uname(&device)
@@ -353,14 +549,15 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
 
         @objc func reportOrientation() {
             DispatchQueue.main.async { [weak self] in
-                guard let self, let scene = window?.windowScene else { return }
-                let display = scene.screen.nativeBounds.size
-                // The Duo cover display has a 1398 px short edge, versus 2007 px inside.
-                let shortEdge = min(display.width, display.height)
-                let outerDisplay = Self.isDuo && shortEdge == 1398
-                let innerDisplay = Self.isDuo && shortEdge == 2007
+                guard let self, let window, let scene = window.windowScene else { return }
+                let nativeSize = scene.screen.nativeBounds.size
+                let display = DuoDisplay(
+                    hasHinge: hasHinge(in: window),
+                    matchesDuoModel: Self.isDuo,
+                    nativeShortEdge: min(nativeSize.width, nativeSize.height)
+                )
 #if DEBUG
-                if outerDisplay, !requestedQAOrientation,
+                if display == .outer, !requestedQAOrientation,
                    let tabSide = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_DUO_TAB_SIDE"] {
                     requestedQAOrientation = true
                     let orientation: UIInterfaceOrientationMask = tabSide == "left" ? .landscapeRight : .landscapeLeft
@@ -369,8 +566,17 @@ private struct InterfaceOrientationReader: UIViewRepresentable {
                     }
                 }
 #endif
-                onChange?(scene.effectiveGeometry.interfaceOrientation, outerDisplay, innerDisplay)
+                onChange?(scene.effectiveGeometry.interfaceOrientation, display == .outer, display == .inner)
             }
+        }
+
+        private func hasHinge(in window: UIWindow) -> Bool {
+#if compiler(>=6.4)
+            if #available(iOS 27.1, *) {
+                return !window.reservedRegions(kind: .division, options: .includeInactive).isEmpty
+            }
+#endif
+            return false
         }
     }
 }
@@ -427,10 +633,51 @@ private struct AverageDestination: Hashable {
     let newestSolveID: Solve.ID
 }
 
-private struct AverageHighlightInput: Equatable {
-    let kind: SolveAverage
-    let times: [Double?]
-    let includesDNF: Bool
+private struct ResultsReadRequest<Query: Equatable>: Equatable {
+    let query: Query
+    let readerID: ObjectIdentifier?
+
+    init(_ query: Query, reader: ResultsPageReader?) {
+        self.query = query
+        readerID = reader.map(ObjectIdentifier.init)
+    }
+}
+
+private struct AverageDetailsLoader<Content: View>: View {
+    @Environment(\.locale) private var locale
+    @Binding var reader: ResultsPageReader?
+    let destination: AverageDestination
+    @ViewBuilder let content: ([Solve]) -> Content
+    @State private var loadedWindow: Result<[Solve], Error>?
+
+    var body: some View {
+        let reader = reader
+        Group {
+            switch loadedWindow {
+            case .success(let window):
+                content(window)
+            case .failure:
+                ContentUnavailableView(locale.appLanguage.text("平均成绩读取失败", "Could not load this average"),
+                                       systemImage: "exclamationmark.circle")
+            case nil:
+                ProgressView()
+            }
+        }
+        // The navigation path can restore before the list reopens its SQLite reader.
+        .task(id: ResultsReadRequest(destination, reader: reader)) {
+            guard let reader, !Task.isCancelled else { return }
+            do {
+                let values = try await reader.window(startingAt: destination.newestSolveID, count: destination.kind.count)
+                try Task.checkCancellation()
+                loadedWindow = .success(values)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                loadedWindow = .failure(error)
+            }
+        }
+    }
 }
 
 private struct ResultsView: View {
@@ -444,12 +691,24 @@ private struct ResultsView: View {
     @ScaledMetric(relativeTo: .caption) private var averageSolveTileWidth = 104.0
     private var language: AppLanguage { locale.appLanguage }
     @Bindable var model: TimerModel
-    @State private var detailPath = NavigationPath()
-    @State private var averageKind: SolveAverage?
     @State private var resultTypeOverflow: HorizontalScrollOverflow = []
-    @State private var averageHighlights: (input: AverageHighlightInput, extremes: ResultExtremes)?
+    @State private var listReader: ResultsPageReader?
+    @State private var loadedGroup: ResultsGroupKey?
+    @State private var loadedPage: SolvePage?
+    @State private var appliedListReset = 0
+    @State private var statisticsGroup: ResultsGroupKey?
+    @State private var statisticsSolves: [Solve] = []
+    @State private var refreshRequest = 0
+    @State private var cloudChangePending = false
+    @State private var contentVersion = 0
+    @State private var paginationTask: Task<Void, Never>?
+    @State private var averagePage: (request: AveragePageRequest, rows: [AverageRow])?
+    @State private var averageHighlights: (request: AverageHighlightRequest, extremes: ResultExtremes)?
+    @State private var selectAllTask: Task<Void, Never>?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
+    @Binding var averageKind: SolveAverage?
+    @Binding var detailPath: NavigationPath
     @State private var lastStatisticsGroup: StatisticsGroup?
     private var statisticsVisible: Bool { showsStatistics && detailPath.isEmpty }
 
@@ -461,10 +720,14 @@ private struct ResultsView: View {
     @State private var solvesToDelete: Set<Solve.ID> = []
     @State private var showsMoveGroups = false
     @Binding var isSelecting: Bool
+    let listReset: Int
     let usesSideNavigation: Bool
     let isReviewContextActive: () -> Bool
     let contentInsets: LandscapeContentInsets?
+    let showsResultsList: Bool
     let showsStatistics: Bool
+    let isMounted: Bool
+    let prefetchedFirstPage: SolvePage?
     let onChartViewed: (ResultsChartMode) -> Void
     @State private var selectedSolveIDs: Set<Solve.ID> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -475,14 +738,59 @@ private struct ResultsView: View {
         EdgeInsets(top: 0, leading: LandscapeContentInsets.contentMargin,
                    bottom: 0, trailing: LandscapeContentInsets.contentMargin - listRailInset)
     }
-    private var results: [Solve] {
-        model.groupSolves.sorted(by: Solve.newestFirst)
+    private var resultTypeInsets: EdgeInsets {
+        EdgeInsets(top: 4, leading: resultRowInsets.leading, bottom: 4, trailing: resultRowInsets.trailing + listRailInset)
+    }
+    private static let pageSize = ResultsFirstPageRequest.limit
+
+    private struct ListRequest: Equatable {
+        let group: ResultsGroupKey
+        let refresh: Int
+        let reset: Int
+    }
+
+    private struct AveragePageRequest: Equatable {
+        let kind: SolveAverage
+        let contentVersion: Int
+        let count: Int
+    }
+
+    private struct AverageHighlightRequest: Equatable {
+        let kind: SolveAverage
+        let contentVersion: Int
+        let includesDNF: Bool
+    }
+
+    private struct AverageRow: Identifiable, Sendable {
+        let id: Solve.ID
+        let index: Int
+        let summary: SolveAverage.Summary?
+    }
+
+    private var groupKey: ResultsGroupKey? {
+        model.currentGroup.map { ResultsGroupKey(event: model.event, id: $0.id) }
+    }
+
+    private var listRequest: ListRequest? {
+        guard isMounted, showsResultsList, let groupKey else { return nil }
+        return ListRequest(group: groupKey, refresh: refreshRequest, reset: listReset)
+    }
+
+    private var displayedPage: SolvePage? {
+        if loadedGroup == nil { return prefetchedFirstPage }
+        guard loadedGroup == groupKey else { return nil }
+        return loadedPage
+    }
+
+    private var displayedStatistics: [Solve] {
+        guard statisticsGroup == groupKey else { return [] }
+        return statisticsSolves
     }
 
     private var canRequestReview: Bool {
         guard isReviewContextActive(), scenePhase == .active, page == .solves, !didRequestAppStoreReview,
               !isSelecting, detailPath.isEmpty, !showsMoveGroups, !showsProjects, !showsGroups,
-              model.error == nil, !model.groupSolves.isEmpty else { return false }
+              model.error == nil, displayedPage.map({ $0.total > 0 }) == true else { return false }
 #if DEBUG
         if ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"] != nil { return false }
 #endif
@@ -490,22 +798,102 @@ private struct ResultsView: View {
     }
 
     var body: some View {
-        let groupSolves = model.groupSolves
-        let showsPageContent = page == .statistics || !groupSolves.isEmpty
-        let availableKinds = SolveAverage.allCases.filter { $0.count <= groupSolves.count }
+        Group {
+            if isMounted {
+                resultsScreen
+            } else {
+                loadingScreen
+                    .padding(.leading, contentInsets?.containerLeading ?? 0)
+                    .padding(.trailing, contentInsets?.containerTrailing ?? 0)
+                    .appBackground()
+            }
+        }
+    }
+
+    private var loadingScreen: some View {
+        let total = displayedPage?.total
+        let availableKinds = total.map(averageKinds) ?? [.mo3, .ao5, .ao12, .ao50]
+        return VStack(spacing: 0) {
+            resultsListHeader(availableKinds, selected: nil, isLoading: true)
+            loadingRows(total: total)
+        }
+    }
+
+    private func loadingRows(total: Int?) -> some View {
+        let count = min(6, max(1, total ?? 6))
+        return VStack(spacing: 0) {
+            Divider().opacity(0.55)
+            ForEach(0..<count, id: \.self) { index in
+                HStack {
+                    Capsule().fill(.secondary.opacity(0.16)).frame(width: 96, height: 12)
+                    Spacer(minLength: 8)
+                    Capsule().fill(.secondary.opacity(0.12)).frame(width: 48, height: 12)
+                }
+                .frame(minHeight: 52)
+                if index < count - 1 { Divider().opacity(0.55) }
+            }
+        }
+        .padding(.leading, resultRowInsets.leading)
+        .padding(.trailing, resultRowInsets.trailing + listRailInset)
+        .frame(maxWidth: 880)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("正在加载", "Loading"))
+        .accessibilityIdentifier("results.loading")
+    }
+
+    private func averageKinds(for total: Int) -> [SolveAverage] {
+        SolveAverage.allCases.filter { $0.count <= total }
+    }
+
+    private func resultsListHeader(_ availableKinds: [SolveAverage], selected: SolveAverage?, isLoading: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            resultsHeader.disabled(isLoading && !isMounted)
+            if page == .solves && !isSelecting && !availableKinds.isEmpty {
+                if isLoading {
+                    resultTypePlaceholder(count: min(3, availableKinds.count + 1))
+                } else {
+                    resultTypePicker(availableKinds, selected: selected)
+                }
+            }
+        }
+    }
+
+    private func resultTypePlaceholder(count: Int) -> some View {
+        HStack(spacing: 8) {
+            ForEach(0..<count, id: \.self) { _ in
+                Capsule().fill(.secondary.opacity(0.12)).frame(width: 22, height: 11)
+                    .frame(width: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 44)
+        .padding(resultTypeInsets)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(language.text("正在加载成绩类型", "Loading result types"))
+        .accessibilityIdentifier("results.loading-types")
+    }
+
+    private var resultsScreen: some View {
+        let total = displayedPage?.total ?? 0
+        let showsPageContent = page == .statistics ? statisticsGroup == groupKey : total > 0
+        let availableKinds = averageKinds(for: total)
         let selectedKind = averageKind.flatMap { availableKinds.contains($0) ? $0 : nil }
-        NavigationStack(path: $detailPath) {
+        return NavigationStack(path: $detailPath) {
             VStack(spacing: 0) {
                 if showsPageContent {
                     pageContent(selectedKind: selectedKind, availableKinds: availableKinds)
                         .pinnedScrollHeader {
-                            VStack(spacing: 0) {
-                                resultsHeader
-                                if page == .solves && !isSelecting && !availableKinds.isEmpty {
-                                    resultTypePicker(availableKinds, selected: selectedKind)
-                                }
-                            }
+                            resultsListHeader(availableKinds, selected: selectedKind)
                         }
+                } else if showsResultsList && displayedPage == nil {
+                    loadingScreen
+                } else if showsStatistics && statisticsGroup != groupKey {
+                    resultsHeader
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     resultsHeader
                     VStack(spacing: 12) {
@@ -565,7 +953,27 @@ private struct ResultsView: View {
                 selectionControls
                     .padding(.horizontal, 24)
                     .padding(.bottom, 8)
+            } else if showsResultsList, cloudChangePending, detailPath.isEmpty {
+                cloudResultsUpdateToast
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
             }
+        }
+        .onDisappear {
+            paginationTask?.cancel()
+            paginationTask = nil
+            listReader = nil
+        }
+        .task(id: listRequest) {
+            await observeList(listRequest)
+        }
+        .task(id: showsStatistics ? groupKey : nil) {
+            guard showsStatistics, let groupKey else { return }
+            await observeStatistics(groupKey)
+        }
+        .onChange(of: includesDNFInWorst) { _, _ in
+            guard let reader = listReader else { return }
+            Task { await reloadList(using: reader, limit: loadedPage?.solves.count ?? Self.pageSize) }
         }
         .task(id: canRequestReview) {
             guard canRequestReview else { return }
@@ -579,6 +987,147 @@ private struct ResultsView: View {
             didRequestAppStoreReview = true
             requestReview()
         }
+    }
+
+    private func observeList(_ request: ListRequest?) async {
+        paginationTask?.cancel()
+        paginationTask = nil
+        listReader = nil
+        cloudChangePending = false
+        guard let request else { return }
+        let persistence = model.resultsPersistence
+        let changes = persistence.changes()
+        let reader = persistence.reader(for: request.group)
+        listReader = reader
+        // Reuse the cached first page while SQLite opens a fresh read transaction.
+        if loadedGroup != request.group {
+            loadedPage = loadedGroup == nil ? prefetchedFirstPage : nil
+        }
+        loadedGroup = request.group
+        let limit = request.reset == appliedListReset ? max(Self.pageSize, loadedPage?.solves.count ?? 0) : Self.pageSize
+        guard await reloadList(using: reader, limit: limit) else { return }
+        // Reset the scroll position only after the current first page has loaded.
+        appliedListReset = request.reset
+        var appliedRevision = loadedPage?.revision ?? -1
+
+        for await change in changes {
+            guard !Task.isCancelled, listReader === reader else { return }
+            guard change.revision > appliedRevision, change.affectedGroups.contains(request.group) else { continue }
+            appliedRevision = change.revision
+            if change.origin == .cloud, (loadedPage?.total ?? 0) > 0 {
+                cloudChangePending = true
+                continue
+            }
+            do {
+                if change.origin == .cloud {
+                    await reader.reset()
+                } else {
+                    try await reader.applyLocal(change.entries.filter { $0.affects(request.group) })
+                }
+                guard !Task.isCancelled, listReader === reader else { return }
+                let limit = max(Self.pageSize, loadedPage?.solves.count ?? 0)
+                if await reloadList(using: reader, limit: limit, invalidatingAverages: true) {
+                    appliedRevision = max(appliedRevision, loadedPage?.revision ?? -1)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                showResultsReadError(error)
+            }
+        }
+    }
+
+    private func observeStatistics(_ group: ResultsGroupKey) async {
+        let persistence = model.resultsPersistence
+        let changes = persistence.changes()
+        await reloadStatistics(group, persistence: persistence)
+        for await change in changes {
+            guard !Task.isCancelled else { return }
+            if change.affectedGroups.contains(group) {
+                await reloadStatistics(group, persistence: persistence)
+            }
+        }
+    }
+
+    private func reloadStatistics(_ group: ResultsGroupKey, persistence: ResultsPersistence) async {
+        do {
+            let solves = try await persistence.reader(for: group).allSolves()
+            guard !Task.isCancelled, showsStatistics, group == groupKey else { return }
+            statisticsGroup = group
+            statisticsSolves = solves
+        } catch is CancellationError {
+            return
+        } catch {
+            showResultsReadError(error)
+        }
+    }
+
+    @discardableResult
+    private func reloadList(using reader: ResultsPageReader, limit: Int, invalidatingAverages: Bool = false) async -> Bool {
+        paginationTask?.cancel()
+        paginationTask = nil
+        do {
+            let page = try await reader.page(offset: 0, limit: limit, includesDNF: includesDNFInWorst)
+            guard !Task.isCancelled, listReader === reader else { return false }
+            if invalidatingAverages || loadedPage != page {
+                paginationTask?.cancel()
+                paginationTask = nil
+                loadedPage = page
+                contentVersion &+= 1
+            }
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            showResultsReadError(error)
+            return false
+        }
+    }
+
+    private func loadNextPage(near index: Int) {
+        guard showsResultsList, paginationTask == nil, let reader = listReader, let page = displayedPage,
+              page.solves.count < page.total, index >= page.solves.count - 8 else { return }
+        let version = contentVersion
+        paginationTask = Task {
+            defer {
+                if listReader === reader, contentVersion == version { paginationTask = nil }
+            }
+            do {
+                let next = try await reader.page(offset: page.solves.count, limit: Self.pageSize, includesDNF: includesDNFInWorst)
+                guard !Task.isCancelled, listReader === reader, contentVersion == version else { return }
+                loadedPage = SolvePage(solves: page.solves + next.solves, total: next.total, revision: next.revision,
+                                         bestID: next.bestID, worstID: next.worstID)
+            } catch is CancellationError {
+                return
+            } catch {
+                showResultsReadError(error)
+            }
+        }
+    }
+
+    private func showResultsReadError(_ error: Error) {
+        model.error = language.text("成绩读取失败：", "Could not read results: ") + error.localizedDescription
+    }
+
+    private var cloudResultsUpdateToast: some View {
+        Button {
+            refreshRequest &+= 1
+        } label: {
+            HStack(spacing: 14) {
+                Label(language.text("iCloud 成绩有更新", "iCloud results updated"), systemImage: "icloud")
+                    .foregroundStyle(.primary)
+                Text(language.text("刷新", "Refresh"))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.accentColor)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .contentShape(Capsule())
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("results.refreshCloudResults")
     }
 
     private var resultsHeader: some View {
@@ -694,12 +1243,10 @@ private struct ResultsView: View {
         case (.solves, .some(let kind)):
             averagesView(kind: kind, availableKinds: availableKinds)
         case (.solves, nil):
-            let orderedResults = results
-            let extremes = orderedResults.enumerated().reduce(into: ResultExtremes(includesDNF: includesDNFInWorst)) { extremes, entry in
-                extremes.record(entry.element.resultSeconds, at: entry.offset)
-            }
+            let orderedResults = displayedPage?.solves ?? []
+            let total = displayedPage?.total ?? 0
             List(Array(orderedResults.enumerated()), id: \.element.id) { index, solve in
-                let highlight = resultHighlight(at: index, best: extremes.best, worst: extremes.worst)
+                let highlight = resultHighlight(at: solve.id, best: displayedPage?.bestID, worst: displayedPage?.worstID)
                 Group {
                     if isSelecting {
                         Button {
@@ -707,13 +1254,13 @@ private struct ResultsView: View {
                                 selectedSolveIDs.remove(solve.id)
                             }
                         } label: {
-                            solveRowLabel(solve, number: orderedResults.count - index, total: orderedResults.count, highlight: highlight)
+                            solveRowLabel(solve, number: total - index, total: total, highlight: highlight)
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(selectedSolveIDs.contains(solve.id) ? .isSelected : [])
                     } else {
                         NavigationLink(value: solve.id) {
-                            solveRowLabel(solve, number: orderedResults.count - index, total: orderedResults.count, highlight: highlight)
+                            solveRowLabel(solve, number: total - index, total: total, highlight: highlight)
                         }
                         .accessibilityAction(named: Text(language.text("多选", "Select multiple"))) {
                             selectedSolveIDs = [solve.id]
@@ -723,7 +1270,8 @@ private struct ResultsView: View {
                 }
                 .listRowInsets(resultRowInsets)
                 .listRowBackground(selectedSolveIDs.contains(solve.id) ? Color.accentColor.opacity(0.06) : Color.clear)
-                .accessibilityIdentifier("solve-row-\(orderedResults.count - index)")
+                .accessibilityIdentifier("solve-row-\(total - index)")
+                .onAppear { loadNextPage(near: index) }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if !isSelecting {
                         Button {
@@ -761,9 +1309,10 @@ private struct ResultsView: View {
             } message: { _ in
                 Text(language.text("删除后，成绩无法恢复。", "Deleted solves cannot be recovered."))
             }
+            .id(appliedListReset)
         case (.statistics, _):
             let group = StatisticsGroup(project: model.event, id: model.currentGroup?.id)
-            let solves = results
+            let solves = displayedStatistics
             ResultsOverview(solves: solves, contentInsets: contentInsets,
                             tracksChartVisibility: showsStatistics, onChartViewed: onChartViewed,
                             isVisible: statisticsVisible) { start in
@@ -830,35 +1379,32 @@ private struct ResultsView: View {
             }
         }
         .frame(height: 44)
-        .padding(.leading, resultRowInsets.leading)
-        .padding(.trailing, resultRowInsets.trailing + listRailInset)
-        .padding(.vertical, 4)
+        .padding(resultTypeInsets)
     }
 
     private func averagesView(kind: SolveAverage, availableKinds: [SolveAverage]) -> some View {
-        let orderedResults = results
-        let input = AverageHighlightInput(kind: kind, times: orderedResults.map(\.resultSeconds), includesDNF: includesDNFInWorst)
-        let extremes = averageHighlights?.input == input ? averageHighlights?.extremes : nil
-        return List(orderedResults.indices, id: \.self) { index in
-            let number = orderedResults.count - index
+        let total = displayedPage?.total ?? 0
+        let reader = listReader
+        let request = AveragePageRequest(kind: kind, contentVersion: contentVersion, count: displayedPage?.solves.count ?? 0)
+        let highlightRequest = AverageHighlightRequest(kind: kind, contentVersion: contentVersion, includesDNF: includesDNFInWorst)
+        let rows = averagePage.flatMap { $0.request.kind == kind && $0.request.contentVersion == contentVersion ? $0.rows : nil } ?? []
+        let extremes = averageHighlights.flatMap { $0.request == highlightRequest ? $0.extremes : nil }
+        return List(rows) { row in
+            let number = total - row.index
             Group {
                 if number >= kind.count {
-                    let window = orderedResults[index..<(index + kind.count)]
-                    NavigationLink(value: AverageDestination(kind: kind, newestSolveID: orderedResults[index].id)) {
-                        averageRowLabel(
-                            number: number,
-                            total: orderedResults.count,
-                            summary: kind.summarize(window),
-                            highlight: resultHighlight(at: index, best: extremes?.best, worst: extremes?.worst)
-                        )
+                    NavigationLink(value: AverageDestination(kind: kind, newestSolveID: row.id)) {
+                        averageRowLabel(number: number, total: total, summary: row.summary,
+                                        highlight: resultHighlight(at: row.index, best: extremes?.best, worst: extremes?.worst))
                     }
                 } else {
-                    averageRowLabel(number: number, total: orderedResults.count, summary: nil)
+                    averageRowLabel(number: number, total: total, summary: nil)
                 }
             }
             .listRowInsets(resultRowInsets)
             .listRowBackground(Color.clear)
-            .accessibilityIdentifier("average-row-\(index)")
+            .accessibilityIdentifier("average-row-\(row.index)")
+            .onAppear { loadNextPage(near: row.index) }
         }
         .listStyle(.plain)
         .padding(.trailing, listRailInset)
@@ -877,11 +1423,60 @@ private struct ResultsView: View {
             }
         )
         .id(kind)
-        .task(id: input) {
-            let extremes = await kind.rollingExtremes(input.times, includesDNF: input.includesDNF)
-            guard !Task.isCancelled else { return }
-            averageHighlights = (input, extremes)
+        .task(id: ResultsReadRequest(request, reader: reader)) {
+            guard let reader else { return }
+            await loadAverageRows(request, using: reader)
         }
+        .task(id: ResultsReadRequest(highlightRequest, reader: reader)) {
+            guard let reader, averageHighlights?.request != highlightRequest else { return }
+            do {
+                let times = try await reader.allTimes()
+                let extremes = await kind.rollingExtremes(times, includesDNF: highlightRequest.includesDNF)
+                guard !Task.isCancelled, reader === listReader, contentVersion == highlightRequest.contentVersion else { return }
+                averageHighlights = (highlightRequest, extremes)
+            } catch is CancellationError {
+                return
+            } catch {
+                showResultsReadError(error)
+            }
+        }
+    }
+
+    private func loadAverageRows(_ request: AveragePageRequest, using reader: ResultsPageReader) async {
+        guard request.count > 0 else { return }
+        let previous: [AverageRow]
+        if let averagePage, averagePage.request.kind == request.kind,
+           averagePage.request.contentVersion == request.contentVersion {
+            previous = averagePage.rows
+        } else {
+            previous = []
+        }
+        guard request.count > previous.count else { return }
+        do {
+            let page = try await reader.page(offset: previous.count,
+                                             limit: request.count - previous.count + request.kind.count - 1,
+                                             includesDNF: includesDNFInWorst)
+            let rows = await Self.averageRows(page.solves, startingAt: previous.count, count: request.count - previous.count,
+                                         kind: request.kind)
+            guard !Task.isCancelled, reader === listReader, contentVersion == request.contentVersion else { return }
+            averagePage = (request, previous + rows)
+        } catch is CancellationError {
+            return
+        } catch {
+            showResultsReadError(error)
+        }
+    }
+
+    @concurrent private static func averageRows(_ solves: [Solve], startingAt start: Int, count: Int,
+                                         kind: SolveAverage) async -> [AverageRow] {
+        var results: [AverageRow] = []
+        for index in solves.indices.prefix(count) {
+            guard !Task.isCancelled else { break }
+            let end = index + kind.count
+            let summary = end <= solves.count ? kind.summarize(solves[index..<end]) : nil
+            results.append(AverageRow(id: solves[index].id, index: start + index, summary: summary))
+        }
+        return results
     }
 
     private func averageRowLabel(number: Int, total: Int, summary: SolveAverage.Summary?, highlight: (label: String, color: Color)? = nil) -> some View {
@@ -897,7 +1492,7 @@ private struct ResultsView: View {
             Spacer(minLength: 8)
             if let standardDeviation = summary?.standardDeviation {
                 let deviation = TimerModel.format(standardDeviation)
-                Text("σ \(deviation)")
+                Text("σ=\(deviation)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(language.text("标准差", "Standard deviation"))
@@ -909,18 +1504,28 @@ private struct ResultsView: View {
     }
 
     private func averageDetails(_ destination: AverageDestination) -> some View {
-        let orderedResults = results
-        let kind = destination.kind
+        AverageDetailsLoader(reader: $listReader, destination: destination) { window in
+            averageDetails(window: window, kind: destination.kind)
+        }
+        .appBackground()
+        .navigationTitle(destination.kind.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+
+    private func averageDetails(window: [Solve], kind: SolveAverage) -> some View {
         return Group {
-            if let start = orderedResults.firstIndex(where: { $0.id == destination.newestSolveID }),
-               orderedResults.count - start >= kind.count {
-                let window = orderedResults[start..<(start + kind.count)]
+            if window.count == kind.count {
+                let window = window[...]
                 let summary = kind.summarize(window)
                 let extremes = window.indices.reduce(into: ResultExtremes(includesDNF: includesDNFInWorst)) { extremes, index in
                     extremes.record(window[index].resultSeconds, at: index)
                 }
-                let bestSingle = extremes.best.map { window[$0].resultText } ?? "—"
-                let worstSingle = summary.hasDNF ? "DNF" : (extremes.worst.map { window[$0].resultText } ?? "—")
+                let fastestSolve = extremes.best.map { window[$0] }
+                // The overview includes DNF even when tile highlights omit it.
+                let slowestSolve = summary.hasDNF
+                    ? window.first { $0.penalty == .dnf }
+                    : extremes.worst.map { window[$0] }
                 GeometryReader { geometry in
                     let spacing: CGFloat = 8
                     let availableWidth = geometry.size.width - 32
@@ -928,12 +1533,15 @@ private struct ResultsView: View {
                     List {
                         Section {
                             LabeledContent(language.text("平均成绩", "Average"), value: averageScoreText(summary))
+                            averageSingleRow(language.text("最快单次", "Fastest single"), solve: fastestSolve)
+                                .accessibilityIdentifier("average-detail.fastest")
+                            averageSingleRow(language.text("最慢单次", "Slowest single"), solve: slowestSolve)
+                                .accessibilityIdentifier("average-detail.slowest")
                             if let standardDeviation = summary.standardDeviation {
-                                LabeledContent("σ", value: TimerModel.format(standardDeviation))
+                                LabeledContent(language.text("标准差 σ", "Standard deviation σ"),
+                                               value: TimerModel.format(standardDeviation))
                                     .accessibilityLabel(language.text("标准差", "Standard deviation"))
                             }
-                            LabeledContent(language.text("最快单次", "Fastest single"), value: bestSingle)
-                            LabeledContent(language.text("最差单次", "Worst single"), value: worstSingle)
                         }
                         .monospacedDigit()
 
@@ -942,10 +1550,10 @@ private struct ResultsView: View {
                             ForEach(0..<rowCount, id: \.self) { row in
                                 HStack(spacing: spacing) {
                                     ForEach(0..<columns, id: \.self) { column in
-                                        let index = start + row * columns + column
+                                        let index = row * columns + column
                                         if index < window.endIndex {
                                             averageSolveTile(window[index], highlight: resultHighlight(at: index, best: extremes.best, worst: extremes.worst))
-                                                .accessibilityIdentifier("average-solve-\(index - start)")
+                                                .accessibilityIdentifier("average-solve-\(index)")
                                         } else {
                                             Color.clear
                                                 .frame(maxWidth: .infinity)
@@ -969,18 +1577,29 @@ private struct ResultsView: View {
                 ContentUnavailableView(language.text("此平均成绩已不可用", "This average is no longer available"), systemImage: "stopwatch")
             }
         }
-        .appBackground()
-        .navigationTitle(kind.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
     }
 
-    private func resultHighlight(at index: Int, best: Int?, worst: Int?) -> (label: String, color: Color)? {
+    @ViewBuilder private func averageSingleRow(_ title: String, solve: Solve?) -> some View {
+        if let solve {
+            Button {
+                detailPath.append(solve.id)
+            } label: {
+                LabeledContent(title, value: solve.resultText)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            LabeledContent(title, value: "—")
+        }
+    }
+
+    private func resultHighlight<ID: Equatable>(at index: ID, best: ID?, worst: ID?) -> (label: String, color: Color)? {
         if index == best {
             return (language.text("最快", "Fastest"), resultBestColor(for: colorScheme))
         }
         if index == worst {
-            return (language.text("最差", "Worst"), resultWorstColor(for: colorScheme))
+            return (language.text("最慢", "Slowest"), resultWorstColor(for: colorScheme))
         }
         return nil
     }
@@ -1019,8 +1638,9 @@ private struct ResultsView: View {
     private func solveRowLabel(_ solve: Solve, number: Int, total: Int, highlight: (label: String, color: Color)?) -> some View {
         HStack(spacing: 12) {
             if isSelecting {
-                Image(systemName: selectedSolveIDs.contains(solve.id) ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selectedSolveIDs.contains(solve.id) ? Color.accentColor : Color.secondary)
+                let isSelected = selectedSolveIDs.contains(solve.id)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                     .accessibilityHidden(true)
             }
             solveNumberLabel(number, total: total)
@@ -1043,10 +1663,24 @@ private struct ResultsView: View {
     }
 
     private var selectAllButton: some View {
-        let allIDs = Set(results.map(\.id))
-        let allSelected = selectedSolveIDs == allIDs
+        let allSelected = !selectedSolveIDs.isEmpty && selectedSolveIDs.count == displayedPage?.total
         return Button(allSelected ? language.text("取消全选", "Deselect all") : language.text("全选", "Select all")) {
-            selectedSolveIDs = allSelected ? [] : allIDs
+            if allSelected {
+                selectedSolveIDs = []
+            } else if let reader = listReader {
+                selectAllTask?.cancel()
+                selectAllTask = Task {
+                    do {
+                        let ids = try await reader.allIDs()
+                        guard !Task.isCancelled, isSelecting, listReader === reader else { return }
+                        selectedSolveIDs = ids
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        showResultsReadError(error)
+                    }
+                }
+            }
         }
         .font(.subheadline)
         .buttonStyle(.plain)
@@ -1095,6 +1729,8 @@ private struct ResultsView: View {
     }
 
     private func endSelection() {
+        selectAllTask?.cancel()
+        selectAllTask = nil
         showsMoveGroups = false
         isSelecting = false
         selectedSolveIDs = []
@@ -2118,7 +2754,7 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Form {
-                CardSection(language.text("通用", "General")) {
+                CardSection(SettingsSection.general.title(in: language)) {
                     Picker(language.text("主题", "Theme"), selection: trackedSetting(
                         SettingsSync.binding($theme, key: AppTheme.preferenceKey) { $0.rawValue }, as: FeatureSettingValue.theme
                     )) {
@@ -2147,7 +2783,7 @@ private struct SettingsView: View {
                         .accessibilityIdentifier("settings.general.sync")
                     }
                 }
-                CardSection(language.text("计时", "Timer")) {
+                CardSection(SettingsSection.timer.title(in: language)) {
                     Toggle(language.text("计时页保持常亮", "Keep timer screen on"), isOn: trackedSetting(
                         SettingsSync.binding($keepsTimerScreenOn, key: TimerModel.keepTimerScreenOnKey) { $0 }, as: FeatureSettingValue.keepScreenOn
                     ))
@@ -2179,7 +2815,7 @@ private struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.timer.gestures")
                 }
-                CardSection(language.text("成绩", "Results")) {
+                CardSection(SettingsSection.results.title(in: language)) {
                     cardRowButton {
                         path.append(.imports)
                     } label: {
@@ -2194,12 +2830,12 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
-                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: trackedSetting(
+                    Toggle(language.text("最慢成绩包含 DNF", "Include DNF as the slowest result"), isOn: trackedSetting(
                         SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 }, as: FeatureSettingValue.includeDNF
                     ))
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
                 }
-                CardSection(language.text("关于", "About")) {
+                CardSection(SettingsSection.about.title(in: language)) {
                     cardRowButton {
                         isCheckingForUpdate = true
                     } label: {
@@ -2219,7 +2855,10 @@ private struct SettingsView: View {
                     cardRowButton {
                         tapVersion()
                     } label: {
-                        LabeledContent(language.text("版本", "Version"), value: AppStoreUpdate.installedVersion ?? language.text("开发版", "Development build"))
+                        LabeledContent(
+                            language.text("版本", "Version"),
+                            value: AppStoreUpdate.installedVersionDisplay ?? language.text("开发版", "Development build")
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.about.version")
@@ -2259,13 +2898,7 @@ private struct SettingsView: View {
                 }
             }
             .pinnedScrollHeader {
-                Text(language.text("设置", "Settings"))
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("settings.title")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, LandscapeContentInsets.contentMargin)
-                    .padding(.top, 8 + (contentInsets?.headerTopOffset ?? 0))
+                settingsHeader(language: language, contentInsets: contentInsets)
             }
             .contentMargins(.leading, contentInsets?.formLeadingMargin, for: .scrollContent)
             .contentMargins(.trailing, contentInsets?.formTrailingMargin, for: .scrollContent)
@@ -2490,6 +3123,22 @@ private struct SyncSettingsView: View {
                     .accessibilityHidden(true)
                 Text(language.text("正在同步…", "Syncing…"))
                     .accessibilityIdentifier("settings.sync.inProgress")
+            case .uploading(let completed, let total):
+                let count = completed.formatted(.number.locale(locale))
+                let changeCount = total.formatted(.number.locale(locale))
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(language.text("正在上传到 iCloud…", "Uploading to iCloud…"))
+                            .accessibilityIdentifier("settings.sync.uploading")
+                        Spacer(minLength: 0)
+                        Text("\(count)/\(changeCount)")
+                            .monospacedDigit()
+                            .fixedSize(horizontal: true, vertical: false)
+                            .accessibilityIdentifier("settings.sync.uploadProgress")
+                    }
+                    ProgressView(value: Double(completed), total: Double(total))
+                        .accessibilityHidden(true)
+                }
             case .failed(let failure):
                 Text(cloudSyncMessage(failure))
                     .foregroundStyle(failure == .network ? Color.secondary : .red)

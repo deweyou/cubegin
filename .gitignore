@@ -13,6 +13,8 @@
 .swiftpm/
 /test-results/
 /playwright-report/
+/.asc/*
+!/.asc/workflow.json
 /.wrangler/
 .DS_Store
 local.properties

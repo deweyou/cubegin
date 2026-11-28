@@ -1,0 +1,47 @@
+{
+  "workflows": {
+    "ios-status": {
+      "steps": [
+        {
+          "name": "version",
+          "run": "asc versions view --app 6838818301 --version \"$VERSION\" --platform IOS --include build --output json"
+        },
+        {
+          "name": "review",
+          "run": "asc review history --app 6838818301 --version \"$VERSION\" --platform IOS --paginate --output json"
+        }
+      ]
+    },
+    "ios-testflight": {
+      "env": {
+        "CUBEGIN_TESTFLIGHT_GROUP": "a71ad908-0a47-47d5-b81c-368d469e9be3"
+      },
+      "steps": [
+        {
+          "name": "verify_ipa",
+          "run": "node scripts/ios-store.mjs verify-ipa \"$VERSION\" \"$BUILD_NUMBER\" \"$IPA_PATH\""
+        },
+        {
+          "name": "upload",
+          "run": "asc publish testflight --app 6838818301 --ipa \"$IPA_PATH\" --upload-only --output json",
+          "outputs": {
+            "BUILD_ID": "$.buildId"
+          }
+        },
+        {
+          "name": "wait",
+          "run": "asc builds wait --build-id ${steps.upload.BUILD_ID} --fail-on-invalid --timeout 30m --output json"
+        },
+        {
+          "name": "distribute",
+          "run": "asc builds add-groups --build-id ${steps.upload.BUILD_ID} --group \"$CUBEGIN_TESTFLIGHT_GROUP\" --output json"
+        },
+        {
+          "name": "verify_testflight",
+          "run": "asc testflight groups list --build-id ${steps.upload.BUILD_ID} --output json | node scripts/ios-store.mjs verify-testflight ${steps.upload.BUILD_ID} \"$CUBEGIN_TESTFLIGHT_GROUP\"",
+          "retry": {"max_attempts": 6, "delay": "10s"}
+        }
+      ]
+    }
+  }
+}

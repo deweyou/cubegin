@@ -6,6 +6,13 @@ enum AppStoreUpdate {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
+    static var installedVersionDisplay: String? {
+        guard let installedVersion else { return nil }
+        guard let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+              !build.isEmpty else { return installedVersion }
+        return "\(installedVersion)(\(build))"
+    }
+
     private static let bundleID = "io.github.deweyou.cubegin"
 
     struct Release: Decodable, Equatable {
@@ -35,7 +42,7 @@ enum AppStoreUpdate {
            let url = URL(string: "https://apps.apple.com/") {
             return .available(Release(
                 bundleId: bundleID,
-                version: "0.2.0",
+                version: "1.1.0",
                 minimumOsVersion: "26.0",
                 releaseNotes: "Improved timer gestures and added more options for importing results.",
                 trackViewUrl: url

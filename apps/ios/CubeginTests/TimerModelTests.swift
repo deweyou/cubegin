@@ -5,6 +5,33 @@ import UIKit
 import WebKit
 @testable import CubeginApp
 
+@MainActor
+struct DuoTimerLayoutTests {
+    @Test func recognizesTheInnerDisplayFromItsHinge() {
+        #expect(DuoDisplay(hasHinge: true, matchesDuoModel: false, nativeShortEdge: 2100) == .inner)
+        #expect(DuoDisplay(hasHinge: true, matchesDuoModel: true, nativeShortEdge: 1398) == .inner)
+        #expect(DuoDisplay(hasHinge: false, matchesDuoModel: true, nativeShortEdge: 1398) == .outer)
+        #expect(DuoDisplay(hasHinge: false, matchesDuoModel: true, nativeShortEdge: 2007) == .inner)
+        #expect(DuoDisplay(hasHinge: false, matchesDuoModel: false, nativeShortEdge: 2007) == .other)
+    }
+
+    @Test func usesTheActiveHorizontalFold() {
+        let fold = CGRect(x: 0, y: 432, width: 669, height: 32)
+
+        #expect(ContentView.horizontalFold(in: [fold], pageHeight: 900) == fold)
+    }
+
+    @Test func onlyUsesDivisionsThatSplitThePageHorizontally() {
+        let verticalFold = CGRect(x: 324, y: 0, width: 24, height: 900)
+        let offscreenFold = CGRect(x: 0, y: 884, width: 669, height: 32)
+        let horizontalFold = CGRect(x: 0, y: 432, width: 669, height: 32)
+
+        #expect(ContentView.horizontalFold(in: [], pageHeight: 900) == nil)
+        #expect(ContentView.horizontalFold(in: [verticalFold, offscreenFold], pageHeight: 900) == nil)
+        #expect(ContentView.horizontalFold(in: [verticalFold, horizontalFold], pageHeight: 900) == horizontalFold)
+    }
+}
+
 struct AppLanguageTests {
     @Test func followsPreferredSystemLanguagesUnlessTheUserChoosesOne() {
         #expect(AppLanguage.resolve(nil, preferredLanguages: ["zh-Hant-TW", "en"]) == .chinese)
@@ -414,6 +441,7 @@ struct TimerModelTests {
             #expect(model.celebratedLastSolve == nil)
             #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .first, result: "10.000")])
             #expect(model.celebratedLastSolve?.solveID == first.id)
+            #expect(model.lastSolveCelebration?.crownKind == nil)
             #expect(model.setPenalty(.dnf, for: first.id))
             #expect(model.lastSolveCelebration == nil)
             #expect(model.celebratedLastSolve == nil)
@@ -442,7 +470,7 @@ struct TimerModelTests {
                 Solve(seconds: time, event: "333", scramble: "R U",
                       date: Date(timeIntervalSinceReferenceDate: Double(-index)))
             }
-            try JSONEncoder().encode(history).write(to: fixture.storage)
+            try JSONEncoder().encode(history).write(to: fixture.legacyStorage)
             let model = fixture.model()
             model.refresh()
             try await waitForGeneration(model)
@@ -454,8 +482,10 @@ struct TimerModelTests {
                 .init(kind: .ao5, result: "9.666"),
                 .init(kind: .ao12, result: "10.500")
             ])
+            #expect(model.lastSolveCelebration?.crownKind == .single)
             #expect(model.setPenalty(.plusTwo, for: solve.id))
             #expect(model.celebratedLastSolve?.achievements == [.init(kind: .ao12, result: "10.600")])
+            #expect(model.lastSolveCelebration?.crownKind == .ao12)
             #expect(model.takeAutomaticCelebration() == nil)
             #expect(model.setPenalty(.dnf, for: solve.id))
             #expect(model.lastSolveCelebration == nil)
@@ -477,7 +507,7 @@ struct TimerModelTests {
                 Solve(seconds: 8 + Double(index) * 0.25, event: "333", scramble: "R U",
                       date: tomorrow.addingTimeInterval(Double(-index)))
             }
-            try JSONEncoder().encode(history).write(to: fixture.storage)
+            try JSONEncoder().encode(history).write(to: fixture.legacyStorage)
             let model = fixture.model()
             model.refresh()
             try await waitForGeneration(model)
@@ -490,6 +520,42 @@ struct TimerModelTests {
             context = try #require(model.manualSolveContext())
             #expect(model.saveManualSolve(milliseconds: 7_000, penalty: nil, context: context) == nil)
             #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .single, result: "7.000")])
+        }
+    }
+
+    @Test(arguments: [
+        (count: 5, time: 23.0, kinds: [SolveCelebration.Kind.ao5]),
+        (count: 12, time: 19.8, kinds: [SolveCelebration.Kind.ao5, .ao12]),
+        (count: 12, time: 23.0, kinds: [SolveCelebration.Kind.ao12])
+    ])
+    func prefersAo5BeforeAo12WhenTheSingleDidNotImprove(
+        count: Int, time: Double, kinds: [SolveCelebration.Kind]
+    ) {
+        let history = (0..<count).reversed().map { index in
+            Solve(seconds: 24.82 - Double(index) * 0.53, event: "333", scramble: "R U",
+                  date: Date(timeIntervalSinceReferenceDate: Double(index)))
+        }
+        let solve = Solve(seconds: time, event: "333", scramble: "R U")
+        let celebration = SolveCelebration(solve: solve, history: history)
+        #expect(celebration?.achievements.map(\.kind) == kinds)
+        #expect(celebration?.crownKind == kinds.first)
+    }
+
+    @Test
+    func usesOneLocalizedToastTitlePerCelebration() {
+        let titles: [(Set<SolveCelebration.Kind>, String, String)] = [
+            ([.first], "首次成绩", "First result"),
+            ([.single], "单次新纪录", "Single PB"),
+            ([.ao5], "Ao5 新纪录", "Ao5 PB"),
+            ([.ao12], "Ao12 新纪录", "Ao12 PB"),
+            ([.single, .ao5], "单次、Ao5 新纪录", "Single & Ao5 PBs"),
+            ([.single, .ao12], "单次、Ao12 新纪录", "Single & Ao12 PBs"),
+            ([.ao5, .ao12], "Ao5、Ao12 新纪录", "Ao5 & Ao12 PBs"),
+            ([.single, .ao5, .ao12], "单次、Ao5、Ao12 新纪录", "Single, Ao5 & Ao12 PBs")
+        ]
+        for (kinds, chinese, english) in titles {
+            #expect(SolveCelebration.toastTitle(for: kinds, in: .chinese) == chinese)
+            #expect(SolveCelebration.toastTitle(for: kinds, in: .english) == english)
         }
     }
 
@@ -594,6 +660,7 @@ struct TimerModelTests {
             #expect(model.inspectionStarted == nil)
             #expect(model.saveManualSolve(milliseconds: 12_345, penalty: .plusTwo, context: context) == nil)
             #expect(model.lastSolve?.resultText == "14.345+")
+            #expect(model.lastSavedTimedSolveID == nil)
             #expect(model.lastSolve?.scramble == context.scramble)
             #expect(model.lastSolve?.groupID == context.groupID)
             try await waitForGeneration(model)
@@ -684,7 +751,7 @@ struct TimerModelTests {
     }
 
     @Test(arguments: [0, 1])
-    func readyPromptFeedbackFiresWhileHolding(delayTenths: Int) async throws {
+    func settledHoldFeedbackFiresWhilePressing(delayTenths: Int) async throws {
         try await withFixture { fixture in
             let model = fixture.model()
             model.refresh()
@@ -692,16 +759,49 @@ struct TimerModelTests {
 
             var feedbackCount = 0
             model.press(.touch, delayTenths: delayTenths) {
-                #expect(model.showsReadyFeedback)
+                #expect(model.hasSettledPress)
                 #expect(model.started == nil)
                 feedbackCount += 1
             }
 
-            try await waitUntil { model.showsReadyFeedback }
+            #expect(model.isPressing)
+            #expect(model.isReady == (delayTenths == 0))
+            #expect(!model.hasSettledPress)
+            try await waitUntil { model.isReady }
+            #expect(model.isPressing)
+            try await waitUntil { model.hasSettledPress }
             #expect(feedbackCount == 1)
             model.release(.touch)
             #expect(model.started != nil)
+            #expect(!model.isPressing)
             #expect(feedbackCount == 1)
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func readyTouchTakesPriorityOverTheLastSolveAction(usesInspection: Bool) async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(usesInspection, forKey: TimerModel.inspectionKey)
+            var now = ContinuousClock.now
+            let model = fixture.model(now: { now })
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) == nil)
+            try await waitForGeneration(model)
+            let solveID = try #require(model.lastSolve?.id)
+
+            #expect(model.canPerformPostSolveAction(for: solveID))
+            model.press(.touch, delayTenths: 0, minimumHold: .milliseconds(250))
+            now = now.advanced(by: .milliseconds(249))
+            #expect(model.canPerformPostSolveAction(for: solveID))
+            now = now.advanced(by: .milliseconds(1))
+            #expect(!model.canPerformPostSolveAction(for: solveID))
+
+            model.release(.touch)
+            #expect(!model.canPerformPostSolveAction(for: solveID))
+            #expect((model.inspectionStarted != nil) == usesInspection)
+            #expect((model.started != nil) == !usesInspection)
         }
     }
 
@@ -774,7 +874,7 @@ struct TimerModelTests {
     }
 
     @Test(arguments: [TimerInput.touch, .keyboard])
-    func readyFeedbackWaitsWithoutDelayingRelease(_ input: TimerInput) async throws {
+    func inspectionReleaseDoesNotWaitForTheHoldToSettle(_ input: TimerInput) async throws {
         try await withFixture { fixture in
             fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
             let model = fixture.model()
@@ -783,18 +883,18 @@ struct TimerModelTests {
 
             model.press(input, delayTenths: 20)
             #expect(model.isReady)
-            #expect(!model.showsReadyFeedback)
+            #expect(!model.hasSettledPress)
             model.release(input)
             #expect(model.inspectionStarted != nil)
-            #expect(!model.showsReadyFeedback)
+            #expect(!model.hasSettledPress)
 
             model.press(input, delayTenths: 20)
             #expect(model.isReady)
-            #expect(!model.showsReadyFeedback)
-            try await waitUntil { model.showsReadyFeedback }
+            #expect(!model.hasSettledPress)
+            try await waitUntil { model.hasSettledPress }
             model.release(input)
             #expect(model.started != nil)
-            #expect(!model.showsReadyFeedback)
+            #expect(!model.hasSettledPress)
         }
     }
 
@@ -828,6 +928,7 @@ struct TimerModelTests {
             model.press(.touch, delayTenths: 2)
             #expect(model.started == nil)
             let solve = try #require(model.lastSolve)
+            #expect(model.lastSavedTimedSolveID == solve.id)
             #expect(solve.seconds == 12.345)
             #expect(solve.event == "333")
             #expect(solve.groupID == group.id)
@@ -862,6 +963,7 @@ struct TimerModelTests {
             #expect(model.nextScramble?.algorithm == prefetched.algorithm)
             #expect(model.error != nil)
             #expect(model.solves.isEmpty)
+            #expect(model.lastSavedTimedSolveID == nil)
             #expect(!FileManager.default.fileExists(atPath: fixture.storage.path))
         }
     }
@@ -903,7 +1005,7 @@ struct TimerModelTests {
             let first = Solve(seconds: 13.25, event: "333", scramble: "R U", date: Date(timeIntervalSince1970: 100))
             let second = Solve(seconds: 15, event: "333", scramble: "F U", date: Date(timeIntervalSince1970: 90))
             let unrelated = Solve(seconds: 8, event: "222", scramble: "R2", date: Date(timeIntervalSince1970: 80))
-            try JSONEncoder().encode([first, second, unrelated]).write(to: fixture.storage)
+            try JSONEncoder().encode([first, second, unrelated]).write(to: fixture.legacyStorage)
             var events: [ProductEvent] = []
             let model = fixture.model(recordProductEvent: { events.append($0) })
             let initial = try #require(model.currentGroup)
@@ -953,7 +1055,7 @@ struct TimerModelTests {
         try await withFixture { fixture in
             let keep = Solve(seconds: 10, event: "333", scramble: "R")
             let remove = Solve(seconds: 11, event: "333", scramble: "U")
-            try JSONEncoder().encode([keep, remove]).write(to: fixture.storage)
+            try JSONEncoder().encode([keep, remove]).write(to: fixture.legacyStorage)
             let model = fixture.model()
             #expect(model.saveGroup(name: "Disposable", isDefault: false))
             let group = try #require(model.currentGroup)
@@ -967,7 +1069,7 @@ struct TimerModelTests {
     @Test func failedStorageWriteLeavesGroupAndSolveEditsUnapplied() async throws {
         try await withFixture { fixture in
             let solve = Solve(seconds: 10, event: "333", scramble: "R")
-            try JSONEncoder().encode([solve]).write(to: fixture.storage)
+            try JSONEncoder().encode([solve]).write(to: fixture.legacyStorage)
             let model = fixture.model()
             try FileManager.default.removeItem(at: fixture.directory)
             #expect(!model.setPenalty(.plusTwo, for: solve.id))
@@ -981,7 +1083,7 @@ struct TimerModelTests {
 
     @Test func corruptHistoryReportsAReadError() async throws {
         try await withFixture { fixture in
-            try Data("{invalid JSON".utf8).write(to: fixture.storage)
+            try Data("{invalid JSON".utf8).write(to: fixture.legacyStorage)
             let model = fixture.model()
             #expect(model.error != nil)
             #expect(model.solves.isEmpty)
@@ -1104,7 +1206,7 @@ struct TimerModelTests {
                 let backup = try dctimerImportFixture(in: fixture.directory)
                 let plan = try DCTimerImportPlan(backup: backup, validate: Engine.acceptsImportedScramble)
                 let original = Solve(seconds: 7, event: "333", scramble: "U2")
-                try JSONEncoder().encode([original]).write(to: fixture.storage)
+                try JSONEncoder().encode([original]).write(to: fixture.legacyStorage)
                 var events: [ProductEvent] = []
                 let model = fixture.model(recordProductEvent: { events.append($0) })
                 #expect(try model.importDCTimer(plan, destination: destination, language: .english) == 2)
@@ -1151,7 +1253,7 @@ struct TimerModelTests {
             let firstBackup = try dctimerImportFixture(in: fixture.directory)
             let firstPlan = try DCTimerImportPlan(backup: firstBackup, validate: Engine.acceptsImportedScramble)
             let existing = Solve(seconds: 7, event: "333", scramble: "U2")
-            try JSONEncoder().encode([existing]).write(to: fixture.storage)
+            try JSONEncoder().encode([existing]).write(to: fixture.legacyStorage)
             let model = fixture.model()
             #expect(model.lastImportCount == 0)
             #expect(try model.importDCTimer(firstPlan, destination: .defaultGroups, language: .english) == 2)
@@ -1313,7 +1415,8 @@ struct TimerModelTests {
     private struct Fixture {
         let directory: URL
         let defaults: UserDefaults
-        var storage: URL { directory.appending(path: "solves.json") }
+        var storage: URL { directory.appending(path: "solves.sqlite") }
+        var legacyStorage: URL { directory.appending(path: "solves.json") }
 
         @MainActor func model(now: @escaping () -> ContinuousClock.Instant = { .now },
                              recordProductEvent: @escaping @MainActor (ProductEvent) -> Void = { _ in }) -> TimerModel {

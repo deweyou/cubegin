@@ -13,7 +13,7 @@ Cubegin is a native SwiftUI speedcubing timer for iOS and iPadOS 26 or later. It
 - **Record celebrations** — Celebrate the first valid result and new single, Ao5, and Ao12 personal bests in the current solve group. Tap the celebration button next to the solve controls to replay while the result still qualifies.
 - **Results and statistics** — Organize solves into groups, apply +2 or DNF, and review individual attempts, rolling averages, trend charts and time distributions.
 - **Settings** — Choose the app language and theme, adjust the timer start delay, and turn timer haptics on or off.
-- **DCTimer import** — Open **Settings → Import → Import from DCTimer** and select `spdcube.sqlite` from Files. Preview the results, select the groups to import, and undo the latest import if needed.
+- **DCTimer import** — Open **Settings → Import → Import from DCTimer**. In the file picker, tap Browse and go back to Locations. Open DCTimer² under On My iPhone or On My iPad, then select `spdcube.sqlite`. Preview the results, select the groups to import, and undo the latest import if needed.
 
 In **Settings → About**, read the [changelog](CHANGELOG.md) offline or check for App Store updates.
 
@@ -23,8 +23,7 @@ Optional WCA inspection includes 8- and 12-second voice calls and automatic insp
 
 On a partially folded iPhone Duo in portrait, read the scramble and time above the fold and use the lower half to start or stop the timer.
 
-Use Settings → General → Sync to control syncing supported settings across devices signed into the same iCloud account. This requires a build signed with the iCloud key-value storage capability.
-Cubegin Dev builds configured with CloudKit also sync results, result groups, the selected project, and formula hint preferences.
+Use Settings → General → Sync to sync results, groups, and supported settings across devices signed into the same iCloud account. Supported settings include the selected puzzle event and formula hint preferences. The Sync screen shows upload progress for pending changes and the last successful sync time.
 
 To copy the device ID and the shared user ID when available, tap **Version** five times under **Settings → About**. Choose whether to share diagnostics and usage data on first launch. Change your choice or open the [privacy policy](../../docs/privacy-policy.md#cubegin-privacy-policy) under **Settings → About → Privacy**.
 

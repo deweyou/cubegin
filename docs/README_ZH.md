@@ -11,7 +11,7 @@ Cubegin 是一个魔方速拧计时和训练项目，包含原生 iPhone、iPad 
 
 ## iPhone 和 iPad App
 
-用计时器或手动录入记录还原用时，按项目和训练类型练习打乱，分组管理成绩，查看滚动平均和统计图表，也可以导入 DCTimer 的历史成绩。点计时页的 ✨ 可选择当前项目支持的还原方法。App 使用 SwiftUI，支持 iOS 和 iPadOS 26 及以上版本。
+用计时器或手动录入记录还原用时，按项目和训练类型练习打乱，分组管理成绩，查看滚动平均和统计图表，也可以导入 DCTimer 的历史成绩，并通过 iCloud 在设备间同步成绩和分组。点计时页的 ✨ 可选择当前项目支持的还原方法。App 使用 SwiftUI，支持 iOS 和 iPadOS 26 及以上版本。
 
 [了解 iOS App](https://github.com/deweyou/cubegin/blob/main/apps/ios/README_ZH.md)
 

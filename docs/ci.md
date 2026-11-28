@@ -1,6 +1,6 @@
 # CI 验收
 
-各 [workflow](../.github/workflows/) 在 `paths` 声明 PR 和推送到 main 的触发路径，匹配后各自运行。iOS 商店候选按[发包手册](../apps/ios/docs/releasing.md)手动运行 Apple workflow，商店素材目录由文档检查覆盖。产品和版本 workflow 也支持合并队列，所有 workflow 均可手动运行。
+各 [workflow](../.github/workflows/) 在 `paths` 声明 PR 和推送到 main 的触发路径，匹配后各自运行。商店素材目录由文档检查覆盖。产品和版本 workflow 也支持合并队列，所有 workflow 均可手动运行。商店候选的归档与上传按 [App 发布规范](app-releasing.md) 执行。
 
 | Workflow | 触发输入与检查 |
 | --- | --- |

@@ -16,7 +16,7 @@ shard_a_cases=(
   testLandscapeNavigationAndCenteredTimer
   testLandscapePageEdgesAlignInBothDirections
   testManualEntryCanCancelAndSaveAPenalizedResult
-  testPersonalBestToastsStackAtTheBottom
+  testCombinedPersonalBestToastAppearsAtTheBottom
   testPortraitSolveListKeepsPickersFixedWhileScrolling
   testTimerSwipeShortcutsPersistAndUseTheExistingSolveFlows
 )

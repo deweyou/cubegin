@@ -10,6 +10,8 @@ Cubegin 在设备上保存计时成绩、分组和打乱记录。从文件导入
 
 **Google Analytics for Firebase** 接收固定分类的操作失败事件、应用构建号，以及启动到计时页可操作、准备打乱和显示打乱图的耗时。打乱准备的记录包含当前魔方项目、是否切换项目和是否命中预加载。它也记录首次打开、应用版本、会话、前台活跃时长和设备信息等基础统计。如版本包含产品埋点，这些事件用于统计哪些功能被使用。
 
+Google Analytics 会根据你的 IP 地址推算国家或地区、州省和城市等粗略位置，用于分析 Cubegin 的使用情况。这些位置数据可能与应用实例 ID 或 Cubegin 的随机用户 ID 关联。Cubegin 不会请求设备的定位权限，也不使用这些位置数据进行广告跟踪。
+
 统计页会记录滚动平均结果就绪的耗时和分组成绩量区间。支持 iCloud 成绩同步的版本也会记录同步尝试的耗时、结果、网络类型和记录数量区间，并区分首次同步和后续同步。
 
 **Sentry** 接收崩溃报告和部分需要排查的非致命错误。报告可能包含调用栈、系统及 App 版本、设备型号和错误分类。
@@ -37,6 +39,8 @@ Cubegin stores solve times, groups, and scrambles on your device. DCTimer result
 If you choose **Agree**, Cubegin uses two services to fix issues and understand how features are used:
 
 **Google Analytics for Firebase** receives categorized failures, the app build number, and timings for making the timer available at launch, preparing scrambles, and displaying scramble diagrams. Scramble preparation records include the current puzzle event, whether the event changed, and whether a prefetched scramble was ready. It also records basic statistics such as first opens, app versions, sessions, time in the foreground, and device information. When a version includes feature usage events, those events measure which features people use.
+
+Google Analytics uses your IP address to estimate your approximate location, such as your country or region, state or province, and city, for usage analytics. This location data may be linked to an app instance ID or Cubegin’s random user ID. Cubegin does not request access to your device’s location or use this data for advertising tracking.
 
 The statistics page records the time it takes for rolling averages to become available and the range of solve counts in the group. Versions with iCloud results sync also record the duration and outcome of sync attempts, the network type, and ranges for record counts. These records distinguish initial sync from later syncs.
 

@@ -76,13 +76,13 @@ struct LaunchRootView: View {
         // A UI test uses the same temporary file across both app launches.
         if let value = ProcessInfo.processInfo.environment["CUBEGIN_UI_TEST_SESSION"],
            let session = UUID(uuidString: value) {
-            return URL.temporaryDirectory.appending(path: "ui-test-solves-\(session.uuidString).json")
+            return URL.temporaryDirectory.appending(path: "ui-test-solves-\(session.uuidString).sqlite")
         }
         if CloudKitResultsTransport.showsSyncPreview {
-            return URL.temporaryDirectory.appending(path: "icloud-preview-solves.json")
+            return URL.temporaryDirectory.appending(path: "icloud-preview-solves.sqlite")
         }
 #endif
-        return URL.documentsDirectory.appending(path: "solves.json")
+        return URL.documentsDirectory.appending(path: "solves.sqlite")
     }
 }
 
