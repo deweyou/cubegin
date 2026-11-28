@@ -565,12 +565,16 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         return environment["CUBEGIN_UI_TEST_LONG_SOLVE"] == "1"
     }()
 
-    private static let usesCelebrationUITestHistory: Bool = {
+    private static let celebrationUITestHistoryCount: Int? = {
         let environment = ProcessInfo.processInfo.environment
         guard let session = environment["CUBEGIN_UI_TEST_SESSION"], UUID(uuidString: session) != nil else {
-            return false
+            return nil
         }
-        return environment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] == "1"
+        return switch environment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] {
+        case "1": 12
+        case "5": 5
+        default: nil
+        }
     }()
 #endif
 
@@ -623,8 +627,8 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                       date: Date(timeIntervalSinceReferenceDate: Double(index)), penalty: .plusTwo)
             }
         }
-        if solves.isEmpty, Self.usesCelebrationUITestHistory {
-            solves = (0..<12).reversed().map { index in
+        if solves.isEmpty, let count = Self.celebrationUITestHistoryCount {
+            solves = (0..<count).reversed().map { index in
                 Solve(seconds: 24.82 - Double(index) * 0.53, event: "333", scramble: "R U",
                       date: Date(timeIntervalSinceReferenceDate: Double(index)))
             }
@@ -636,7 +640,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         }
 #if DEBUG
         if !storageReadFailed, persisted.store.solves.isEmpty, !solves.isEmpty,
-           Self.isLongSolveUITest || Self.usesCelebrationUITestHistory {
+           Self.isLongSolveUITest || Self.celebrationUITestHistoryCount != nil {
             var fixture = persisted.store
             fixture.solves = solves
             fixture.groups = groups
@@ -1380,6 +1384,11 @@ struct SolveCelebration: Equatable {
 
     let solveID: Solve.ID
     let achievements: [Achievement]
+
+    var crownKind: Kind? {
+        let kinds = achievements.map(\.kind)
+        return [Kind.single, .ao12, .ao5].first { kinds.contains($0) }
+    }
 
     @MainActor init?(solve: Solve, history: [Solve]) {
         var achievements: [Achievement] = []

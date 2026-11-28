@@ -320,6 +320,36 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAverageRecordCrownsAfterManualEntry() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",
+                      "The Duo has a separate timer touch surface.")
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+
+        for (history, input, record) in [("5", "0023000", "ao5"), ("1", "0019800", "ao12")] {
+            let app = XCUIApplication()
+            app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+            app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = history
+            app.launchEnvironment["CUBEGIN_UI_TEST_EXTENDED_CELEBRATION"] = "1"
+            app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.entryMethod", "manual"]
+            app.launch()
+
+            let elements = app.descendants(matching: .any)
+            XCTAssertTrue(app.buttons["timer.formula-hints"].wait(for: \.isHittable, toEqual: true, timeout: 20))
+            timerTouchTarget(in: app, readout: elements["timer.readout"]).tap()
+            let field = app.textFields["manual-result.time"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.typeText(input)
+            app.buttons["Save"].tap()
+            let toast = elements["timer.celebration-toast.\(record)"]
+            XCTAssertTrue(toast.waitForExistence(timeout: 5))
+            XCTAssertFalse(elements["timer.celebration-toast.single"].exists)
+            captureScreen("Record crown \(record)")
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testTimerHeaderButtonsRespondAtTheirInnerEdges() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

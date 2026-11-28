@@ -441,6 +441,7 @@ struct TimerModelTests {
             #expect(model.celebratedLastSolve == nil)
             #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .first, result: "10.000")])
             #expect(model.celebratedLastSolve?.solveID == first.id)
+            #expect(model.lastSolveCelebration?.crownKind == nil)
             #expect(model.setPenalty(.dnf, for: first.id))
             #expect(model.lastSolveCelebration == nil)
             #expect(model.celebratedLastSolve == nil)
@@ -481,8 +482,10 @@ struct TimerModelTests {
                 .init(kind: .ao5, result: "9.666"),
                 .init(kind: .ao12, result: "10.500")
             ])
+            #expect(model.lastSolveCelebration?.crownKind == .single)
             #expect(model.setPenalty(.plusTwo, for: solve.id))
             #expect(model.celebratedLastSolve?.achievements == [.init(kind: .ao12, result: "10.600")])
+            #expect(model.lastSolveCelebration?.crownKind == .ao12)
             #expect(model.takeAutomaticCelebration() == nil)
             #expect(model.setPenalty(.dnf, for: solve.id))
             #expect(model.lastSolveCelebration == nil)
@@ -518,6 +521,19 @@ struct TimerModelTests {
             #expect(model.saveManualSolve(milliseconds: 7_000, penalty: nil, context: context) == nil)
             #expect(model.takeAutomaticCelebration()?.achievements == [.init(kind: .single, result: "7.000")])
         }
+    }
+
+    @Test(arguments: [(count: 5, time: 23.0, kind: SolveCelebration.Kind.ao5),
+                      (count: 12, time: 19.8, kind: SolveCelebration.Kind.ao12)])
+    func selectsTheLongestAverageCrownWhenTheSingleDidNotImprove(
+        count: Int, time: Double, kind: SolveCelebration.Kind
+    ) {
+        let history = (0..<count).reversed().map { index in
+            Solve(seconds: 24.82 - Double(index) * 0.53, event: "333", scramble: "R U",
+                  date: Date(timeIntervalSinceReferenceDate: Double(index)))
+        }
+        let solve = Solve(seconds: time, event: "333", scramble: "R U")
+        #expect(SolveCelebration(solve: solve, history: history)?.crownKind == kind)
     }
 
     @Test

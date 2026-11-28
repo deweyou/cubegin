@@ -971,10 +971,12 @@ struct ContentView: View {
             language.text("开始计时", "Start timer")
         }
         let color = timerPressColor ?? .primary
+        let crown = !showsTimingLayout && !model.isPressing && model.lastSolve?.resultSeconds != nil
+            ? model.lastSolveCelebration?.crownKind : nil
         return TimelineView(.animation(minimumInterval: displayDuringSolve == .seconds ? 0.1 : 0.03,
                                 paused: !isTiming)) { _ in
             let readout = timerReadoutContent(fontSize: fontSize)
-            Text(readout)
+            timerText(readout, crown: crown)
                 .foregroundStyle(color)
                 .contentTransition(.identity)
                 .lineLimit(1)
@@ -984,6 +986,7 @@ struct ContentView: View {
                 .frame(height: height)
                 .accessibilityLabel(actionTitle)
                 .accessibilityValue((isTiming ? nil : model.lastSolve?.resultText) ?? String(readout.characters))
+                .accessibilityHint(crown?.title(in: language) ?? "")
                 .accessibilityIdentifier("timer.readout")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction {
@@ -995,6 +998,21 @@ struct ContentView: View {
                 }
         }
         .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func timerText(_ readout: AttributedString, crown: SolveCelebration.Kind?) -> some View {
+        if let crown {
+            let digits: String? = switch crown {
+            case .ao5: "5"
+            case .ao12: "12"
+            default: nil
+            }
+            Text(readout)
+                .textRenderer(RecordCrownRenderer(digits: digits, hasTrailingPlus: readout.characters.last == "+"))
+        } else {
+            Text(readout)
+        }
     }
 
     private func timerReadoutContent(fontSize: CGFloat) -> AttributedString {
@@ -1340,6 +1358,58 @@ private extension SolveCelebration.Kind {
         case .single: language.text("单次新纪录", "Single PB")
         case .ao5: language.text("Ao5 新纪录", "Ao5 PB")
         case .ao12: language.text("Ao12 新纪录", "Ao12 PB")
+        }
+    }
+}
+
+private struct RecordCrownRenderer: TextRenderer {
+    let digits: String?
+    let hasTrailingPlus: Bool
+
+    var displayPadding: EdgeInsets { EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4) }
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        for line in layout { context.draw(line) }
+        guard !layout.isTruncated, let line = layout.last,
+              let glyph = line.reversed().lazy.flatMap({ $0.reversed() }).dropFirst(hasTrailingPlus ? 1 : 0).first else {
+            return
+        }
+
+        let digit = glyph.typographicBounds
+        let width = min(24, digit.width * 0.9)
+        let height = width * 0.54
+        let capTop = digit.origin.y - digit.ascent * 0.79
+        let position = CGPoint(x: digit.rect.maxX - width * 0.35, y: capTop - height * 0.65)
+        let gold = context.environment.colorScheme == .dark
+            ? Color(red: 0.78, green: 0.65, blue: 0.42)
+            : Color(red: 0.56, green: 0.40, blue: 0.16)
+
+        // Keep the knockout in its own layer so it can only erase the gold.
+        context.drawLayer { layer in
+            layer.translateBy(x: position.x, y: position.y)
+            layer.rotate(by: .degrees(17))
+            layer.translateBy(x: -width / 2, y: -height / 2)
+            layer.fill(crownPath(width: width, height: height), with: .color(gold))
+            if let digits {
+                layer.blendMode = .destinationOut
+                layer.draw(Text(digits).font(.system(size: height * 0.60, weight: .heavy, design: .rounded)),
+                           at: CGPoint(x: width / 2, y: height * 0.70))
+            }
+        }
+    }
+
+    private func crownPath(width: CGFloat, height: CGFloat) -> Path {
+        Path { path in
+            path.addLines([
+                .zero,
+                CGPoint(x: width * 0.25, y: height * 0.37),
+                CGPoint(x: width * 0.50, y: 0),
+                CGPoint(x: width * 0.75, y: height * 0.37),
+                CGPoint(x: width, y: 0),
+                CGPoint(x: width * 0.94, y: height),
+                CGPoint(x: width * 0.06, y: height)
+            ])
+            path.closeSubpath()
         }
     }
 }
