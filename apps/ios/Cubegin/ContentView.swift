@@ -1429,6 +1429,7 @@ private struct CompactControlTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .scaleEffect(0.9)
             .padding(.horizontal, 10)
             .frame(minWidth: minimumWidth)
             .frame(height: 44)
