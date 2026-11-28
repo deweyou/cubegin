@@ -1521,8 +1521,11 @@ private struct ResultsView: View {
                 let extremes = window.indices.reduce(into: ResultExtremes(includesDNF: includesDNFInWorst)) { extremes, index in
                     extremes.record(window[index].resultSeconds, at: index)
                 }
-                let bestSingle = extremes.best.map { window[$0].resultText } ?? "—"
-                let worstSingle = summary.hasDNF ? "DNF" : (extremes.worst.map { window[$0].resultText } ?? "—")
+                let fastestSolve = extremes.best.map { window[$0] }
+                // The overview includes DNF even when tile highlights omit it.
+                let slowestSolve = summary.hasDNF
+                    ? window.first { $0.penalty == .dnf }
+                    : extremes.worst.map { window[$0] }
                 GeometryReader { geometry in
                     let spacing: CGFloat = 8
                     let availableWidth = geometry.size.width - 32
@@ -1530,8 +1533,10 @@ private struct ResultsView: View {
                     List {
                         Section {
                             LabeledContent(language.text("平均成绩", "Average"), value: averageScoreText(summary))
-                            LabeledContent(language.text("最快单次", "Fastest single"), value: bestSingle)
-                            LabeledContent(language.text("最慢单次", "Slowest single"), value: worstSingle)
+                            averageSingleRow(language.text("最快单次", "Fastest single"), solve: fastestSolve)
+                                .accessibilityIdentifier("average-detail.fastest")
+                            averageSingleRow(language.text("最慢单次", "Slowest single"), solve: slowestSolve)
+                                .accessibilityIdentifier("average-detail.slowest")
                             if let standardDeviation = summary.standardDeviation {
                                 LabeledContent(language.text("标准差 σ", "Standard deviation σ"),
                                                value: TimerModel.format(standardDeviation))
@@ -1571,6 +1576,16 @@ private struct ResultsView: View {
             } else {
                 ContentUnavailableView(language.text("此平均成绩已不可用", "This average is no longer available"), systemImage: "stopwatch")
             }
+        }
+    }
+
+    @ViewBuilder private func averageSingleRow(_ title: String, solve: Solve?) -> some View {
+        if let solve {
+            NavigationLink(value: solve.id) {
+                LabeledContent(title, value: solve.resultText)
+            }
+        } else {
+            LabeledContent(title, value: "—")
         }
     }
 

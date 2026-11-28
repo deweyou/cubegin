@@ -137,7 +137,7 @@ Solve 保存 UUID、秒数、项目、打乱、日期、罚时和分组。App �
 ao500、ao1000、ao10000。mo3 保留全部成绩。ao 的最快与最慢两端各裁剪 5%（向上取整）。
 +2 以加罚后的用时计入，DNF 排在最慢一端。保留部分含 DNF 时，平均为 DNF，省略 σ。
 有效平均的 σ 为保留部分的总体标准差。最快与最慢单次取自整个窗口。
-平均详情以窗口最新成绩的 UUID 从当前列表快照读取该窗口，单次沿用原成绩详情导航。
+平均详情以窗口最新成绩的 UUID 从当前列表快照读取该窗口。点按最快单次、最慢单次或任一成绩格会打开对应的单次详情。概要中的最慢单次显示 DNF 时，打开窗口中最新的一条 DNF。
 [csTimer 默认裁剪规则](https://github.com/cs0x7f/cstimer/blob/master/src/js/stats/timestat.js) ·
 [DCTimer 平均与 σ](https://github.com/MeigenChou/DCTimer-Android/blob/master/app/src/main/java/com/dctimer/util/Stats.java)
 

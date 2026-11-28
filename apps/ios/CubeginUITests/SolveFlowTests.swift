@@ -1149,6 +1149,54 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAverageSummaryLinksOpenTheMatchingSolves() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                               "-results.includeDNFInWorst", "NO"]
+        app.launch()
+
+        let results = app.tabBars.buttons["Results"]
+        XCTAssertTrue(results.waitForExistence(timeout: 20))
+        results.tap()
+        let ao5 = app.buttons["results.average-type.ao5"]
+        XCTAssertTrue(ao5.waitForExistence(timeout: 5))
+        ao5.tap()
+        let average = app.buttons["average-row-0"]
+        XCTAssertTrue(average.waitForExistence(timeout: 5))
+        average.tap()
+
+        let fastest = app.descendants(matching: .any)["average-detail.fastest"].firstMatch
+        let slowest = app.descendants(matching: .any)["average-detail.slowest"].firstMatch
+        let time = app.descendants(matching: .any)["solve-detail.time"]
+        let detailBack = app.navigationBars["Solve details"].buttons.firstMatch
+        XCTAssertTrue(fastest.waitForExistence(timeout: 5))
+        captureScreen("Average summary with solve links")
+        fastest.tap()
+        XCTAssertTrue(time.waitForExistence(timeout: 5))
+        XCTAssertEqual(time.value as? String, "18.990")
+        detailBack.tap()
+
+        slowest.tap()
+        XCTAssertTrue(time.waitForExistence(timeout: 5))
+        XCTAssertEqual(time.value as? String, "21.110")
+        app.buttons["solve-detail.DNF"].tap()
+        XCTAssertEqual(time.value as? String, "DNF")
+        detailBack.tap()
+        app.navigationBars["ao5"].buttons.firstMatch.tap()
+
+        XCTAssertTrue(average.waitForExistence(timeout: 5))
+        average.tap()
+        XCTAssertTrue(slowest.waitForExistence(timeout: 5))
+        slowest.tap()
+        XCTAssertTrue(time.waitForExistence(timeout: 5))
+        XCTAssertEqual(time.value as? String, "DNF")
+    }
+
+    @MainActor
     func testScrolledSinglesReturnToTheNewestResultAfterTiming() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
