@@ -1032,6 +1032,73 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testResultsOnlyReturnsToSinglesAfterTimingOrChangingProject() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                               "-timer.entryMethod", "timer", "-timer.wcaInspection", "NO", "-timer.startDelayTenths", "2"]
+        app.launch()
+
+        let home = app.tabBars.buttons["Home"]
+        let results = app.tabBars.buttons["Results"]
+        let view = app.buttons["results.view"]
+        let ao5 = app.buttons["results.average-type.ao5"]
+        let single = app.buttons["results.average-type.single"]
+        XCTAssertTrue(results.waitForExistence(timeout: 20))
+        results.tap()
+        XCTAssertTrue(app.buttons["solve-row-12"].waitForExistence(timeout: 5))
+
+        ao5.tap()
+        home.tap()
+        results.tap()
+        XCTAssertTrue(ao5.wait(for: \.isSelected, toEqual: true, timeout: 5))
+        view.tap()
+        app.buttons["Statistics"].tap()
+        home.tap()
+        results.tap()
+        XCTAssertEqual(view.value as? String, "Statistics")
+
+        home.tap()
+        XCTAssertTrue(app.buttons["timer.formula-hints"].wait(for: \.isHittable, toEqual: true, timeout: 10))
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        let touch = timerTouchTarget(in: app, readout: timer)
+        touch.press(forDuration: 0.45)
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        touch.tap()
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+
+        results.tap()
+        XCTAssertTrue(app.buttons["solve-row-13"].waitForExistence(timeout: 5))
+        XCTAssertTrue(single.isSelected)
+
+        ao5.tap()
+        home.tap()
+        results.tap()
+        XCTAssertTrue(ao5.wait(for: \.isSelected, toEqual: true, timeout: 5))
+        view.tap()
+        app.buttons["Statistics"].tap()
+
+        let event = app.buttons["Event"]
+        XCTAssertTrue(event.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        event.tap()
+        let twoByTwo = app.buttons["event.choice.222"]
+        XCTAssertTrue(twoByTwo.waitForExistence(timeout: 5))
+        twoByTwo.tap()
+        XCTAssertTrue(app.staticTexts["No results yet"].waitForExistence(timeout: 5))
+        XCTAssertEqual(view.value as? String, "Results")
+        XCTAssertEqual(event.value as? String, "2x2x2")
+
+        XCTAssertTrue(event.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        event.tap()
+        app.buttons["event.choice.333"].tap()
+        XCTAssertTrue(app.buttons["solve-row-13"].waitForExistence(timeout: 5))
+        XCTAssertTrue(single.isSelected)
+    }
+
+    @MainActor
     func testStatisticsPublishesRollingAveragesWhenOpened() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

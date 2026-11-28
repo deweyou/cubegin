@@ -194,6 +194,9 @@ struct AppTabsView: View {
         isActive && scenePhase == .active && selection == .home && timerIsReady && model.allowsIdleActions
     }
     @State private var resultsPage = ResultsPage.solves
+    @State private var resultsAverageKind: SolveAverage?
+    @State private var resultsDetailPath = NavigationPath()
+    @State private var lastHandledTimedSolveID: Solve.ID?
     @State private var viewedCharts: Set<ResultsChartMode> = []
     private var visibleResultsPage: ResultsPage? {
         isActive && scenePhase != .background && selection == .results ? resultsPage : nil
@@ -294,6 +297,9 @@ struct AppTabsView: View {
         .task(id: model.event) {
             model.refresh()
         }
+        .onChange(of: model.event) { _, _ in
+            showSingleResults()
+        }
         .task(id: canPreloadTabs && !mountedTabs.contains(.results) ? resultsFirstPageRequest : nil, priority: .utility) {
             guard canPreloadTabs, !mountedTabs.contains(.results), let request = resultsFirstPageRequest,
                   request != prefetchedResults?.request else { return }
@@ -353,6 +359,21 @@ struct AppTabsView: View {
         }
     }
 
+    private func showSingleResults() {
+        resultsPage = .solves
+        resultsAverageKind = nil
+        resultsDetailPath = NavigationPath()
+        lastHandledTimedSolveID = model.lastSavedTimedSolveID
+    }
+
+    private func selectTab(_ destination: Destination) {
+        guard !model.isPressing else { return }
+        if destination == .results, selection != .results, lastHandledTimedSolveID != model.lastSavedTimedSolveID {
+            showSingleResults()
+        }
+        selection = destination
+    }
+
     private func tabs(sideNavigationInset: CGFloat?,
                       railOnLeft: Bool = false,
                       alignsSideNavigationWithCoverCamera: Bool = false,
@@ -361,9 +382,7 @@ struct AppTabsView: View {
         let usesSideNavigation = sideNavigationInset != nil
         let railSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
 
-        let tabSelection = Binding(get: { selection }, set: { destination in
-            if !model.isPressing { selection = destination }
-        })
+        let tabSelection = Binding(get: { selection }, set: selectTab)
 
         return TabView(selection: tabSelection) {
             Tab(value: Destination.home) {
@@ -386,8 +405,8 @@ struct AppTabsView: View {
                 tabLabel(.home)
             }
             Tab(value: Destination.results) {
-                ResultsView(model: model, page: $resultsPage,
-                            isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
+                ResultsView(model: model, page: $resultsPage, averageKind: $resultsAverageKind,
+                            detailPath: $resultsDetailPath, isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
                             isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
                             showsResultsList: visibleResultsPage == .solves,
@@ -445,7 +464,7 @@ struct AppTabsView: View {
         VStack(spacing: 2) {
             ForEach(Destination.allCases, id: \.self) { destination in
                 Button {
-                    selection = destination
+                    selectTab(destination)
                 } label: {
                     destination.icon
                         .resizable()
@@ -654,8 +673,6 @@ private struct ResultsView: View {
     @ScaledMetric(relativeTo: .caption) private var averageSolveTileWidth = 104.0
     private var language: AppLanguage { locale.appLanguage }
     @Bindable var model: TimerModel
-    @State private var detailPath = NavigationPath()
-    @State private var averageKind: SolveAverage?
     @State private var resultTypeOverflow: HorizontalScrollOverflow = []
     @State private var listReader: ResultsPageReader?
     @State private var loadedGroup: ResultsGroupKey?
@@ -671,6 +688,8 @@ private struct ResultsView: View {
     @State private var selectAllTask: Task<Void, Never>?
     @State private var showsProjects = false
     @Binding var page: ResultsPage
+    @Binding var averageKind: SolveAverage?
+    @Binding var detailPath: NavigationPath
     @State private var lastStatisticsGroup: StatisticsGroup?
     private var statisticsVisible: Bool { showsStatistics && detailPath.isEmpty }
 

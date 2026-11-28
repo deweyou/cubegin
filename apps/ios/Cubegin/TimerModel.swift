@@ -307,6 +307,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         return solves.contains { ResultsGroupKey($0) == key }
     }
 
+    private(set) var lastSavedTimedSolveID: Solve.ID?
     private(set) var lastSolveID: Solve.ID? {
         didSet {
             if lastSolveID != oldValue { lastSolveCelebration = nil }
@@ -976,6 +977,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
             let solve = Solve(seconds: seconds, event: event, scramble: scramble?.algorithm ?? "",
                               penalty: inspectionPenalty, groupID: currentGroup?.id)
             let saved = save([solve] + solves, operation: .saveSolve)
+            if saved { lastSavedTimedSolveID = solve.id }
             finishSolve(solve, saved: saved, entryMethod: .timer)
         }
     }

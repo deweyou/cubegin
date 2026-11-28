@@ -660,6 +660,7 @@ struct TimerModelTests {
             #expect(model.inspectionStarted == nil)
             #expect(model.saveManualSolve(milliseconds: 12_345, penalty: .plusTwo, context: context) == nil)
             #expect(model.lastSolve?.resultText == "14.345+")
+            #expect(model.lastSavedTimedSolveID == nil)
             #expect(model.lastSolve?.scramble == context.scramble)
             #expect(model.lastSolve?.groupID == context.groupID)
             try await waitForGeneration(model)
@@ -900,6 +901,7 @@ struct TimerModelTests {
             model.press(.touch, delayTenths: 2)
             #expect(model.started == nil)
             let solve = try #require(model.lastSolve)
+            #expect(model.lastSavedTimedSolveID == solve.id)
             #expect(solve.seconds == 12.345)
             #expect(solve.event == "333")
             #expect(solve.groupID == group.id)
@@ -934,6 +936,7 @@ struct TimerModelTests {
             #expect(model.nextScramble?.algorithm == prefetched.algorithm)
             #expect(model.error != nil)
             #expect(model.solves.isEmpty)
+            #expect(model.lastSavedTimedSolveID == nil)
             #expect(!FileManager.default.fileExists(atPath: fixture.storage.path))
         }
     }
