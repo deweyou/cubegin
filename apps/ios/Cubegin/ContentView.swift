@@ -274,7 +274,7 @@ struct ContentView: View {
              : language.text("上滑到这里取消", "Slide here to cancel"))
             .font(.headline)
             .foregroundStyle(isInTimerCancelZone ? Color.red : .primary)
-            .padding(.top, isDuoOuterDisplay ? 24 : 12)
+            .padding(.top, isDuoOuterDisplay ? 32 : 20)
             .frame(maxWidth: .infinity)
             .frame(minHeight: Self.cancelZoneHeight, alignment: .top)
             .background(alignment: .top) {
