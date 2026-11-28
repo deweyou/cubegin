@@ -273,8 +273,9 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     var error: String?
     private(set) var started: ContinuousClock.Instant?
     private(set) var isReady = false
-    private(set) var showsReadyFeedback = false
-    @ObservationIgnored private var heldInput: TimerInput?
+    private(set) var hasSettledPress = false
+    private var heldInput: TimerInput?
+    var isPressing: Bool { heldInput != nil }
     var isTouchReady: Bool { isReady && heldInput == .touch }
     var allowsIdleActions: Bool {
         started == nil && inspectionStarted == nil && heldInput == nil && !busy
@@ -890,7 +891,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
     }
 
     func press(_ input: TimerInput, delayTenths: Int, minimumHold: Duration = .zero,
-               onReadyPrompt: (() -> Void)? = nil) {
+               onHoldSettled: (() -> Void)? = nil) {
         if started != nil {
             stop()
             return
@@ -910,11 +911,12 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
                     try Task.checkCancellation()
                     self?.isReady = true
                 }
+                // Give quick swipes time to claim the touch before locking in a hold or vibrating.
                 try await Task.sleep(for: .milliseconds(150))
                 try Task.checkCancellation()
                 guard let self else { return }
-                self.showsReadyFeedback = true
-                if !bypassesHoldDelay { onReadyPrompt?() }
+                self.hasSettledPress = true
+                if !bypassesHoldDelay { onHoldSettled?() }
             } catch { return }
         }
     }
@@ -940,7 +942,7 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         heldInput = nil
         readyAt = nil
         isReady = false
-        showsReadyFeedback = false
+        hasSettledPress = false
     }
 
     func interrupt() {

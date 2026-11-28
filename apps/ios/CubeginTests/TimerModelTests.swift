@@ -711,7 +711,7 @@ struct TimerModelTests {
     }
 
     @Test(arguments: [0, 1])
-    func readyPromptFeedbackFiresWhileHolding(delayTenths: Int) async throws {
+    func settledHoldFeedbackFiresWhilePressing(delayTenths: Int) async throws {
         try await withFixture { fixture in
             let model = fixture.model()
             model.refresh()
@@ -719,15 +719,21 @@ struct TimerModelTests {
 
             var feedbackCount = 0
             model.press(.touch, delayTenths: delayTenths) {
-                #expect(model.showsReadyFeedback)
+                #expect(model.hasSettledPress)
                 #expect(model.started == nil)
                 feedbackCount += 1
             }
 
-            try await waitUntil { model.showsReadyFeedback }
+            #expect(model.isPressing)
+            #expect(model.isReady == (delayTenths == 0))
+            #expect(!model.hasSettledPress)
+            try await waitUntil { model.isReady }
+            #expect(model.isPressing)
+            try await waitUntil { model.hasSettledPress }
             #expect(feedbackCount == 1)
             model.release(.touch)
             #expect(model.started != nil)
+            #expect(!model.isPressing)
             #expect(feedbackCount == 1)
         }
     }
@@ -801,7 +807,7 @@ struct TimerModelTests {
     }
 
     @Test(arguments: [TimerInput.touch, .keyboard])
-    func readyFeedbackWaitsWithoutDelayingRelease(_ input: TimerInput) async throws {
+    func inspectionReleaseDoesNotWaitForTheHoldToSettle(_ input: TimerInput) async throws {
         try await withFixture { fixture in
             fixture.defaults.set(true, forKey: TimerModel.inspectionKey)
             let model = fixture.model()
@@ -810,18 +816,18 @@ struct TimerModelTests {
 
             model.press(input, delayTenths: 20)
             #expect(model.isReady)
-            #expect(!model.showsReadyFeedback)
+            #expect(!model.hasSettledPress)
             model.release(input)
             #expect(model.inspectionStarted != nil)
-            #expect(!model.showsReadyFeedback)
+            #expect(!model.hasSettledPress)
 
             model.press(input, delayTenths: 20)
             #expect(model.isReady)
-            #expect(!model.showsReadyFeedback)
-            try await waitUntil { model.showsReadyFeedback }
+            #expect(!model.hasSettledPress)
+            try await waitUntil { model.hasSettledPress }
             model.release(input)
             #expect(model.started != nil)
-            #expect(!model.showsReadyFeedback)
+            #expect(!model.hasSettledPress)
         }
     }
 

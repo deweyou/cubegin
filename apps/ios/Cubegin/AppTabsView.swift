@@ -173,13 +173,12 @@ struct AppTabsView: View {
 
     @AppStorage(TimerModel.keepTimerScreenOnKey) private var keepsTimerScreenOn = true
     @AppStorage(ResultExtremes.includeDNFPreferenceKey) private var includesDNFInWorst = ResultExtremes.defaultIncludesDNF
-    @State private var isInTimerCancelZone = false
     private var shouldKeepScreenOn: Bool {
         isActive && scenePhase == .active && selection == .home
             && (keepsTimerScreenOn || model.started != nil || model.inspectionStarted != nil)
     }
     private var showsTimingLayout: Bool {
-        model.started != nil || model.inspectionStarted != nil || model.showsReadyFeedback || isInTimerCancelZone
+        model.started != nil || model.inspectionStarted != nil
     }
     @State private var selection = Destination.initial
     @State private var timerIsReady = false
@@ -192,7 +191,7 @@ struct AppTabsView: View {
         }
     }
     private var canPreloadTabs: Bool {
-        isActive && scenePhase == .active && selection == .home && timerIsReady && !showsTimingLayout && !model.busy
+        isActive && scenePhase == .active && selection == .home && timerIsReady && model.allowsIdleActions
     }
     @State private var resultsPage = ResultsPage.solves
     @State private var viewedCharts: Set<ResultsChartMode> = []
@@ -342,11 +341,11 @@ struct AppTabsView: View {
     private func prefetchResults(_ request: ResultsFirstPageRequest) async {
         do {
             try await Task.sleep(for: .milliseconds(450))
-            guard canPreloadTabs, model.allowsIdleActions else { return }
+            guard canPreloadTabs else { return }
             let page = try await model.resultsPersistence.reader(for: request.group)
                 .page(offset: 0, limit: ResultsFirstPageRequest.limit, includesDNF: request.includesDNF)
             try Task.checkCancellation()
-            guard canPreloadTabs, model.allowsIdleActions, request == resultsFirstPageRequest,
+            guard canPreloadTabs, request == resultsFirstPageRequest,
                   page.revision == (request.revision ?? -1) else { return }
             prefetchedResults = (request, page)
         } catch {
@@ -362,7 +361,11 @@ struct AppTabsView: View {
         let usesSideNavigation = sideNavigationInset != nil
         let railSpace = sideNavigationInset.map { max(0, sideNavigationWidth + $0) } ?? 0
 
-        return TabView(selection: $selection) {
+        let tabSelection = Binding(get: { selection }, set: { destination in
+            if !model.isPressing { selection = destination }
+        })
+
+        return TabView(selection: tabSelection) {
             Tab(value: Destination.home) {
                 ContentView(
                     model: model,
@@ -374,7 +377,6 @@ struct AppTabsView: View {
                     isDuoInnerDisplay: isDuoInnerDisplay,
                     isDuoOuterDisplay: isDuoOuterDisplay,
                     landscapeContentInsets: contentInsets,
-                    isInTimerCancelZone: $isInTimerCancelZone,
                     timerReadinessChanged: { timerIsReady = $0 }
                 )
                     .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -426,7 +428,7 @@ struct AppTabsView: View {
                         .offset(x: alignsSideNavigationWithCoverCamera || alignsSideNavigationWithStatusIndicators ? 10 : 0)
                 }
             }
-            .allowsHitTesting(!showsTimingLayout)
+            .allowsHitTesting(!showsTimingLayout && !model.isPressing)
             .accessibilityHidden(showsTimingLayout)
         }
     }

@@ -228,9 +228,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(replay.exists)
         XCTAssertFalse(toast.exists)
 
-        let foldedPrompt = app.staticTexts["timer.folded-prompt"]
-        let target = (foldedPrompt.exists ? foldedPrompt : readout)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let target = timerTouchTarget(in: app, readout: readout)
         target.tap()
         XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         target.tap()
@@ -278,9 +276,7 @@ final class SolveFlowTests: XCTestCase {
         let scramble = elements["timer.scramble"]
         XCTAssertTrue(scramble.waitForExistence(timeout: 20))
         XCTAssertTrue(readout.exists)
-        let foldedPrompt = app.staticTexts["timer.folded-prompt"]
-        let target = (foldedPrompt.exists ? foldedPrompt : readout)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let target = timerTouchTarget(in: app, readout: readout)
         target.tap()
         XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         target.tap()
@@ -298,7 +294,8 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertEqual(singleFrame.midX, ao5Frame.midX, accuracy: 1)
         XCTAssertEqual(ao5Frame.midX, ao12Frame.midX, accuracy: 1)
         let readoutCenterY = readout.frame.midY
-        if foldedPrompt.exists {
+        let isFoldedTimer = usesFoldedTimer(in: app, readout: readout)
+        if isFoldedTimer {
             let replayFrame = app.buttons["timer.celebration-replay"].frame
             XCTAssertTrue(singleFrame.minY > replayFrame.maxY || singleFrame.minX > replayFrame.maxX)
             XCTAssertLessThan(ao12Frame.maxY, app.frame.midY)
@@ -309,7 +306,7 @@ final class SolveFlowTests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         if tabBar.exists, tabBar.frame.minY > app.frame.midY {
             XCTAssertLessThan(ao12Frame.maxY, tabBar.frame.minY)
-            if !foldedPrompt.exists {
+            if !isFoldedTimer {
                 XCTAssertLessThan(tabBar.frame.minY - ao12Frame.maxY, 32)
             }
         }
@@ -448,6 +445,20 @@ final class SolveFlowTests: XCTestCase {
                 XCTAssertFalse(hints.exists)
             }
         }
+    }
+
+    @MainActor
+    private func usesFoldedTimer(in app: XCUIApplication, readout: XCUIElement) -> Bool {
+        let frame = app.frame
+        return frame.width > 550 && frame.width < frame.height && readout.frame.midY < frame.minY + frame.height * 0.44
+    }
+
+    @MainActor
+    private func timerTouchTarget(in app: XCUIApplication, readout: XCUIElement) -> XCUICoordinate {
+        if usesFoldedTimer(in: app, readout: readout) {
+            return app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.83))
+        }
+        return readout.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     }
 
     @MainActor
@@ -1312,27 +1323,24 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertLessThan(scramble.frame.maxY, timer.frame.minY)
         XCTAssertLessThan(timer.frame.maxY, app.frame.midY)
         XCTAssertGreaterThan(diagram.frame.minY, app.frame.midY)
-        let prompt = app.staticTexts["timer.folded-prompt"]
-        XCTAssertEqual(prompt.label, "Hold to start")
-        XCTAssertLessThan(diagram.frame.maxY, prompt.frame.minY)
-        XCTAssertGreaterThan(prompt.frame.midY, app.frame.minY + app.frame.height * 0.77)
-
-        let touch = prompt.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let stop = app.staticTexts["timer.folded-stop"]
+        XCTAssertFalse(stop.exists)
+        let touch = timerTouchTarget(in: app, readout: timer)
+        XCTAssertLessThan(diagram.frame.maxY, touch.screenPoint.y)
         let cancel = diagram.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
         touch.press(forDuration: 0.5, thenDragTo: cancel, withVelocity: .slow, thenHoldForDuration: 0.2)
         XCTAssertEqual(timer.label, "Start timer")
-        XCTAssertEqual(prompt.label, "Hold to start")
+        XCTAssertFalse(stop.exists)
 
         let idleReadout = timer.frame
-        let idlePromptY = prompt.frame.midY
         touch.press(forDuration: 0.5)
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         XCTAssertLessThan(timer.frame.midY, idleReadout.midY)
         XCTAssertEqual(timer.frame.midY, app.frame.minY + app.frame.height / 4, accuracy: 12)
         XCTAssertFalse(event.exists)
         XCTAssertFalse(scramble.exists)
-        XCTAssertEqual(prompt.label, "Tap to stop")
-        XCTAssertLessThan(prompt.frame.midY, idlePromptY)
+        XCTAssertEqual(stop.label, "Tap to stop")
+        XCTAssertLessThan(stop.frame.midY, touch.screenPoint.y)
         touch.tap()
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
         XCTAssertTrue(event.waitForExistence(timeout: 5))
@@ -1363,29 +1371,28 @@ final class SolveFlowTests: XCTestCase {
                           && timer.frame.midY < app.frame.minY + app.frame.height * 0.44,
                           "Run with the Duo partially unfolded in portrait.")
 
-        let prompt = app.staticTexts["timer.folded-prompt"]
-        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Tap to inspect", timeout: 5))
-        let idlePromptY = prompt.frame.midY
-        let touch = prompt.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let stop = app.staticTexts["timer.folded-stop"]
+        XCTAssertFalse(stop.exists)
+        let touch = timerTouchTarget(in: app, readout: timer)
         touch.tap()
         let inspection = app.descendants(matching: .any).matching(identifier: "timer.inspection").firstMatch
         XCTAssertTrue(inspection.waitForExistence(timeout: 5))
         let readoutY = inspection.frame.midY
         XCTAssertEqual(readoutY, app.frame.minY + app.frame.height / 4, accuracy: 12)
-        XCTAssertEqual(prompt.label, "Press to start")
-        XCTAssertLessThan(prompt.frame.midY, idlePromptY)
+        XCTAssertFalse(stop.exists)
 
         let cancel = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
         touch.press(forDuration: 0.4, thenDragTo: cancel, withVelocity: .fast, thenHoldForDuration: 0.1)
         XCTAssertTrue(inspection.exists)
         XCTAssertEqual(inspection.frame.midY, readoutY, accuracy: 1)
-        XCTAssertEqual(prompt.label, "Press to start")
+        XCTAssertFalse(stop.exists)
 
         touch.tap()
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
         XCTAssertEqual(timer.frame.midY, readoutY, accuracy: 1)
         touch.tap()
-        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Tap to inspect", timeout: 5))
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertFalse(stop.exists)
     }
 
     @MainActor
@@ -1885,12 +1892,10 @@ final class SolveFlowTests: XCTestCase {
 
         let readout = app.descendants(matching: .any)["timer.readout"]
         let hints = app.buttons["timer.formula-hints"]
-        let foldedPrompt = app.staticTexts["timer.folded-prompt"]
         let offsets = [CGVector(dx: 14, dy: 0), CGVector(dx: 0, dy: 14), CGVector(dx: -70, dy: 0)]
         for offset in offsets {
             XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
-            let surface = foldedPrompt.exists ? foldedPrompt : app
-            let touch = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let touch = timerTouchTarget(in: app, readout: readout)
             touch.press(forDuration: 0.8, thenDragTo: touch.withOffset(offset),
                         withVelocity: .slow, thenHoldForDuration: 0.2)
             XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5), "Offset: \(offset)")
