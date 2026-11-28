@@ -17,7 +17,7 @@
 
 按 csTimer 使用 3x3x3、3x3x3 CFOP、3x3x3 Roux、3x3x3 Mehta、3x3x3子集等名称。
 四阶方法训练归入 4x4x4 Yau/Hoya；三阶棱块/角块训练归回 3x3x3。
-3x3x3 状态训练是本产品补充分组；FTO 是上游长名称的紧凑展示。
+3x3x3 状态训练是本产品补充分组。八面体的英文展示使用缩写 FTO。
 模式仍使用用户确定的「标准 / 训练」，不照搬上游 WCA 分区名称。
 
 ## 项目
@@ -34,12 +34,12 @@
 | `555bld` | `555bld` | 五阶盲拧 | 5x5 bld | 标准 | Standard |
 | `666` | `666wca` | 六阶速拧 | 6x6x6 | 标准 | Standard |
 | `777` | `777wca` | 七阶速拧 | 7x7x7 | 标准 | Standard |
-| `clock` | `clkwca` | 魔表 | clock | 标准 | Standard |
-| `minx` | `mgmp` | 五魔方 | megaminx | 标准 | Standard |
-| `pyram` | `pyrso` | 金字塔 | pyraminx | 标准 | Standard |
-| `skewb` | `skbso` | 斜转魔方 | skewb | 标准 | Standard |
-| `sq1` | `sqrs` | Square-1 | sq1 | 标准 | Standard |
-| `fto` | `ftoso` | FTO | FTO | 标准 | Standard |
+| `clock` | `clkwca` | 魔表 | Clock | 标准 | Standard |
+| `minx` | `mgmp` | 五魔方 | Megaminx | 标准 | Standard |
+| `pyram` | `pyrso` | 金字塔 | Pyraminx | 标准 | Standard |
+| `skewb` | `skbso` | 斜转 | Skewb | 标准 | Standard |
+| `sq1` | `sqrs` | Square-1 | Square-1 | 标准 | Standard |
+| `fto` | `ftoso` | 八面体 | FTO | 标准 | Standard |
 | `222.cll` | `222eg0` | CLL | CLL | 2x2x2 | 2x2x2 |
 | `222.eg1` | `222eg1` | EG1 | EG1 | 2x2x2 | 2x2x2 |
 | `222.eg2` | `222eg2` | EG2 | EG2 | 2x2x2 | 2x2x2 |
