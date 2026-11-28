@@ -1492,7 +1492,7 @@ private struct ResultsView: View {
             Spacer(minLength: 8)
             if let standardDeviation = summary?.standardDeviation {
                 let deviation = TimerModel.format(standardDeviation)
-                Text("σ \(deviation)")
+                Text("σ=\(deviation)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(language.text("标准差", "Standard deviation"))
@@ -1530,12 +1530,13 @@ private struct ResultsView: View {
                     List {
                         Section {
                             LabeledContent(language.text("平均成绩", "Average"), value: averageScoreText(summary))
-                            if let standardDeviation = summary.standardDeviation {
-                                LabeledContent("σ", value: TimerModel.format(standardDeviation))
-                                    .accessibilityLabel(language.text("标准差", "Standard deviation"))
-                            }
                             LabeledContent(language.text("最快单次", "Fastest single"), value: bestSingle)
                             LabeledContent(language.text("最差单次", "Worst single"), value: worstSingle)
+                            if let standardDeviation = summary.standardDeviation {
+                                LabeledContent(language.text("标准差 σ", "Standard deviation σ"),
+                                               value: TimerModel.format(standardDeviation))
+                                    .accessibilityLabel(language.text("标准差", "Standard deviation"))
+                            }
                         }
                         .monospacedDigit()
 
