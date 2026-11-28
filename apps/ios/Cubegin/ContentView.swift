@@ -107,14 +107,14 @@ struct ContentView: View {
                                 } else {
                                     HStack(spacing: 0) { projectMenu }
                                         .fixedSize(horizontal: true, vertical: false)
-                                        .disabled(model.busy || model.isPressing || isTiming)
+                                        .disabled(model.busy || isTiming)
                                 }
                             }
                             .sharedBackgroundVisibility(.hidden)
                             ToolbarItem(placement: .topBarTrailing) {
                                 trailingControls
                                     .padding(.trailing, usesTopNavigation ? padToolbarMargin : 0)
-                                    .disabled(model.busy || model.isPressing || isTiming)
+                                    .disabled(model.busy || isTiming)
                             }
                             .sharedBackgroundVisibility(.hidden)
                         }
@@ -868,7 +868,7 @@ struct ContentView: View {
             trailingControls
         }
         .frame(height: controlRowHeight)
-        .disabled(model.busy || model.isPressing || isTiming)
+        .disabled(model.busy || isTiming)
     }
 
     private func currentScramble(width: CGFloat, fontScale: CGFloat = 1) -> some View {
@@ -1188,7 +1188,7 @@ struct ContentView: View {
                             titleWidthLimit: titleSpace >= 24 ? titleSpace : 0,
                             minimumTargetWidth: headerControlTargetWidth)
                     .fixedSize(horizontal: true, vertical: false)
-                    .disabled(model.busy || model.isPressing || isTiming)
+                    .disabled(model.busy || isTiming)
                     .offset(x: isRightToLeft ? -leading : leading, y: anchor.minY - bounds.minY)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -1294,7 +1294,7 @@ struct ContentView: View {
 
     private var assistButton: some View {
         Button {
-            guard let algorithm = model.scramble?.algorithm else { return }
+            guard !model.isPressing, let algorithm = model.scramble?.algorithm else { return }
             model.cancelPress()
             isInTimerCancelZone = false
             hasTimerKeyboardFocus = false
@@ -2047,6 +2047,7 @@ struct EventPicker: View {
     var body: some View {
         Self.projectButton(event: model.event, language: language, large: large, titleWidthLimit: titleWidthLimit,
                            minimumTargetWidth: minimumTargetWidth) {
+            guard !model.isPressing else { return }
             browsingMode = model.mode
             expandedTrainingGroups.removeAll()
             isPresented = true
