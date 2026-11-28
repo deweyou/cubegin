@@ -218,7 +218,7 @@ final class PadChartTests: XCTestCase {
         XCTAssertTrue(ao5.isSelected)
         attachScreenshot("iPad Average Results")
         average.tap()
-        XCTAssertTrue(app.staticTexts["Worst single"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Slowest single"].waitForExistence(timeout: 5))
         app.navigationBars.firstMatch.buttons.firstMatch.tap()
         XCTAssertTrue(single.waitForExistence(timeout: 5))
         single.tap()

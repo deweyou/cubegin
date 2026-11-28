@@ -1531,7 +1531,7 @@ private struct ResultsView: View {
                         Section {
                             LabeledContent(language.text("平均成绩", "Average"), value: averageScoreText(summary))
                             LabeledContent(language.text("最快单次", "Fastest single"), value: bestSingle)
-                            LabeledContent(language.text("最差单次", "Worst single"), value: worstSingle)
+                            LabeledContent(language.text("最慢单次", "Slowest single"), value: worstSingle)
                             if let standardDeviation = summary.standardDeviation {
                                 LabeledContent(language.text("标准差 σ", "Standard deviation σ"),
                                                value: TimerModel.format(standardDeviation))
@@ -1579,7 +1579,7 @@ private struct ResultsView: View {
             return (language.text("最快", "Fastest"), resultBestColor(for: colorScheme))
         }
         if index == worst {
-            return (language.text("最差", "Worst"), resultWorstColor(for: colorScheme))
+            return (language.text("最慢", "Slowest"), resultWorstColor(for: colorScheme))
         }
         return nil
     }
@@ -2810,7 +2810,7 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.results.clear")
-                    Toggle(language.text("最差成绩包含 DNF", "Include DNF as worst"), isOn: trackedSetting(
+                    Toggle(language.text("最慢成绩包含 DNF", "Include DNF as the slowest result"), isOn: trackedSetting(
                         SettingsSync.binding($includesDNFInWorst, key: ResultExtremes.includeDNFPreferenceKey) { $0 }, as: FeatureSettingValue.includeDNF
                     ))
                         .accessibilityIdentifier("settings.results.includeDNFInWorst")
