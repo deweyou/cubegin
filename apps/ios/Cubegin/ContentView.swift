@@ -69,7 +69,6 @@ struct ContentView: View {
     @ScaledMetric(relativeTo: .footnote) private var celebrationPillLineHeight: CGFloat = 16
     @ScaledMetric(relativeTo: .footnote) private var standardMegaminxFontSize: CGFloat = 14
     private let celebrationPillPadding: CGFloat = 7
-    private let celebrationPillSpacing: CGFloat = 10
     @ScaledMetric(relativeTo: .title3) private var scrambleFontSize: CGFloat = 20
     static let landscapeBottomInset: CGFloat = 8
 
@@ -419,9 +418,7 @@ struct ContentView: View {
         let readoutY = centersReadout ? max(0, (upperHeight - frame.minY) / 2)
             : upperHeight - timerHeight + readoutAreaHeight / 2
         let actionCenterY = readoutY + numberHeight / 2 + rowSpacing + compactControlSize / 2
-        let toastCount = CGFloat(confettiBurst?.record.achievements.count ?? 0)
-        let toastHeight = toastCount * (celebrationPillLineHeight + 2 * celebrationPillPadding)
-            + max(0, toastCount - 1) * celebrationPillSpacing
+        let toastHeight = celebrationPillLineHeight + 2 * celebrationPillPadding
         let controlsBottom = readoutY + numberHeight / 2 + actionHeight
         let canCenterToast = controlsBottom + toastHeight + 2 * foldClearance <= upperHeight
         let showsScrambleDetails = !showsTimingLayout
@@ -449,7 +446,7 @@ struct ContentView: View {
             .frame(width: width, height: upperHeight)
             .frame(width: size.width)
             .overlay(alignment: canCenterToast ? .bottom : .bottomTrailing) {
-                celebrationToasts
+                celebrationToast
                     .padding(.trailing, canCenterToast ? 0 : padding)
                     .padding(.bottom, foldClearance)
             }
@@ -589,7 +586,7 @@ struct ContentView: View {
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .overlay(alignment: .bottom) {
-            celebrationToasts
+            celebrationToast
                 .padding(.bottom, Self.landscapeBottomInset)
                 .frame(width: frame.width - headerLeadingInset - headerTrailingInset)
                 .offset(x: (headerLeadingInset - headerTrailingInset) / 2)
@@ -713,7 +710,7 @@ struct ContentView: View {
         }
         .frame(height: height)
         .overlay(alignment: .bottom) {
-            celebrationToasts
+            celebrationToast
                 .padding(.bottom, 16)
         }
         .padding(.horizontal, horizontalPadding)
@@ -986,7 +983,7 @@ struct ContentView: View {
                 .frame(height: height)
                 .accessibilityLabel(actionTitle)
                 .accessibilityValue((isTiming ? nil : model.lastSolve?.resultText) ?? String(readout.characters))
-                .accessibilityHint(crown?.title(in: language) ?? "")
+                .accessibilityHint(crown.flatMap { SolveCelebration.toastTitle(for: [$0], in: language) } ?? "")
                 .accessibilityIdentifier("timer.readout")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction {
@@ -1284,22 +1281,21 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var celebrationToasts: some View {
-        if let confettiBurst, showsCelebrationToast, isTimerActive, !showsTimingLayout {
-            VStack(spacing: celebrationPillSpacing) {
-                ForEach(confettiBurst.record.achievements, id: \.kind) { celebrationPill($0.kind) }
-            }
-            .padding(.horizontal, 12)
-            .allowsHitTesting(false)
-            .transition(reduceMotion ? .identity : .opacity)
+    private var celebrationToast: some View {
+        if let confettiBurst, showsCelebrationToast, isTimerActive, !showsTimingLayout,
+           let title = SolveCelebration.toastTitle(for: Set(confettiBurst.record.achievements.map(\.kind)), in: language) {
+            celebrationPill(title)
+                .padding(.horizontal, 12)
+                .allowsHitTesting(false)
+                .transition(reduceMotion ? .identity : .opacity)
         }
     }
 
-    private func celebrationPill(_ kind: SolveCelebration.Kind) -> some View {
-        let title = kind.title(in: language)
-        return Label {
+    private func celebrationPill(_ title: String) -> some View {
+        Label {
             Text(title)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
         } icon: {
             Image(systemName: "trophy.fill")
                 .foregroundStyle(.secondary)
@@ -1317,7 +1313,7 @@ struct ContentView: View {
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityIdentifier("timer.celebration-toast.\(kind)")
+        .accessibilityIdentifier("timer.celebration-toast")
     }
 
     private var assistButton: some View {
@@ -1351,13 +1347,18 @@ struct ContentView: View {
     }
 }
 
-private extension SolveCelebration.Kind {
-    func title(in language: AppLanguage) -> String {
-        switch self {
-        case .first: language.text("首次成绩", "First result")
-        case .single: language.text("单次新纪录", "Single PB")
-        case .ao5: language.text("Ao5 新纪录", "Ao5 PB")
-        case .ao12: language.text("Ao12 新纪录", "Ao12 PB")
+extension SolveCelebration {
+    static func toastTitle(for kinds: Set<Kind>, in language: AppLanguage) -> String? {
+        switch kinds {
+        case [.first]: language.text("首次成绩", "First result")
+        case [.single]: language.text("单次新纪录", "Single PB")
+        case [.ao5]: language.text("Ao5 新纪录", "Ao5 PB")
+        case [.ao12]: language.text("Ao12 新纪录", "Ao12 PB")
+        case [.single, .ao5]: language.text("单次、Ao5 新纪录", "Single & Ao5 PBs")
+        case [.single, .ao12]: language.text("单次、Ao12 新纪录", "Single & Ao12 PBs")
+        case [.ao5, .ao12]: language.text("Ao5、Ao12 新纪录", "Ao5 & Ao12 PBs")
+        case [.single, .ao5, .ao12]: language.text("单次、Ao5、Ao12 新纪录", "Single, Ao5 & Ao12 PBs")
+        default: nil
         }
     }
 }

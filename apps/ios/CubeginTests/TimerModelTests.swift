@@ -542,6 +542,24 @@ struct TimerModelTests {
     }
 
     @Test
+    func usesOneLocalizedToastTitlePerCelebration() {
+        let titles: [(Set<SolveCelebration.Kind>, String, String)] = [
+            ([.first], "首次成绩", "First result"),
+            ([.single], "单次新纪录", "Single PB"),
+            ([.ao5], "Ao5 新纪录", "Ao5 PB"),
+            ([.ao12], "Ao12 新纪录", "Ao12 PB"),
+            ([.single, .ao5], "单次、Ao5 新纪录", "Single & Ao5 PBs"),
+            ([.single, .ao12], "单次、Ao12 新纪录", "Single & Ao12 PBs"),
+            ([.ao5, .ao12], "Ao5、Ao12 新纪录", "Ao5 & Ao12 PBs"),
+            ([.single, .ao5, .ao12], "单次、Ao5、Ao12 新纪录", "Single, Ao5 & Ao12 PBs")
+        ]
+        for (kinds, chinese, english) in titles {
+            #expect(SolveCelebration.toastTitle(for: kinds, in: .chinese) == chinese)
+            #expect(SolveCelebration.toastTitle(for: kinds, in: .english) == english)
+        }
+    }
+
+    @Test
     func firstAveragesAndDisplayedTiesDoNotQualify() {
         let history = (0..<11).map { _ in Solve(seconds: 10.0009, event: "333", scramble: "R U") }
         let solve = Solve(seconds: 10.0001, event: "333", scramble: "R U")

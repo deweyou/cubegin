@@ -221,7 +221,7 @@ final class SolveFlowTests: XCTestCase {
         let replay = app.buttons["timer.celebration-replay"]
         let hints = app.buttons["timer.formula-hints"]
         let readout = app.descendants(matching: .any)["timer.readout"]
-        let toast = app.descendants(matching: .any)["timer.celebration-toast.first"]
+        let toast = app.descendants(matching: .any)["timer.celebration-toast"]
         XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
         XCTAssertTrue(readout.exists)
         XCTAssertFalse(app.buttons["timer.confetti-preview"].exists)
@@ -259,7 +259,7 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testPersonalBestToastsStackAtTheBottom() {
+    func testCombinedPersonalBestToastAppearsAtTheBottom() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -281,39 +281,32 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(readout.wait(for: \.label, toEqual: "停止计时", timeout: 5))
         target.tap()
 
-        let single = elements["timer.celebration-toast.single"]
-        let ao5 = elements["timer.celebration-toast.ao5"]
-        let ao12 = elements["timer.celebration-toast.ao12"]
-        XCTAssertTrue(single.waitForExistence(timeout: 3))
-        XCTAssertEqual(single.label, "单次新纪录")
-        XCTAssertEqual(ao5.label, "Ao5 新纪录")
-        XCTAssertEqual(ao12.label, "Ao12 新纪录")
-        let singleFrame = single.frame
-        let ao5Frame = ao5.frame
-        let ao12Frame = ao12.frame
-        XCTAssertFalse(ao12Frame.isEmpty)
-        XCTAssertGreaterThanOrEqual(ao5Frame.minY - singleFrame.maxY, 6)
-        XCTAssertGreaterThanOrEqual(ao12Frame.minY - ao5Frame.maxY, 6)
-        XCTAssertEqual(singleFrame.midX, ao5Frame.midX, accuracy: 1)
-        XCTAssertEqual(ao5Frame.midX, ao12Frame.midX, accuracy: 1)
+        let toasts = elements.matching(identifier: "timer.celebration-toast")
+        let toast = toasts.firstMatch
+        XCTAssertTrue(toast.wait(for: \.label, toEqual: "单次、Ao5、Ao12 新纪录", timeout: 3))
+        XCTAssertEqual(toasts.count, 1)
+        let toastFrame = toast.frame
+        XCTAssertFalse(toastFrame.isEmpty)
+        captureScreen("Combined personal best toast")
         let readoutCenterY = readout.frame.midY
         let isFoldedTimer = usesFoldedTimer(in: app, readout: readout)
         if isFoldedTimer {
             let replayFrame = app.buttons["timer.celebration-replay"].frame
-            XCTAssertTrue(singleFrame.minY > replayFrame.maxY || singleFrame.minX > replayFrame.maxX)
-            XCTAssertLessThan(ao12Frame.maxY, app.frame.midY)
+            XCTAssertTrue(toastFrame.minY > replayFrame.maxY || toastFrame.minX > replayFrame.maxX)
+            XCTAssertLessThan(toastFrame.maxY, app.frame.midY)
         } else {
-            XCTAssertGreaterThan(singleFrame.minY, readout.frame.maxY)
-            XCTAssertGreaterThan(ao12Frame.midY, app.frame.minY + app.frame.height * 2 / 3)
+            XCTAssertEqual(toastFrame.midX, readout.frame.midX, accuracy: 2)
+            XCTAssertGreaterThan(toastFrame.minY, readout.frame.maxY)
+            XCTAssertGreaterThan(toastFrame.midY, app.frame.minY + app.frame.height * 2 / 3)
         }
         let tabBar = app.tabBars.firstMatch
         if tabBar.exists, tabBar.frame.minY > app.frame.midY {
-            XCTAssertLessThan(ao12Frame.maxY, tabBar.frame.minY)
+            XCTAssertLessThan(toastFrame.maxY, tabBar.frame.minY)
             if !isFoldedTimer {
-                XCTAssertLessThan(tabBar.frame.minY - ao12Frame.maxY, 32)
+                XCTAssertLessThan(tabBar.frame.minY - toastFrame.maxY, 32)
             }
         }
-        XCTAssertTrue(ao12.waitForNonExistence(timeout: 12))
+        XCTAssertTrue(toast.waitForNonExistence(timeout: 12))
         XCTAssertEqual(readout.frame.midY, readoutCenterY, accuracy: 2)
         XCTAssertTrue(app.buttons["timer.celebration-replay"].exists)
         captureScreen("Record scores after the toast fades")
@@ -326,7 +319,7 @@ final class SolveFlowTests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
 
-        for (input, record) in [("0019800", "ao5"), ("0023000", "ao12")] {
+        for (input, record, title) in [("0019800", "ao5", "Ao5 & Ao12 PBs"), ("0023000", "ao12", "Ao12 PB")] {
             let app = XCUIApplication()
             app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
             app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
@@ -341,9 +334,9 @@ final class SolveFlowTests: XCTestCase {
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             field.typeText(input)
             app.buttons["Save"].tap()
-            XCTAssertTrue(elements["timer.celebration-toast.ao12"].waitForExistence(timeout: 5))
-            XCTAssertEqual(elements["timer.celebration-toast.ao5"].exists, record == "ao5")
-            XCTAssertFalse(elements["timer.celebration-toast.single"].exists)
+            let toasts = elements.matching(identifier: "timer.celebration-toast")
+            XCTAssertTrue(toasts.firstMatch.wait(for: \.label, toEqual: title, timeout: 5))
+            XCTAssertEqual(toasts.count, 1)
             captureScreen("Record crown \(record)")
             app.terminate()
         }
