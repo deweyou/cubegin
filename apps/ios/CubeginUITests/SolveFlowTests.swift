@@ -267,7 +267,7 @@ final class SolveFlowTests: XCTestCase {
         // On hosted simulators, accessibility snapshots can outlast the normal toast.
         app.launchEnvironment["CUBEGIN_UI_TEST_EXTENDED_CELEBRATION"] = "1"
         app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
-        app.launchArguments += ["-app.language", "en", "-scramble.standard", "333",
+        app.launchArguments += ["-app.language", "zh-Hans", "-scramble.standard", "333",
                                 "-timer.entryMethod", "timer", "-timer.startDelayTenths", "0", "-timer.wcaInspection", "NO"]
         app.launch()
 
@@ -278,13 +278,16 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertTrue(readout.exists)
         let target = timerTouchTarget(in: app, readout: readout)
         target.tap()
-        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "停止计时", timeout: 5))
         target.tap()
 
         let single = elements["timer.celebration-toast.single"]
         let ao5 = elements["timer.celebration-toast.ao5"]
         let ao12 = elements["timer.celebration-toast.ao12"]
         XCTAssertTrue(single.waitForExistence(timeout: 3))
+        XCTAssertEqual(single.label, "单次新纪录")
+        XCTAssertEqual(ao5.label, "Ao5 新纪录")
+        XCTAssertEqual(ao12.label, "Ao12 新纪录")
         let singleFrame = single.frame
         let ao5Frame = ao5.frame
         let ao12Frame = ao12.frame

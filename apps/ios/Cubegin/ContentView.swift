@@ -1327,9 +1327,9 @@ private extension SolveCelebration.Kind {
     func title(in language: AppLanguage) -> String {
         switch self {
         case .first: language.text("首次成绩", "First result")
-        case .single: language.text("单次 PB", "Single PB")
-        case .ao5: language.text("Ao5 PB", "Ao5 PB")
-        case .ao12: language.text("Ao12 PB", "Ao12 PB")
+        case .single: language.text("单次新纪录", "Single PB")
+        case .ao5: language.text("Ao5 新纪录", "Ao5 PB")
+        case .ao12: language.text("Ao12 新纪录", "Ao12 PB")
         }
     }
 }
