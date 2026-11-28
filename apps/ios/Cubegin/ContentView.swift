@@ -273,7 +273,7 @@ struct ContentView: View {
         Text(isInTimerCancelZone ? language.text("松开取消", "Release to cancel")
              : language.text("上滑到这里取消", "Slide here to cancel"))
             .font(.headline)
-            .foregroundStyle(isInTimerCancelZone ? Color.red : .primary)
+            .foregroundStyle(isInTimerCancelZone ? Color.red : Color.primary.opacity(0.8))
             .padding(.top, isDuoOuterDisplay ? 32 : 20)
             .frame(maxWidth: .infinity)
             .frame(minHeight: Self.cancelZoneHeight, alignment: .top)
