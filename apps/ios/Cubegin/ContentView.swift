@@ -1034,9 +1034,15 @@ struct ContentView: View {
     private var postSolveControls: some View {
         Group {
             if !showsTimingLayout, let solve = model.lastSolve {
+                let celebration = model.lastSolveCelebration
+                let offsetStep: CGFloat = layoutDirection == .leftToRight ? 3 : -3
+                let leadingOffset = offsetStep * (celebration == nil ? 1 : 1.5)
+
                 HStack(spacing: 0) {
-                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"), penalty: .plusTwo, solve: solve)
-                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"), penalty: .dnf, solve: solve)
+                    penaltyButton("+2", label: language.text("加两秒", "Add two seconds"),
+                                  penalty: .plusTwo, solve: solve, horizontalOffset: leadingOffset)
+                    penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"),
+                                  penalty: .dnf, solve: solve, horizontalOffset: leadingOffset - offsetStep)
                     Button(role: .destructive) {
                         model.cancelPress()
                         solveToDelete = solve
@@ -1044,11 +1050,12 @@ struct ContentView: View {
                         Image(systemName: "trash")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
-                            .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.74))
+                            .modifier(CompactControlTarget(minimumWidth: compactControlSize,
+                                                           horizontalOffset: leadingOffset - 2 * offsetStep, visualScale: 0.74))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
-                    if let celebration = model.lastSolveCelebration {
+                    if let celebration {
                         Button {
                             // A replay during the delay also satisfies the first playback.
                             _ = model.takeAutomaticCelebration()
@@ -1058,7 +1065,8 @@ struct ContentView: View {
                             Image(systemName: "party.popper")
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.secondary)
-                                .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.67))
+                                .modifier(CompactControlTarget(minimumWidth: compactControlSize,
+                                                               horizontalOffset: leadingOffset - 3 * offsetStep, visualScale: 0.67))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(language.text("重播庆祝", "Replay celebration"))
@@ -1075,7 +1083,8 @@ struct ContentView: View {
         .frame(height: compactControlSize)
     }
 
-    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, solve: Solve) -> some View {
+    private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, solve: Solve,
+                               horizontalOffset: CGFloat) -> some View {
         Button {
             model.togglePenalty(penalty)
         } label: {
@@ -1085,7 +1094,7 @@ struct ContentView: View {
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(solve.penalty == penalty ? Color.accentColor : Color.secondary)
                 .opacity(solve.allowsPenaltyChange || solve.penalty == penalty ? 1 : 0.5)
-                .modifier(CompactControlTarget(minimumWidth: compactControlSize))
+                .modifier(CompactControlTarget(minimumWidth: compactControlSize, horizontalOffset: horizontalOffset))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -1426,11 +1435,13 @@ private struct LandscapeScrambleLayout: Layout {
 
 private struct CompactControlTarget: ViewModifier {
     let minimumWidth: CGFloat
+    let horizontalOffset: CGFloat
     var visualScale: CGFloat = 0.9
 
     func body(content: Content) -> some View {
         content
             .scaleEffect(visualScale)
+            .offset(x: horizontalOffset)
             .padding(.horizontal, 10)
             .frame(minWidth: minimumWidth)
             .frame(height: 44)
