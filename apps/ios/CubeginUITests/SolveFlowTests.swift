@@ -184,6 +184,9 @@ final class SolveFlowTests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(version.isHittable)
+        let displayedVersion = [version.label, version.value as? String ?? ""].joined(separator: " ")
+        XCTAssertNotNil(displayedVersion.range(of: #"\d+(\.\d+)*\(\d+(\.\d+)*\)"#, options: .regularExpression))
+        captureScreen("Installed version and build")
         let feedback = app.buttons["settings.about.feedback"]
         let checkForUpdates = app.buttons["settings.about.checkForUpdates"]
         let changelog = app.buttons["settings.about.changelog"]

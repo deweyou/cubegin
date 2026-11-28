@@ -254,7 +254,7 @@ xcrun devicectl device process launch --device <UDID> --terminate-existing -- \
 上传令牌配置在发布环境中。核对诊断中的设备 ID 与连点五次「版本」复制的值一致，再检查上报只包含预期字段。
 发布前核对 Xcode 归档的隐私报告及 App Store Connect 隐私声明。
 
-首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器默认显示隐私页开关，网络上报关闭。用启动参数 `-cubegin-show-telemetry-consent` 预览首次共享提示。设备 ID 复制入口由 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 验证。
+首次共享提示、「关于 → 隐私」入口、共享开关和行内政策链接由 `SolveFlowTests.testFirstLaunchSharingChoiceAndPrivacySettings` 验证。模拟器默认显示隐私页开关，网络上报关闭。用启动参数 `-cubegin-show-telemetry-consent` 预览首次共享提示。「关于 → 版本」按 `1.0.0(5)` 的格式显示安装包的版本与构建号。界面用例 `SolveFlowTests.testVersionCopiesHiddenDeviceIDOnFifthTap` 检查显示格式，并验证连点五次复制设备 ID。
 
 ## 产品埋点验证
 

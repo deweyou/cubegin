@@ -6,6 +6,13 @@ enum AppStoreUpdate {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
+    static var installedVersionDisplay: String? {
+        guard let installedVersion else { return nil }
+        guard let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+              !build.isEmpty else { return installedVersion }
+        return "\(installedVersion)(\(build))"
+    }
+
     private static let bundleID = "io.github.deweyou.cubegin"
 
     struct Release: Decodable, Equatable {

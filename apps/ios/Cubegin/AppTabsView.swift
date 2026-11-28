@@ -2789,7 +2789,10 @@ private struct SettingsView: View {
                     cardRowButton {
                         tapVersion()
                     } label: {
-                        LabeledContent(language.text("版本", "Version"), value: AppStoreUpdate.installedVersion ?? language.text("开发版", "Development build"))
+                        LabeledContent(
+                            language.text("版本", "Version"),
+                            value: AppStoreUpdate.installedVersionDisplay ?? language.text("开发版", "Development build")
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.about.version")
