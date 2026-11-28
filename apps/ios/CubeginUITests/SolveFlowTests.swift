@@ -2092,6 +2092,42 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testDeleteButtonConfirmsOnTapAndStartsTimerOnHold() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                               "-timer.entryMethod", "timer", "-timer.startDelayTenths", "0", "-timer.wcaInspection", "NO"]
+        app.launch()
+
+        let hints = app.buttons["timer.formula-hints"]
+        let readout = app.descendants(matching: .any)["timer.readout"]
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 20))
+        let touch = timerTouchTarget(in: app, readout: readout)
+        touch.press(forDuration: 0.55)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        touch.tap()
+        XCTAssertTrue(hints.wait(for: \.isHittable, toEqual: true, timeout: 15))
+
+        let delete = app.buttons["Delete this solve"]
+        let confirmation = app.alerts["Delete this solve?"]
+        XCTAssertTrue(delete.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        delete.tap()
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["Cancel"].tap()
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(delete.wait(for: \.isHittable, toEqual: true, timeout: 5))
+
+        delete.press(forDuration: 0.55)
+        XCTAssertFalse(confirmation.exists)
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        touch.tap()
+        XCTAssertTrue(readout.wait(for: \.label, toEqual: "Start timer", timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any)["timer-summary.count"].value as? String, "2 / 2")
+    }
+
+    @MainActor
     func testReadyTimerStartsAfterFingerMovement() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

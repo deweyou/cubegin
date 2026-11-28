@@ -778,6 +778,33 @@ struct TimerModelTests {
         }
     }
 
+    @Test(arguments: [false, true])
+    func readyTouchTakesPriorityOverTheLastSolveAction(usesInspection: Bool) async throws {
+        try await withFixture { fixture in
+            fixture.defaults.set(usesInspection, forKey: TimerModel.inspectionKey)
+            var now = ContinuousClock.now
+            let model = fixture.model(now: { now })
+            model.refresh()
+            try await waitForGeneration(model)
+            let context = try #require(model.manualSolveContext())
+            #expect(model.saveManualSolve(milliseconds: 12_345, penalty: nil, context: context) == nil)
+            try await waitForGeneration(model)
+            let solveID = try #require(model.lastSolve?.id)
+
+            #expect(model.canPerformPostSolveAction(for: solveID))
+            model.press(.touch, delayTenths: 0, minimumHold: .milliseconds(250))
+            now = now.advanced(by: .milliseconds(249))
+            #expect(model.canPerformPostSolveAction(for: solveID))
+            now = now.advanced(by: .milliseconds(1))
+            #expect(!model.canPerformPostSolveAction(for: solveID))
+
+            model.release(.touch)
+            #expect(!model.canPerformPostSolveAction(for: solveID))
+            #expect((model.inspectionStarted != nil) == usesInspection)
+            #expect((model.started != nil) == !usesInspection)
+        }
+    }
+
     @Test(arguments: [14_999, 15_000, 16_999, 17_000])
     func inspectionUsesReleaseTimeAndPersistsPenalty(milliseconds: Int) async throws {
         try await withFixture { fixture in

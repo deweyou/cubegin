@@ -1081,6 +1081,7 @@ struct ContentView: View {
                     penaltyButton("DNF", label: language.text("标记成绩无效", "Mark as did not finish"),
                                   penalty: .dnf, solve: solve, horizontalOffset: leadingOffset - offsetStep)
                     Button(role: .destructive) {
+                        guard model.canPerformPostSolveAction(for: solve.id) else { return }
                         model.cancelPress()
                         solveToDelete = solve
                     } label: {
@@ -1094,6 +1095,7 @@ struct ContentView: View {
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
                     if let celebration {
                         Button {
+                            guard model.canPerformPostSolveAction(for: solve.id) else { return }
                             // A replay during the delay also satisfies the first playback.
                             _ = model.takeAutomaticCelebration()
                             playCelebration(celebration)
@@ -1124,6 +1126,7 @@ struct ContentView: View {
     private func penaltyButton(_ title: String, label: String, penalty: SolvePenalty, solve: Solve,
                                horizontalOffset: CGFloat) -> some View {
         Button {
+            guard model.canPerformPostSolveAction(for: solve.id) else { return }
             model.togglePenalty(penalty)
         } label: {
             Text(title)

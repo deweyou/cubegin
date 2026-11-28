@@ -317,6 +317,14 @@ private final class InspectionAudioDelegate: NSObject, AVAudioPlayerDelegate {
         guard let solve = solves.first, solve.id == lastSolveID else { return nil }
         return solve
     }
+
+    func canPerformPostSolveAction(for solveID: Solve.ID) -> Bool {
+        guard started == nil, inspectionStarted == nil, lastSolve?.id == solveID else { return false }
+        // The button can receive the release before the timer's gesture callback.
+        guard heldInput == .touch, let readyAt else { return true }
+        return now() < readyAt
+    }
+
     private var lastSolveWasSaved = false
     private var celebratedSolveID: Solve.ID?
     private(set) var lastSolveCelebration: SolveCelebration?
