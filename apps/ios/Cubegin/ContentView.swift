@@ -1044,7 +1044,7 @@ struct ContentView: View {
                         Image(systemName: "trash")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
-                            .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.64))
+                            .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.74))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
@@ -1058,7 +1058,7 @@ struct ContentView: View {
                             Image(systemName: "party.popper")
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.secondary)
-                                .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.58))
+                                .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.67))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(language.text("重播庆祝", "Replay celebration"))
