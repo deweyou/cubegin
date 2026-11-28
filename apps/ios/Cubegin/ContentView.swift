@@ -1044,7 +1044,7 @@ struct ContentView: View {
                         Image(systemName: "trash")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
-                            .modifier(CompactControlTarget(minimumWidth: compactControlSize))
+                            .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.64))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(language.text("删除这条成绩", "Delete this solve"))
@@ -1058,7 +1058,7 @@ struct ContentView: View {
                             Image(systemName: "party.popper")
                                 .font(.system(size: 16))
                                 .foregroundStyle(Color.secondary)
-                                .modifier(CompactControlTarget(minimumWidth: compactControlSize))
+                                .modifier(CompactControlTarget(minimumWidth: compactControlSize, visualScale: 0.58))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(language.text("重播庆祝", "Replay celebration"))
@@ -1426,10 +1426,11 @@ private struct LandscapeScrambleLayout: Layout {
 
 private struct CompactControlTarget: ViewModifier {
     let minimumWidth: CGFloat
+    var visualScale: CGFloat = 0.9
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(0.9)
+            .scaleEffect(visualScale)
             .padding(.horizontal, 10)
             .frame(minWidth: minimumWidth)
             .frame(height: 44)
