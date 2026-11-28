@@ -1099,6 +1099,56 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAverageDetailsStayAvailableAfterSwitchingTabs() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333"]
+        app.launch()
+
+        let home = app.tabBars.buttons["Home"]
+        let results = app.tabBars.buttons["Results"]
+        XCTAssertTrue(results.waitForExistence(timeout: 20))
+        results.tap()
+        XCTAssertTrue(app.buttons["solve-row-12"].waitForExistence(timeout: 5))
+
+        for (kind, count) in [("ao5", 5), ("ao12", 12)] {
+            app.buttons["results.average-type.\(kind)"].tap()
+            let average = app.buttons["average-row-0"]
+            XCTAssertTrue(average.wait(for: \.isHittable, toEqual: true, timeout: 5))
+            average.tap()
+            let first = app.buttons["average-solve-0"]
+            let last = app.buttons["average-solve-\(count - 1)"]
+            XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 5))
+            let firstTime = first.label
+            let lastTime = last.label
+
+            home.tap()
+            XCTAssertTrue(app.buttons["timer.formula-hints"].wait(for: \.isHittable, toEqual: true, timeout: 10))
+            results.tap()
+            XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 5))
+            XCTAssertEqual(first.label, firstTime)
+            XCTAssertEqual(last.label, lastTime)
+            XCTAssertFalse(app.staticTexts["This average is no longer available"].exists)
+            captureScreen("\(kind) detail after switching tabs")
+
+            first.tap()
+            let time = app.descendants(matching: .any)["solve-detail.time"]
+            XCTAssertTrue(time.waitForExistence(timeout: 5))
+            XCTAssertEqual(time.value as? String, firstTime)
+            home.tap()
+            results.tap()
+            XCTAssertTrue(time.waitForExistence(timeout: 5))
+            XCTAssertEqual(time.value as? String, firstTime)
+            app.navigationBars["Solve details"].buttons.firstMatch.tap()
+            XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 5))
+            app.navigationBars[kind].buttons.firstMatch.tap()
+        }
+    }
+
+    @MainActor
     func testScrolledSinglesReturnToTheNewestResultAfterTiming() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -1170,6 +1220,11 @@ final class SolveFlowTests: XCTestCase {
             format: "label == %@ AND value CONTAINS %@ AND NOT (value CONTAINS %@)", "ao12", "best ", "…"
         )).firstMatch
         XCTAssertTrue(average.waitForExistence(timeout: 10))
+        let best = average.value as? String
+        app.tabBars.buttons["Home"].tap()
+        results.tap()
+        XCTAssertTrue(average.waitForExistence(timeout: 10))
+        XCTAssertEqual(average.value as? String, best)
     }
 
     @MainActor

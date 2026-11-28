@@ -633,33 +633,48 @@ private struct AverageDestination: Hashable {
     let newestSolveID: Solve.ID
 }
 
+private struct ResultsReadRequest<Query: Equatable>: Equatable {
+    let query: Query
+    let readerID: ObjectIdentifier?
+
+    init(_ query: Query, reader: ResultsPageReader?) {
+        self.query = query
+        readerID = reader.map(ObjectIdentifier.init)
+    }
+}
+
 private struct AverageDetailsLoader<Content: View>: View {
-    let reader: ResultsPageReader?
+    @Environment(\.locale) private var locale
+    @Binding var reader: ResultsPageReader?
     let destination: AverageDestination
     @ViewBuilder let content: ([Solve]) -> Content
-    @State private var window: [Solve]?
+    @State private var loadedWindow: Result<[Solve], Error>?
 
     var body: some View {
+        let reader = reader
         Group {
-            if let window {
+            switch loadedWindow {
+            case .success(let window):
                 content(window)
-            } else {
+            case .failure:
+                ContentUnavailableView(locale.appLanguage.text("平均成绩读取失败", "Could not load this average"),
+                                       systemImage: "exclamationmark.circle")
+            case nil:
                 ProgressView()
             }
         }
-        .task(id: destination) {
-            guard let reader else {
-                window = []
-                return
-            }
+        // The navigation path can restore before the list reopens its SQLite reader.
+        .task(id: ResultsReadRequest(destination, reader: reader)) {
+            guard let reader, !Task.isCancelled else { return }
             do {
                 let values = try await reader.window(startingAt: destination.newestSolveID, count: destination.kind.count)
-                guard !Task.isCancelled else { return }
-                window = values
+                try Task.checkCancellation()
+                loadedWindow = .success(values)
             } catch is CancellationError {
                 return
             } catch {
-                window = []
+                guard !Task.isCancelled else { return }
+                loadedWindow = .failure(error)
             }
         }
     }
@@ -1369,6 +1384,7 @@ private struct ResultsView: View {
 
     private func averagesView(kind: SolveAverage, availableKinds: [SolveAverage]) -> some View {
         let total = displayedPage?.total ?? 0
+        let reader = listReader
         let request = AveragePageRequest(kind: kind, contentVersion: contentVersion, count: displayedPage?.solves.count ?? 0)
         let highlightRequest = AverageHighlightRequest(kind: kind, contentVersion: contentVersion, includesDNF: includesDNFInWorst)
         let rows = averagePage.flatMap { $0.request.kind == kind && $0.request.contentVersion == contentVersion ? $0.rows : nil } ?? []
@@ -1407,15 +1423,16 @@ private struct ResultsView: View {
             }
         )
         .id(kind)
-        .task(id: request) {
-            await loadAverageRows(request)
+        .task(id: ResultsReadRequest(request, reader: reader)) {
+            guard let reader else { return }
+            await loadAverageRows(request, using: reader)
         }
-        .task(id: highlightRequest) {
-            guard let reader = listReader else { return }
+        .task(id: ResultsReadRequest(highlightRequest, reader: reader)) {
+            guard let reader, averageHighlights?.request != highlightRequest else { return }
             do {
                 let times = try await reader.allTimes()
                 let extremes = await kind.rollingExtremes(times, includesDNF: highlightRequest.includesDNF)
-                guard !Task.isCancelled, reader === listReader else { return }
+                guard !Task.isCancelled, reader === listReader, contentVersion == highlightRequest.contentVersion else { return }
                 averageHighlights = (highlightRequest, extremes)
             } catch is CancellationError {
                 return
@@ -1425,8 +1442,8 @@ private struct ResultsView: View {
         }
     }
 
-    private func loadAverageRows(_ request: AveragePageRequest) async {
-        guard let reader = listReader, request.count > 0 else { return }
+    private func loadAverageRows(_ request: AveragePageRequest, using reader: ResultsPageReader) async {
+        guard request.count > 0 else { return }
         let previous: [AverageRow]
         if let averagePage, averagePage.request.kind == request.kind,
            averagePage.request.contentVersion == request.contentVersion {
@@ -1487,9 +1504,13 @@ private struct ResultsView: View {
     }
 
     private func averageDetails(_ destination: AverageDestination) -> some View {
-        AverageDetailsLoader(reader: listReader, destination: destination) { window in
+        AverageDetailsLoader(reader: $listReader, destination: destination) { window in
             averageDetails(window: window, kind: destination.kind)
         }
+        .appBackground()
+        .navigationTitle(destination.kind.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
     }
 
     private func averageDetails(window: [Solve], kind: SolveAverage) -> some View {
@@ -1550,10 +1571,6 @@ private struct ResultsView: View {
                 ContentUnavailableView(language.text("此平均成绩已不可用", "This average is no longer available"), systemImage: "stopwatch")
             }
         }
-        .appBackground()
-        .navigationTitle(kind.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
     }
 
     private func resultHighlight<ID: Equatable>(at index: ID, best: ID?, worst: ID?) -> (label: String, color: Color)? {
