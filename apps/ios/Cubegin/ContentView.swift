@@ -272,16 +272,17 @@ struct ContentView: View {
     private func cancelHint(atLowerDisplay: Bool) -> some View {
         Text(isInTimerCancelZone ? language.text("松开取消", "Release to cancel")
              : language.text("上滑到这里取消", "Slide here to cancel"))
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(isInTimerCancelZone ? Color.red : .secondary)
+            .font(.headline)
+            .foregroundStyle(isInTimerCancelZone ? Color.red : .primary)
             .padding(.top, isDuoOuterDisplay ? 24 : 12)
             .frame(maxWidth: .infinity)
-            .frame(height: Self.cancelZoneHeight, alignment: .top)
-            .background {
+            .frame(minHeight: Self.cancelZoneHeight, alignment: .top)
+            .background(alignment: .top) {
                 LinearGradient(
-                    colors: [Color.primary.opacity(0.07), .clear],
+                    colors: [Color.primary.opacity(0.16), .clear],
                     startPoint: .top, endPoint: .bottom
                 )
+                .frame(height: Self.cancelZoneHeight + 16)
                 .ignoresSafeArea(edges: atLowerDisplay ? .horizontal : [.top, .horizontal])
             }
             .allowsHitTesting(false)
