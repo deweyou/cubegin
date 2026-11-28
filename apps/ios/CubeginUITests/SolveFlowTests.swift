@@ -1354,6 +1354,10 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertLessThan(scramble.frame.maxY, timer.frame.minY)
         XCTAssertLessThan(timer.frame.maxY, app.frame.midY)
         XCTAssertGreaterThan(diagram.frame.minY, app.frame.midY)
+        let prompt = app.staticTexts["timer.folded-prompt"]
+        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Hold to start", timeout: 5))
+        XCTAssertGreaterThan(prompt.frame.minY, diagram.frame.maxY)
+        captureScreen("Duo folded hold prompt")
         let stop = app.staticTexts["timer.folded-stop"]
         XCTAssertFalse(stop.exists)
         let touch = timerTouchTarget(in: app, readout: timer)
@@ -1371,6 +1375,7 @@ final class SolveFlowTests: XCTestCase {
         XCTAssertFalse(event.exists)
         XCTAssertFalse(scramble.exists)
         XCTAssertEqual(stop.label, "Tap to stop")
+        XCTAssertFalse(prompt.exists)
         XCTAssertLessThan(stop.frame.midY, touch.screenPoint.y)
         touch.tap()
         XCTAssertTrue(timer.wait(for: \.label, toEqual: "Start timer", timeout: 5))
@@ -1402,12 +1407,17 @@ final class SolveFlowTests: XCTestCase {
                           && timer.frame.midY < app.frame.minY + app.frame.height * 0.44,
                           "Run with the Duo partially unfolded in portrait.")
 
+        let prompt = app.staticTexts["timer.folded-prompt"]
+        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Tap to inspect", timeout: 5))
         let stop = app.staticTexts["timer.folded-stop"]
         XCTAssertFalse(stop.exists)
         let touch = timerTouchTarget(in: app, readout: timer)
         touch.tap()
         let inspection = app.descendants(matching: .any).matching(identifier: "timer.inspection").firstMatch
         XCTAssertTrue(inspection.waitForExistence(timeout: 5))
+        XCTAssertTrue(prompt.wait(for: \.label, toEqual: "Tap to start", timeout: 5))
+        XCTAssertGreaterThan(prompt.frame.minY, app.frame.midY)
+        captureScreen("Duo folded inspection prompt")
         let readoutY = inspection.frame.midY
         XCTAssertEqual(readoutY, app.frame.minY + app.frame.height / 4, accuracy: 12)
         XCTAssertFalse(stop.exists)

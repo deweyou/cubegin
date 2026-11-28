@@ -423,6 +423,8 @@ struct ContentView: View {
         let canCenterToast = controlsBottom + toastHeight + 2 * foldClearance <= upperHeight
         let showsScrambleDetails = !showsTimingLayout
         let detailsTop = showsTimingLayout ? foldClearance : controlRowHeight + 2 * foldClearance
+        let promptTop = showsScrambleDetails ? detailsTop + footerHeight : 0
+        let promptY = (promptTop + lowerHeight) / 2
         let positionAnimation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.2)
 
         return VStack(spacing: 0) {
@@ -480,12 +482,17 @@ struct ContentView: View {
                 .accessibilityHidden(!showsScrambleDetails)
                 .allowsHitTesting(false)
 
-                if isTiming {
-                    Text(language.text("轻点停止", "Tap to stop"))
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("timer.folded-stop")
-                        .position(x: size.width / 2, y: lowerHeight / 2)
+                if let prompt = foldedTimerPrompt {
+                    Text(prompt)
+                        .font(isTiming ? .title3 : .title2.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(model.hasSettledPress ? Color.green : .secondary)
+                        .padding(.horizontal, padding)
+                        .frame(width: size.width)
+                        .accessibilityIdentifier(isTiming ? "timer.folded-stop" : "timer.folded-prompt")
+                        .animation(positionAnimation) { content in
+                            content.position(x: size.width / 2, y: promptY)
+                        }
                         .allowsHitTesting(false)
                 }
 
@@ -496,6 +503,21 @@ struct ContentView: View {
             .frame(width: size.width, height: lowerHeight)
         }
         .frame(width: size.width, height: size.height, alignment: .top)
+    }
+
+    private var foldedTimerPrompt: String? {
+        if isTiming { return language.text("轻点停止", "Tap to stop") }
+        guard entryMethod == .timer, isScrambleReady, !isInTimerCancelZone else { return nil }
+        let startsInspection = model.usesInspection && model.inspectionStarted == nil
+        if model.hasSettledPress {
+            return startsInspection ? language.text("松开开始观察", "Release to inspect")
+                : language.text("松开开始计时", "Release to start")
+        }
+        if startsInspection { return language.text("轻点开始观察", "Tap to inspect") }
+        if model.inspectionStarted != nil || startDelayTenths == 0 {
+            return language.text("轻点开始计时", "Tap to start")
+        }
+        return language.text("长按开始", "Hold to start")
     }
 
     private func landscapePage(frame: CGRect, timerFrame: CGRect, screenCenter: CGPoint) -> some View {
