@@ -1074,6 +1074,7 @@ struct ContentView: View {
                     }
                 }
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { postSolveControlsFrame = $0 }
+                .offset(x: layoutDirection == .leftToRight ? 2 : -2)
             } else {
                 Color.clear
                     .allowsHitTesting(false)
