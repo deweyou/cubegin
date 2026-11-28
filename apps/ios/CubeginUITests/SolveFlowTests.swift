@@ -303,7 +303,9 @@ final class SolveFlowTests: XCTestCase {
         if tabBar.exists, tabBar.frame.minY > app.frame.midY {
             XCTAssertLessThan(toastFrame.maxY, tabBar.frame.minY)
             if !isFoldedTimer {
-                XCTAssertLessThan(tabBar.frame.minY - toastFrame.maxY, 32)
+                let gap = tabBar.frame.minY - toastFrame.maxY
+                XCTAssertGreaterThanOrEqual(gap, 20)
+                XCTAssertLessThan(gap, 32)
             }
         }
         XCTAssertTrue(toast.waitForNonExistence(timeout: 12))

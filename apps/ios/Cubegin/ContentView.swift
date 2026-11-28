@@ -711,7 +711,7 @@ struct ContentView: View {
         .frame(height: height)
         .overlay(alignment: .bottom) {
             celebrationToast
-                .padding(.bottom, 16)
+                .padding(.bottom, 24)
         }
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: maximumWidth)
