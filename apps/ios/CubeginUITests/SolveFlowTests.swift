@@ -1099,6 +1099,56 @@ final class SolveFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testScrolledSinglesReturnToTheNewestResultAfterTiming() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
+        app.launchEnvironment["CUBEGIN_UI_TEST_LONG_SOLVE"] = "1"
+        app.launchArguments = ["-app.language", "en", "-scramble.mode", "standard", "-scramble.standard", "333",
+                               "-timer.entryMethod", "timer", "-timer.wcaInspection", "NO", "-timer.startDelayTenths", "2"]
+        app.launch()
+
+        let home = app.buttons["side-nav.home"]
+        let results = app.buttons["side-nav.results"]
+        XCTAssertTrue(results.waitForExistence(timeout: 20))
+        results.tap()
+        let first = app.buttons["solve-row-12"]
+        let older = app.buttons["solve-row-2"]
+        XCTAssertTrue(first.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        let firstRowTop = first.frame.minY
+        let listDrag = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.57))
+        for _ in 0..<5 where !older.isHittable {
+            listDrag.press(forDuration: 0.05, thenDragTo: listDrag.withOffset(CGVector(dx: 0, dy: -90)),
+                           withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+        XCTAssertTrue(older.isHittable)
+        XCTAssertFalse(first.isHittable)
+
+        home.tap()
+        results.tap()
+        XCTAssertTrue(older.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        XCTAssertFalse(first.isHittable)
+
+        home.tap()
+        XCTAssertTrue(app.buttons["timer.formula-hints"].wait(for: \.isHittable, toEqual: true, timeout: 10))
+        let timer = app.descendants(matching: .any)["timer.readout"]
+        let touch = timerTouchTarget(in: app, readout: timer)
+        touch.press(forDuration: 0.45)
+        XCTAssertTrue(timer.wait(for: \.label, toEqual: "Stop timer", timeout: 5))
+        touch.tap()
+        XCTAssertTrue(results.wait(for: \.isHittable, toEqual: true, timeout: 5))
+
+        results.tap()
+        let newest = app.buttons["solve-row-13"]
+        XCTAssertTrue(newest.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        XCTAssertEqual(newest.frame.minY, firstRowTop, accuracy: 2)
+        XCTAssertTrue(app.buttons["results.average-type.single"].isSelected)
+        captureScreen("Newest single after returning to results")
+    }
+
+    @MainActor
     func testStatisticsPublishesRollingAveragesWhenOpened() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

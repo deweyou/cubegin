@@ -196,6 +196,7 @@ struct AppTabsView: View {
     @State private var resultsPage = ResultsPage.solves
     @State private var resultsAverageKind: SolveAverage?
     @State private var resultsDetailPath = NavigationPath()
+    @State private var resultsListReset = 0
     @State private var lastHandledTimedSolveID: Solve.ID?
     @State private var viewedCharts: Set<ResultsChartMode> = []
     private var visibleResultsPage: ResultsPage? {
@@ -363,6 +364,7 @@ struct AppTabsView: View {
         resultsPage = .solves
         resultsAverageKind = nil
         resultsDetailPath = NavigationPath()
+        resultsListReset &+= 1
         lastHandledTimedSolveID = model.lastSavedTimedSolveID
     }
 
@@ -406,7 +408,8 @@ struct AppTabsView: View {
             }
             Tab(value: Destination.results) {
                 ResultsView(model: model, page: $resultsPage, averageKind: $resultsAverageKind,
-                            detailPath: $resultsDetailPath, isSelecting: $isSelectingResults, usesSideNavigation: usesSideNavigation,
+                            detailPath: $resultsDetailPath, isSelecting: $isSelectingResults,
+                            listReset: resultsListReset, usesSideNavigation: usesSideNavigation,
                             isReviewContextActive: { isActive && selection == .results && !showsTimingLayout },
                             contentInsets: isSelectingResults ? nil : contentInsets,
                             showsResultsList: visibleResultsPage == .solves,
@@ -677,6 +680,7 @@ private struct ResultsView: View {
     @State private var listReader: ResultsPageReader?
     @State private var loadedGroup: ResultsGroupKey?
     @State private var loadedPage: SolvePage?
+    @State private var appliedListReset = 0
     @State private var statisticsGroup: ResultsGroupKey?
     @State private var statisticsSolves: [Solve] = []
     @State private var refreshRequest = 0
@@ -701,6 +705,7 @@ private struct ResultsView: View {
     @State private var solvesToDelete: Set<Solve.ID> = []
     @State private var showsMoveGroups = false
     @Binding var isSelecting: Bool
+    let listReset: Int
     let usesSideNavigation: Bool
     let isReviewContextActive: () -> Bool
     let contentInsets: LandscapeContentInsets?
@@ -726,6 +731,7 @@ private struct ResultsView: View {
     private struct ListRequest: Equatable {
         let group: ResultsGroupKey
         let refresh: Int
+        let reset: Int
     }
 
     private struct AveragePageRequest: Equatable {
@@ -752,7 +758,7 @@ private struct ResultsView: View {
 
     private var listRequest: ListRequest? {
         guard isMounted, showsResultsList, let groupKey else { return nil }
-        return ListRequest(group: groupKey, refresh: refreshRequest)
+        return ListRequest(group: groupKey, refresh: refreshRequest, reset: listReset)
     }
 
     private var displayedPage: SolvePage? {
@@ -983,8 +989,10 @@ private struct ResultsView: View {
             loadedPage = loadedGroup == nil ? prefetchedFirstPage : nil
         }
         loadedGroup = request.group
-        let limit = max(Self.pageSize, loadedPage?.solves.count ?? 0)
+        let limit = request.reset == appliedListReset ? max(Self.pageSize, loadedPage?.solves.count ?? 0) : Self.pageSize
         guard await reloadList(using: reader, limit: limit) else { return }
+        // Reset the scroll position only after the current first page has loaded.
+        appliedListReset = request.reset
         var appliedRevision = loadedPage?.revision ?? -1
 
         for await change in changes {
@@ -1286,6 +1294,7 @@ private struct ResultsView: View {
             } message: { _ in
                 Text(language.text("删除后，成绩无法恢复。", "Deleted solves cannot be recovered."))
             }
+            .id(appliedListReset)
         case (.statistics, _):
             let group = StatisticsGroup(project: model.event, id: model.currentGroup?.id)
             let solves = displayedStatistics

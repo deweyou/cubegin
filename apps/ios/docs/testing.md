@@ -98,7 +98,7 @@ CI 使用 arm64 macOS 和 Xcode 26.2。iOS Release 和模拟器测试构建复�
 `SolveFlowTests.testFirstTabLoadingRevealsContentAndSubsequentVisitsReuseIt`
 在测试中延长占位显示时间，以便断言首次和再次切入的界面。
 
-将成绩切到 Ao5 或统计，来回切换标签检查视图保留。保存一次计时后进入成绩，确认显示当前项目的单次记录。切换项目也回到新项目的单次列表。
+将成绩切到 Ao5 或统计，来回切换标签检查视图保留。保存一次计时后进入成绩，确认显示当前项目单次列表的第一条。单次列表已滚到下方时也要置顶。切换项目回到新项目的单次列表第一条。
 
 Debug 构建传入 `--measure-picker` 可按默认动态字体逐项测量中英文项目按钮。
 结果写入模拟器 App 容器的 `Documents/picker-widths.json`，包含 220 条记录。
