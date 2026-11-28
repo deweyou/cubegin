@@ -326,10 +326,10 @@ final class SolveFlowTests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
 
-        for (history, input, record) in [("5", "0023000", "ao5"), ("1", "0019800", "ao12")] {
+        for (input, record) in [("0019800", "ao5"), ("0023000", "ao12")] {
             let app = XCUIApplication()
             app.launchEnvironment["CUBEGIN_UI_TEST_SESSION"] = UUID().uuidString
-            app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = history
+            app.launchEnvironment["CUBEGIN_UI_TEST_CELEBRATION_HISTORY"] = "1"
             app.launchEnvironment["CUBEGIN_UI_TEST_EXTENDED_CELEBRATION"] = "1"
             app.launchArguments += ["-app.language", "en", "-scramble.standard", "333", "-timer.entryMethod", "manual"]
             app.launch()
@@ -341,8 +341,8 @@ final class SolveFlowTests: XCTestCase {
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             field.typeText(input)
             app.buttons["Save"].tap()
-            let toast = elements["timer.celebration-toast.\(record)"]
-            XCTAssertTrue(toast.waitForExistence(timeout: 5))
+            XCTAssertTrue(elements["timer.celebration-toast.ao12"].waitForExistence(timeout: 5))
+            XCTAssertEqual(elements["timer.celebration-toast.ao5"].exists, record == "ao5")
             XCTAssertFalse(elements["timer.celebration-toast.single"].exists)
             captureScreen("Record crown \(record)")
             app.terminate()

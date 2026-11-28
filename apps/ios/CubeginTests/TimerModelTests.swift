@@ -523,17 +523,22 @@ struct TimerModelTests {
         }
     }
 
-    @Test(arguments: [(count: 5, time: 23.0, kind: SolveCelebration.Kind.ao5),
-                      (count: 12, time: 19.8, kind: SolveCelebration.Kind.ao12)])
-    func selectsTheLongestAverageCrownWhenTheSingleDidNotImprove(
-        count: Int, time: Double, kind: SolveCelebration.Kind
+    @Test(arguments: [
+        (count: 5, time: 23.0, kinds: [SolveCelebration.Kind.ao5]),
+        (count: 12, time: 19.8, kinds: [SolveCelebration.Kind.ao5, .ao12]),
+        (count: 12, time: 23.0, kinds: [SolveCelebration.Kind.ao12])
+    ])
+    func prefersAo5BeforeAo12WhenTheSingleDidNotImprove(
+        count: Int, time: Double, kinds: [SolveCelebration.Kind]
     ) {
         let history = (0..<count).reversed().map { index in
             Solve(seconds: 24.82 - Double(index) * 0.53, event: "333", scramble: "R U",
                   date: Date(timeIntervalSinceReferenceDate: Double(index)))
         }
         let solve = Solve(seconds: time, event: "333", scramble: "R U")
-        #expect(SolveCelebration(solve: solve, history: history)?.crownKind == kind)
+        let celebration = SolveCelebration(solve: solve, history: history)
+        #expect(celebration?.achievements.map(\.kind) == kinds)
+        #expect(celebration?.crownKind == kinds.first)
     }
 
     @Test
