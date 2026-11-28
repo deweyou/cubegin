@@ -1581,9 +1581,14 @@ private struct ResultsView: View {
 
     @ViewBuilder private func averageSingleRow(_ title: String, solve: Solve?) -> some View {
         if let solve {
-            NavigationLink(value: solve.id) {
+            Button {
+                detailPath.append(solve.id)
+            } label: {
                 LabeledContent(title, value: solve.resultText)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
         } else {
             LabeledContent(title, value: "—")
         }
